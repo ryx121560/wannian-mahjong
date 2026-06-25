@@ -1614,7 +1614,6 @@ function applyWin(winner,wt){
     GS.players[payer].score-=pts;
   }else{
     for(let i=0;i<4;i++)if(i!==winner)GS.players[i].score-=pts;
-    GS.players[winner].score+=2*pts;
   }
   logEvent(winner,'胡牌['+wt+']',null);
   saveGameLog({winner:winner,winnerName:GS.players[winner].name,type:wt,
