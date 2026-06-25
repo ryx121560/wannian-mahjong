@@ -52,8 +52,8 @@ const MCTS_ROLLOUT_WGSL = [
   '  if (idx >= totalInst) { return; }',
   '  let off = idx * 35u;',
   '  var hand: array<u32, 34>;',
-  '  for (var i: u32 = 0u; i < 34u; i++) { hand[i] = inputData[off + i]; }',
-  '  let discIdx = inputData[off + 34u];',
+  '  for (var i: u32 = 0u; i < 34u; i++) { hand[i] = handData[off + i]; }',
+  '  let discIdx = handData[off + 34u];',
   '  if (hand[discIdx] > 0u) { hand[discIdx]--; }',
   '  var state = rngStates[idx]; if (state == 0u) { state = idx + 1u; }',
   '  var score: f32 = 0.0;',
@@ -172,7 +172,8 @@ class GPUMctsRollout {
       rngArr[i] = (i + 1) * 2654435761;
     }
 
-    var inputBuf = this._makeBuf(inputArr);
+    var handBuf = this._makeBuf(inputArr);
+    var candBuf = this._makeBuf(new Uint32Array(discardCandidates));
     var outputBuf = this._makeRW(totalInst * 4);
     var rngBuf = this._makeBuf(rngArr);
     var lutSize = this.lutData ? this.lutData.size : 0;
