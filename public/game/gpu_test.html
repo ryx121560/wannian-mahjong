@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>GPU 训练测试</title></head>
+<body>
+<h2>GPU 训练测试</h2>
+<div id="log"></div>
+<script>
+var log = document.getElementById('log');
+function msg(s) { log.innerHTML += s + '<br>'; console.log(s); }
+
+async function initGPU() {
+  if (!navigator.gpu) { msg('FAIL: WebGPU not supported'); return null; }
+  var adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { msg('FAIL: no adapter'); return null; }
+  var device = await adapter.requestDevice();
+  msg('OK: WebGPU device created');
+  return device;
+}
+
+async function step1(device) {
+  // 最简单的 compute shader: 每线程 +1
+  var code = [
+    '@group(0) @binding(0) var<storage, read_write> buf : array<f32>;',
+    '@compute @workgroup_size(64)',
+    'fn main(@builtin(global_invocation_id) gid: vec3<u32>) {',
+    '  buf[gid.x] = buf[gid.x] + 1.0;',
+    '}',
+  ].join('\n');
+  var shader = device.createShaderModule({ code: code });
+  var pipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: shader, entryPoint: 'main' }
+  });
+  msg('OK: shader compiled');
+
+  var data = new Float32Array(64);
+  for (var i = 0; i < 64; i++) data[i] = i;
+  var buf = device.createBuffer({
+    size: data.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+  });
+  device.queue.writeBuffer(buf, 0, data);
+  msg('OK: buffer created and written');
+
+  var bg = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: buf } }]
+  });
+
+  var enc = device.createCommandEncoder();
+  var pass = enc.beginComputePass();
+  pass.setPipeline(pipeline); pass.setBindGroup(0, bg);
+  pass.dispatchWorkgroups(1);
+  pass.end();
+  device.queue.submit([enc.finish()]);
+  msg('OK: dispatched');
+
+  for (var wait = 0; wait < 3; wait++) {
+    var t0 = performance.now();
+    try {
+      await device.queue.onSubmittedWorkDone();
+      var elapsed = (performance.now() - t0).toFixed(1);
+      msg('OK: onSubmittedWorkDone resolved in ' + elapsed + 'ms');
+      break;
+    } catch(e) {
+      msg('FAIL: onSubmittedWorkDone rejected: ' + e.message);
+    }
+  }
+}
+
+async function step2(device) {
+  // 测试 ADAM shader 风格的 uniform buffer
+  var code = [
+    '@group(0) @binding(0) var<storage, read_write> W : array<f32>;',
+    '@group(0) @binding(1) var<uniform> p : vec4<f32>;',
+    '@group(0) @binding(2) var<uniform> cnt : vec4<u32>;',
+    '@compute @workgroup_size(256)',
+    'fn main(@builtin(global_invocation_id) gid: vec3<u32>) {',
+    '  let i = gid.x; let n = cnt.x;',
+    '  if (i >= n) { return; }',
+    '  W[i] = W[i] + p.x;',
+    '}',
+  ].join('\n');
+  var shader = device.createShaderModule({ code: code });
+  var pipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: shader, entryPoint: 'main' }
+  });
+  msg('OK: ADAM-style shader compiled');
+
+  var wSize = 75776; // 74*1024
+  var wBuf = device.createBuffer({
+    size: wSize * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+  });
+  var wData = new Float32Array(wSize);
+  device.queue.writeBuffer(wBuf, 0, wData);
+
+  var pBuf = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(pBuf, 0, new Float32Array([1.0, 0.9, 0.999, 1e-8]));
+
+  var cntBuf = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(cntBuf, 0, new Uint32Array([wSize, 0, 0, 0]));
+
+  var bg = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: wBuf } },
+      { binding: 1, resource: { buffer: pBuf } },
+      { binding: 2, resource: { buffer: cntBuf } },
+    ]
+  });
+
+  var enc = device.createCommandEncoder();
+  var pass = enc.beginComputePass();
+  pass.setPipeline(pipeline); pass.setBindGroup(0, bg);
+  pass.dispatchWorkgroups(Math.ceil(wSize / 256));
+  pass.end();
+  device.queue.submit([enc.finish()]);
+  // DON'T destroy pBuf/cntBuf yet
+  msg('OK: ADAM dispatches submitted');
+
+  var t0 = performance.now();
+  try {
+    await device.queue.onSubmittedWorkDone();
+    msg('OK: ADAM onSubmittedWorkDone resolved in ' + (performance.now() - t0).toFixed(1) + 'ms');
+  } catch(e) {
+    msg('FAIL: ADAM onSubmittedWorkDone rejected: ' + e.message);
+  }
+
+  // Now read back
+  var rb = device.createBuffer({
+    size: wSize * 4,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+  });
+  var enc2 = device.createCommandEncoder();
+  enc2.copyBufferToBuffer(wBuf, 0, rb, 0, wSize * 4);
+  device.queue.submit([enc2.finish()]);
+  await rb.mapAsync(GPUMapMode.READ);
+  rb.unmap();
+  msg('OK: buffer readback completed');
+}
+
+async function run() {
+  var device = await initGPU();
+  if (!device) return;
+  await step1(device);
+  await step2(device);
+  msg('ALL TESTS PASSED');
+}
+run();
+</script></body></html>

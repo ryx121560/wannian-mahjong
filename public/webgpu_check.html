@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>万年麻将 - WebGPU 环境检测</title>
+<style>
+  body{font-family:sans-serif;background:#1a3c1a;color:#e0e0e0;padding:30px;max-width:600px;margin:auto}
+  h1{color:#e8b830;border-bottom:1px solid #4a752c;padding-bottom:10px}
+  .card{background:rgba(0,0,0,0.6);border-radius:10px;padding:20px;margin:15px 0;border:1px solid #4a752c}
+  .pass{color:#4caf50;font-weight:bold}
+  .fail{color:#f44336;font-weight:bold}
+  .warn{color:#ff9800}
+  #info{font-size:13px;line-height:1.7}
+  code{background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px;font-size:12px}
+  button{background:#4a752c;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:15px;cursor:pointer;margin-top:15px}
+  button:hover{background:#5a9a3c}
+</style></head>
+<body>
+<h1>WebGPU 环境检测</h1>
+<div class="card" id="status-card">
+  <div id="status">检测中...</div>
+</div>
+<div class="card" id="info-card" style="display:none">
+  <h3>GPU 信息</h3>
+  <div id="info"></div>
+</div>
+<div class="card" id="modules-card" style="display:none">
+  <h3>模块状态</h3>
+  <div id="modules"></div>
+</div>
+<button onclick="location.reload()">重新检测</button>
+
+<script>
+(async function() {
+  const status = document.getElementById("status");
+  const infoDiv = document.getElementById("info");
+  const modDiv = document.getElementById("modules");
+  const infoCard = document.getElementById("info-card");
+  const modCard = document.getElementById("modules-card");
+
+  if (!navigator.gpu) {
+    status.innerHTML = '<span class="fail">WebGPU 不可用</span> - 浏览器不支持 navigator.gpu';
+    infoCard.style.display = "block";
+    infoDiv.innerHTML = '请使用 Chrome 113+ / Edge 113+';
+    return;
+  }
+
+  try {
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+    if (!adapter) {
+      status.innerHTML = '<span class="fail">无可用 GPU Adapter</span>';
+      return;
+    }
+
+    const device = await adapter.requestDevice();
+    const name = adapter.name || "未知";
+    const features = adapter.features ? Array.from(adapter.features).join(", ") : "无";
+    const limits = {};
+    if (adapter.limits) {
+      limits.maxBufferSize = adapter.limits.maxBufferSize;
+      limits.maxComputeWorkgroupSizeX = adapter.limits.maxComputeWorkgroupSizeX;
+    }
+
+    status.innerHTML = '<span class="pass">WebGPU 可用</span>';
+    infoCard.style.display = "block";
+    infoDiv.innerHTML = `
+      <b>GPU 型号:</b> ${name}<br>
+      <b>Adapter:</b> ${adapter.isFallbackAdapter ? "Fallback" : "Primary"}<br>
+      <b>最大 Buffer:</b> ${limits.maxBufferSize ? Math.round(limits.maxBufferSize / 1024 / 1024) + " MB" : "N/A"}<br>
+      <b>Workgroup 上限:</b> ${limits.maxComputeWorkgroupSizeX || "N/A"}<br>
+      <b>特性:</b> ${features}
+    `;
+
+    modCard.style.display = "block";
+    modDiv.innerHTML = await checkModules();
+
+    device.destroy();
+  } catch (e) {
+    status.innerHTML = `<span class="fail">WebGPU 初始化失败:</span> ${e.message}`;
+  }
+})();
+
+async function checkModules() {
+  const modules = [
+    "gpu.js", "gpu_mlp.js", "gpu_mcts.js", "gpu_opponent.js",
+    "mcts.js", "trainer.js", "opponent_model.js"
+  ];
+  let html = "";
+  for (const m of modules) {
+    const exists = await fetch("/game/ai/" + m).then(r => r.ok).catch(() => false);
+    html += `<div>${exists ? '<span class="pass">[ok]</span>' : '<span class="fail">[!]</span>'} <code>ai/${m}</code></div>`;
+  }
+  return html;
+}
+</script>
+</body>
+</html>
+

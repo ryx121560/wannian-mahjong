@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>GPU 真实训练测试</title></head>
+<body><h2>GPU 真实训练测试（使用 GPUMlp + _adamUpdate）</h2><div id="log"></div>
+<script src="ai/gpu.js"></script>
+<script src="ai/gpu_mlp.js"></script>
+<script>
+var log = document.getElementById('log');
+function msg(s) { log.innerHTML += s + '<br>'; console.log(s); }
+
+async function run() {
+  // Wait for WebGPU init
+  for (var w = 0; w < 50; w++) {
+    if (window.gpu && window.gpu.available) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (!window.gpu || !window.gpu.available) { msg('FAIL: GPU not available'); return; }
+  msg('OK: WebGPU ready');
+
+  // Create GPUMlp instance
+  var mlp;
+  try { mlp = new GPUMlp(); } catch(e) { msg('FAIL: GPUMlp constructor: ' + e.message); return; }
+  if (!mlp.ready) { msg('FAIL: GPUMlp not ready'); return; }
+  msg('OK: GPUMlp ready, layers=' + mlp.layers.join('x'));
+
+  // Test _initAdam
+  try {
+    mlp._initAdam();
+    msg('OK: _initAdam() succeeded');
+  } catch(e) {
+    msg('FAIL: _initAdam(): ' + e.message);
+    return;
+  }
+
+  // Test _adamUpdate for each layer
+  for (var l = 0; l < mlp.weights.length; l++) {
+    var t0 = performance.now();
+    try {
+      // Create gradient buffer
+      var grad = new Float32Array(mlp.weights[l].length);
+      for (var i = 0; i < grad.length; i++) grad[i] = Math.random() * 0.1;
+      var gBuf = mlp.device.createBuffer({
+        size: grad.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+      });
+      mlp.device.queue.writeBuffer(gBuf, 0, grad);
+
+      mlp._adamUpdate(l, gBuf, 0.001);
+      var elapsed = (performance.now() - t0).toFixed(1);
+      msg('OK: layer ' + l + ' _adamUpdate submitted (' + elapsed + 'ms)');
+    } catch(e) {
+      msg('FAIL: layer ' + l + ' _adamUpdate: ' + e.message);
+      return;
+    }
+  }
+
+  // Wait for all dispatches
+  var t0 = performance.now();
+  try {
+    await mlp.device.queue.onSubmittedWorkDone();
+    msg('OK: onSubmittedWorkDone resolved in ' + (performance.now() - t0).toFixed(1) + 'ms');
+  } catch(e) {
+    msg('FAIL: onSubmittedWorkDone: ' + e.message);
+    return;
+  }
+
+  // Readback first layer
+  try {
+    var rb = mlp.device.createBuffer({
+      size: mlp.weights[0].byteLength,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    });
+    var enc = mlp.device.createCommandEncoder();
+    enc.copyBufferToBuffer(mlp.gpuW[0], 0, rb, 0, mlp.weights[0].byteLength);
+    mlp.device.queue.submit([enc.finish()]);
+    await rb.mapAsync(GPUMapMode.READ);
+    rb.unmap();
+    msg('OK: readback completed');
+  } catch(e) {
+    msg('FAIL: readback: ' + e.message);
+    return;
+  }
+
+  // Run a second iteration (to test cumulative behavior)
+  msg('--- second iteration ---');
+  mlp._initAdam();
+  for (var l = 0; l < mlp.weights.length; l++) {
+    var grad = new Float32Array(mlp.weights[l].length);
+    for (var i = 0; i < grad.length; i++) grad[i] = Math.random() * 0.1;
+    var gBuf = mlp.device.createBuffer({
+      size: grad.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+    });
+    mlp.device.queue.writeBuffer(gBuf, 0, grad);
+    mlp._adamUpdate(l, gBuf, 0.001);
+  }
+  var t0 = performance.now();
+  try {
+    await mlp.device.queue.onSubmittedWorkDone();
+    msg('OK: 2nd iter onSubmittedWorkDone in ' + (performance.now() - t0).toFixed(1) + 'ms');
+  } catch(e) {
+    msg('FAIL: 2nd iter onSubmittedWorkDone: ' + e.message);
+  }
+
+  msg('ALL TESTS PASSED');
+}
+run();
+</script></body></html>

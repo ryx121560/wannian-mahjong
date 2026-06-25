@@ -1,0 +1,167 @@
+{
+  "version": "2026-06-19",
+  "source": "docs/ai-discard-logic-spec.md",
+  "tileNotation": "wan1,tong9,tiao5,dong,nan,xi,bei,zhong,fa,bai",
+  "cases": [
+    {
+      "id": "case-01-isolated-first",
+      "title": "孤张优先",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tiao6", "tiao7", "wan8", "tong9", "bei", "zhong", "fa", "bai", "wan1"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"discardType": "lowest-connectivity-isolated", "mustNotBreak": ["wan2-wan3-wan4", "tong3-tong4", "tiao6-tiao7"]},
+      "focus": ["isolatedScore", "breaksTaatsu"]
+    },
+    {
+      "id": "case-02-ryanmen-protection",
+      "title": "两面搭子保护",
+      "hand": ["wan3", "wan4", "tong4", "tong5", "tiao6", "tiao7", "wan9", "tong1", "tiao1", "dong", "nan", "zhong", "zhong", "bai"],
+      "scene": {"phase": "early", "danger": "low", "melds": "none", "mode": "ordinary"},
+      "expected": {"discardType": "non-taatsu-or-low-value", "mustNotBreak": ["wan3-wan4", "tong4-tong5", "tiao6-tiao7"]},
+      "focus": ["breaksTaatsu", "structureProtection"]
+    },
+    {
+      "id": "case-03-edge-vs-middle",
+      "title": "边搭与中张取舍",
+      "hand": ["wan1", "wan2", "wan5", "wan6", "tong2", "tong3", "tiao8", "tiao9", "dong", "xi", "zhong", "fa", "bai", "bai"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"discardType": "lower-quality-edge-or-isolated", "preferKeep": ["wan5-wan6", "tong2-tong3"]},
+      "focus": ["taatsuQuality", "tieBreak"]
+    },
+    {
+      "id": "case-04-pair-protection",
+      "title": "对子保护",
+      "hand": ["wan2", "wan2", "wan4", "wan5", "tong6", "tong7", "tiao3", "tiao4", "dong", "nan", "xi", "zhong", "fa", "tong9"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"discardType": "non-pair", "mustNotBreak": ["wan2-wan2"]},
+      "focus": ["breaksPair"]
+    },
+    {
+      "id": "case-05-seven-pairs-five-pairs",
+      "title": "七对子五对保护",
+      "hand": ["wan1", "wan1", "wan3", "wan3", "tong5", "tong5", "tiao7", "tiao7", "dong", "dong", "wan9", "tong2", "fa", "bai"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"route": "7p", "discardType": "single", "mustNotBreak": ["pairs"]},
+      "focus": ["routeScore", "breaksPair"]
+    },
+    {
+      "id": "case-06-dalan-route",
+      "title": "打烂路线保护",
+      "hand": ["wan1", "wan5", "wan9", "tong2", "tong6", "tiao3", "tiao7", "dong", "nan", "xi", "bei", "zhong", "fa", "bai"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"route": "dalan", "discardType": "route-conflict"},
+      "focus": ["routeScore", "shantenDalan"]
+    },
+    {
+      "id": "case-07-banzheng-route",
+      "title": "半正宗路线保护",
+      "hand": ["wan1", "wan4", "wan7", "tong2", "tong5", "tong8", "tiao3", "tiao6", "tiao9", "dong", "nan", "zhong", "fa", "bai"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"route": "banzheng", "discardType": "route-conflict"},
+      "focus": ["routeScore", "shantenBanzheng"]
+    },
+    {
+      "id": "case-08-quanzheng-route",
+      "title": "全正宗路线保护",
+      "hand": ["wan1", "wan4", "wan7", "tong1", "tong4", "tong7", "tiao1", "tiao4", "tiao7", "dong", "nan", "xi", "zhong", "bai"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"route": "quanzheng", "discardType": "route-conflict"},
+      "focus": ["routeScore", "shantenQuanzheng"]
+    },
+    {
+      "id": "case-09-half-flush-bias",
+      "title": "混一色倾向",
+      "hand": ["wan2", "wan3", "wan4", "wan6", "wan7", "wan8", "wan9", "wan9", "dong", "nan", "xi", "zhong", "fa", "tong5"],
+      "scene": {"phase": "early", "danger": "none", "melds": "none", "mode": "ordinary"},
+      "expected": {"discardType": "off-suit", "preferDiscard": ["tong5"]},
+      "focus": ["suitBias", "structureProtection"]
+    },
+    {
+      "id": "case-10-tenpai-max-waits",
+      "title": "听牌最大进张",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "dong", "dong", "wan8"],
+      "scene": {"phase": "mid", "danger": "low", "melds": "none", "mode": "ordinary"},
+      "expected": {"discardType": "max-wait-count"},
+      "focus": ["waitCount", "tenpaiQuality"]
+    },
+    {
+      "id": "case-11-tenpai-danger-avoidance",
+      "title": "听牌危险牌回避",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "dong", "dong", "wan8"],
+      "scene": {"phase": "late", "danger": "high", "opponentMelds": "many", "opponentDiscards": {"0": ["wan2"], "2": ["wan2"]}, "mode": "ordinary"},
+      "expected": {"preferDiscard": ["wan2"], "waitCount": 2, "waitRemaining": 5},
+      "focus": ["defenseScore", "defenseMode"]
+    },
+    {
+      "id": "case-12-fold-when-far",
+      "title": "自己向听远时弃和",
+      "hand": ["bai", "bei", "bei", "nan", "tiao2", "tiao3", "tiao9", "tong6", "tong8", "wan2", "wan4", "wan5", "xi", "zhong"],
+      "scene": {"phase": "late", "danger": "high", "shanten": 3, "opponentMelds": "many", "opponentDiscards": {"0": ["bai"], "2": ["bai"], "3": ["bai"]}, "mode": "ordinary"},
+      "expected": {"preferDiscard": ["bai"], "defenseMode": ["fullFold"]},
+      "focus": ["defenseMode", "defenseScore"]
+    },
+    {
+      "id": "case-13-leading-defense",
+      "title": "领先时防守",
+      "hand": ["wan2", "wan3", "wan5", "tong4", "tong5", "tong8", "tiao6", "tiao7", "dong", "dong", "nan", "xi", "zhong", "bai"],
+      "scene": {"phase": "mid", "danger": "medium", "scorePosition": "leading", "opponentMelds": "many", "opponentDiscards": {"0": ["bai"], "2": ["bai"], "3": ["bai"]}, "mode": "ordinary"},
+      "expected": {"preferDiscard": ["bai"], "defenseMode": ["fullFold"]},
+      "focus": ["scoreLead", "defenseWeight"]
+    },
+    {
+      "id": "case-14-behind-attack",
+      "title": "落后时进攻",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "dong", "dong", "fa"],
+      "scene": {"phase": "mid", "danger": "medium", "scorePosition": "behind", "shanten": "near", "mode": "ordinary"},
+      "expected": {"discardType": "efficient-attack"},
+      "focus": ["riskTolerance", "waitCount"]
+    },
+    {
+      "id": "case-15-many-open-melds-defense",
+      "title": "对手多副露防守",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao9", "dong", "nan", "xi", "zhong", "bai"],
+      "scene": {"phase": "late", "danger": "high", "opponentMelds": "many", "opponentDiscards": {"0": ["bai"], "2": ["bai"], "3": ["bai"]}, "mode": "ordinary"},
+      "expected": {"preferDiscard": ["bai"], "defenseMode": ["semiFold"]},
+      "focus": ["opponentMeldSuitDanger", "defenseScore"]
+    },
+    {
+      "id": "case-16-open-kong-no-worse",
+      "title": "明杠不恶化",
+      "hand": ["wan2", "wan3", "wan4", "tong5", "tong5", "tong5", "tiao3", "tiao4", "tiao5", "dong", "dong", "zhong", "fa"],
+      "scene": {"phase": "mid", "lastDiscard": "tong5", "action": "kong-response", "mode": "ordinary"},
+      "expected": {"action": "kong-only-if-shanten-not-worse"},
+      "focus": ["aiRespond", "bestShanten"]
+    },
+    {
+      "id": "case-17-tenpai-no-breaking-kong",
+      "title": "听牌不破坏暗杠",
+      "hand": ["tiao7", "tiao7", "tiao7", "tong1", "tong2", "tong3", "tong7", "tong7", "tong7", "wan7", "wan7", "wan7", "wan7", "wan8"],
+      "scene": {"phase": "late", "action": "self-kong", "newDrawnTile": "wan7", "waitBefore": ["wan6", "wan8", "wan9"], "waitAfter": ["wan8"], "mode": "ordinary"},
+      "expected": {"action": "skipSelfKong", "lostWaits": ["wan6", "wan9"]},
+      "focus": ["evaluateAiSelfKong", "waitBefore", "waitAfter", "lostWaits"]
+    },
+    {
+      "id": "case-18-pong-no-worse",
+      "title": "碰牌不恶化",
+      "hand": ["wan2", "wan3", "wan4", "tong5", "tong5", "tiao3", "tiao4", "tiao5", "wan7", "wan8", "dong", "nan", "zhong"],
+      "scene": {"phase": "mid", "lastDiscard": "tong5", "action": "pong-response", "mode": "ordinary"},
+      "expected": {"action": "pong-only-if-shanten-not-worse"},
+      "focus": ["aiRespond", "bestShanten"]
+    },
+    {
+      "id": "case-19-dead-taatsu",
+      "title": "假搭子识别",
+      "hand": ["wan3", "wan5", "tong4", "tong5", "tiao6", "tiao7", "wan9", "tong9", "tiao1", "dong", "nan", "zhong", "fa", "bai"],
+      "scene": {"phase": "mid", "visibleTiles": {"wan4": 4}, "mode": "ordinary"},
+      "expected": {"discardType": "dead-taatsu-member"},
+      "focus": ["deadTaatsu", "remainingCount"]
+    },
+    {
+      "id": "case-20-learning-does-not-override-better-rule",
+      "title": "MCTS/RL 不覆盖明显更优规则结果",
+      "hand": ["wan3", "wan4", "tong4", "tong5", "tiao6", "tiao7", "wan9", "tong1", "tiao1", "dong", "nan", "zhong", "zhong", "bai"],
+      "scene": {"phase": "mid", "danger": "low", "mode": "mcts-or-rl-enabled"},
+      "expected": {"discardType": "rule-fallback-if-learning-worse", "mustNotBreak": ["wan3-wan4", "tong4-tong5", "tiao6-tiao7"]},
+      "focus": ["source", "reason", "ruleFallback"]
+    }
+  ]
+}

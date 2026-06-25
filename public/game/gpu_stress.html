@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>GPU 训练压力测试</title></head>
+<body><h2>GPU 训练压力测试</h2><div id="log"></div>
+<script>
+var log = document.getElementById('log');
+function msg(s) { log.innerHTML += s + '<br>'; console.log(s); }
+
+async function initGPU() {
+  if (!navigator.gpu) { msg('FAIL: not supported'); return null; }
+  var adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { msg('FAIL: no adapter'); return null; }
+  var device = await adapter.requestDevice();
+  msg('OK: device created'); return device;
+}
+
+async function testLoop(device) {
+  var code = [
+    '@group(0) @binding(0) var<storage, read_write> W : array<f32>;',
+    '@group(0) @binding(1) var<storage, read_write> m : array<f32>;',
+    '@group(0) @binding(2) var<storage, read_write> v : array<f32>;',
+    '@group(0) @binding(3) var<storage, read> g : array<f32>;',
+    '@group(0) @binding(4) var<uniform> p : vec4<f32>;',
+    '@group(0) @binding(5) var<uniform> cnt : vec4<u32>;',
+    '@compute @workgroup_size(256)',
+    'fn main(@builtin(global_invocation_id) gid: vec3<u32>) {',
+    '  let i=gid.x; let n=cnt.x; if(i>=n){return;}',
+    '  let lr=p.x; let b1=p.y; let b2=p.z; let ep=p.w;',
+    '  let gi=g[i]; let mi=b1*m[i]+(1.0-b1)*gi;',
+    '  let vi=b2*v[i]+(1.0-b2)*gi*gi;',
+    '  W[i]-=lr*mi/(sqrt(vi)+ep); m[i]=mi; v[i]=vi;',
+    '}',
+  ].join('\n');
+  var shader = device.createShaderModule({code:code});
+  var pipeline = device.createComputePipeline({layout:'auto', compute:{module:shader, entryPoint:'main'}});
+  msg('OK: pipeline compiled');
+
+  var layerSizes = [75776, 1048576, 1048576, 1048576, 35840];
+  var totalLayers = layerSizes.length;
+
+  // Pre-create weight/momentum buffers (simulate _initAdam)
+  var gpuW = [], gpuM = [], gpuV = [];
+  for (var l = 0; l < totalLayers; l++) {
+    var sz = layerSizes[l] * 4;
+    var usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+    gpuW.push(device.createBuffer({size:sz, usage:usage}));
+    gpuM.push(device.createBuffer({size:sz, usage:usage}));
+    gpuV.push(device.createBuffer({size:sz, usage:usage}));
+    var z = new Float32Array(layerSizes[l]);
+    device.queue.writeBuffer(gpuW[l], 0, z);
+    device.queue.writeBuffer(gpuM[l], 0, z);
+    device.queue.writeBuffer(gpuV[l], 0, z);
+  }
+  msg('OK: weight/momentum buffers created for ' + totalLayers + ' layers');
+
+  // Run training loop 5 times
+  for (var iter = 0; iter < 5; iter++) {
+    msg('--- iteration ' + (iter + 1) + ' ---');
+    var t0 = performance.now();
+
+    for (var l = 0; l < totalLayers; l++) {
+      // Create gradient buffer (simulate computeDerivative)
+      var gBuf = device.createBuffer({
+        size: layerSizes[l] * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+      });
+      var gData = new Float32Array(layerSizes[l]);
+      for (var i = 0; i < gData.length; i++) gData[i] = Math.random() * 0.1 - 0.05;
+      device.queue.writeBuffer(gBuf, 0, gData);
+
+      // Setup uniform buffers (simulate _adamUpdate)
+      var pBuf = device.createBuffer({size:16, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+      device.queue.writeBuffer(pBuf, 0, new Float32Array([0.001, 0.9, 0.999, 1e-8]));
+      var cntBuf = device.createBuffer({size:16, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+      device.queue.writeBuffer(cntBuf, 0, new Uint32Array([layerSizes[l], 0, 0, 0]));
+
+      var bg = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          {binding:0, resource:{buffer:gpuW[l]}},
+          {binding:1, resource:{buffer:gpuM[l]}},
+          {binding:2, resource:{buffer:gpuV[l]}},
+          {binding:3, resource:{buffer:gBuf}},
+          {binding:4, resource:{buffer:pBuf}},
+          {binding:5, resource:{buffer:cntBuf}},
+        ]
+      });
+
+      var enc = device.createCommandEncoder();
+      var pass = enc.beginComputePass();
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bg);
+      pass.dispatchWorkgroups(Math.ceil(layerSizes[l] / 256));
+      pass.end();
+      device.queue.submit([enc.finish()]);
+      // NOT destroying gBuf, pBuf, cntBuf
+    }
+
+    // Wait for all dispatches
+    try {
+      await device.queue.onSubmittedWorkDone();
+      var elapsed = (performance.now() - t0).toFixed(1);
+      msg('OK: iter ' + (iter + 1) + ' onSubmittedWorkDone in ' + elapsed + 'ms');
+    } catch(e) {
+      msg('FAIL: iter ' + (iter + 1) + ' onSubmittedWorkDone: ' + e.message);
+      return;
+    }
+
+    // Readback first layer
+    var rb = device.createBuffer({
+      size: layerSizes[0] * 4,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    });
+    var enc2 = device.createCommandEncoder();
+    enc2.copyBufferToBuffer(gpuW[0], 0, rb, 0, layerSizes[0] * 4);
+    device.queue.submit([enc2.finish()]);
+    await rb.mapAsync(GPUMapMode.READ);
+    rb.unmap();
+  }
+  msg('ALL LOOP TESTS PASSED');
+}
+
+async function run() {
+  var device = await initGPU();
+  if (!device) return;
+  await testLoop(device);
+}
+run();
+</script></body></html>

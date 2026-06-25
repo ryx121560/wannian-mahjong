@@ -1,0 +1,101 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-table);
+  overflow: hidden;
+}
+
+button {
+  border: none;
+  border-radius: 8px;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: bold;
+  padding: 10px 20px;
+}
+
+.game-frame {
+  border: none;
+  display: block;
+  height: 100vh;
+  width: 100%;
+}
+
+canvas {
+  border: 12px solid var(--color-border);
+  border-radius: 16px;
+  display: block;
+  margin: 100px auto 0;
+}
+
+#ui {
+  align-items: center;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  left: 0;
+  padding-bottom: 200px;
+  pointer-events: none;
+  position: fixed;
+  right: 0;
+  top: 0;
+}
+
+#bar {
+  background: var(--color-panel);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 15px;
+  margin-bottom: 10px;
+  padding: 8px 24px;
+  pointer-events: auto;
+}
+
+#btns {
+  display: flex;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.btn-d {
+  background: #4a752c;
+}
+
+.btn-d:hover {
+  background: #5a9a3c;
+}
+
+.btn-a {
+  background: #d4a017;
+}
+
+.btn-a:hover {
+  background: #e8b830;
+}
+
+.btn-w {
+  background: #c0392b;
+}
+
+.btn-w:hover {
+  background: #e74c3c;
+}
+
+.btn-n {
+  background: #2980b9;
+}
+
+.btn-n:hover {
+  background: #3498db;
+}
