@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 18765",
+    "dev": "node scripts/next-with-port.mjs dev",
+    "prebuild": "node scripts/clean-next-cache.mjs",
     "build": "next build",
-    "start": "next start -p 18765"
+    "start": "node scripts/next-with-port.mjs start"
   },
   "dependencies": {
     "next": "^15.2.0",
