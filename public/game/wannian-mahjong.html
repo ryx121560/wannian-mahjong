@@ -55,7 +55,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-log-panel th{background:rgba(74,117,44,0.3);color:#9f9}
 #ai-log-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
    </style>
-<style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}#sp-scorebar{display:block;position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.7);color:#ffcc00;padding:8px 16px;font-size:14px;text-align:center;z-index:200;pointer-events:none;font-weight:bold}</style></head>
+<style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}#sp-scorebar{display:none;position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.7);color:#ffcc00;padding:8px 16px;font-size:14px;text-align:center;z-index:200;pointer-events:none;font-weight:bold}</style></head>
 <body>
 <canvas id="c"></canvas>
 <div id="ui">
@@ -271,6 +271,10 @@ let _selfPlay={running:false,count:0,fast:true};
 let _sessionInitialized=false;
 let _sessionResumeScheduled=false;
 function gameSetTimeout(fn,d,...a){return window.setTimeout(fn,_selfPlay.running&&_selfPlay.fast&&d>100?1:d,...a);}
+function setSelfPlayScorebarVisible(visible){
+  const scorebar=document.getElementById('sp-scorebar');
+  if(scorebar)scorebar.style.display=visible?'block':'none';
+}
 const AI_HAND_META=new WeakMap();
 function setAiHandMeta(hand,key,value){
   if(!hand||typeof hand!=='object')return;
@@ -344,6 +348,7 @@ function enterIdleState(reason){
   document.getElementById('bt-selfplay').textContent='自弈';
   document.getElementById('bt-speed').style.display='none';
   document.getElementById('sp-status').style.display='none';
+  setSelfPlayScorebarVisible(false);
   setMsg('点击「新游戏」开始');
   render();updateBtns();_spUpdateScore();
   console.info('[session snapshot] idle reason='+reason);
@@ -428,6 +433,7 @@ function restoreGameSession(snapshot){
   document.getElementById('bt-selfplay').textContent=_selfPlay.running?'停止':'自弈';
   document.getElementById('bt-speed').style.display=_selfPlay.running?'inline':'none';
   document.getElementById('sp-status').style.display=_selfPlay.running?'block':'none';
+  setSelfPlayScorebarVisible(_selfPlay.running);
   restoredPhaseMessage();
   render();updateBtns();_spUpdateScore();
   if(GS.players[GS.cur]&&GS.players[GS.cur].human&&(GS.phase==='discarding'||GS.phase==='responding'))updateSuggestion();
@@ -1089,7 +1095,7 @@ async function saveScores() {
 }
 
 // game logic
-function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(!_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
+function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -3473,6 +3479,7 @@ function toggleSelfPlay(){
     document.getElementById('bt-selfplay').textContent='自弈';
     document.getElementById('bt-speed').style.display='none';
     document.getElementById('sp-status').style.display='none';
+    setSelfPlayScorebarVisible(false);
     
     GS._noRender=false;GS._selfPlay=false;
     // 清除所有待处理的AI定时器，防止残留回调污染人类玩家状态
@@ -3501,15 +3508,15 @@ function toggleSelfPlay(){
   document.getElementById('bt-selfplay').textContent='停止';
   document.getElementById('bt-speed').style.display='inline';
   document.getElementById('sp-status').style.display='block';
-  document.getElementById('sp-scorebar').style.display='block';
+  setSelfPlayScorebarVisible(true);
   _selfPlay.count=totalGamesPlayed;
-  document.getElementById('sp-count').textContent=_selfPlay.count;document.getElementById('sp-scorebar').style.display='block';document.getElementById('sp-status').style.display='block';
+  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);document.getElementById('sp-status').style.display='block';
   startSelfPlayGame();
 }
 function startSelfPlayGame(){
   if(!_selfPlay.running)return;
   _selfPlay.count++;
-  document.getElementById('sp-count').textContent=_selfPlay.count;document.getElementById('sp-scorebar').style.display='block';document.getElementById('sp-status').style.display='block';
+  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);document.getElementById('sp-status').style.display='block';
   try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;}catch(e){console.warn('[selfplay] score render failed',e);}
   GS._selfPlay=true;
   // 如果当前没有游戏在进行，则开新局；否则继续当前局，但所有玩家转为AI
