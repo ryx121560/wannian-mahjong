@@ -16,7 +16,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 .btn-w{background:#c0392b}.btn-w:hover{background:#e74c3c}.btn-w:disabled{background:#555;color:#aaa}
 .btn-p{background:#888}.btn-p:hover{background:#aaa}.btn-p:disabled{background:#666;color:#bbb}
 .btn-n{background:#2980b9}.btn-n:hover{background:#3498db}
-.btn-d{background:#8e44ad}.btn-d:hover{background:#9b59b6}
 
 .btn-eye{background:#555;color:#fff}.btn-eye.on{background:#e67e22}
 #msg{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:gold;padding:8px 20px;border-radius:8px;font-size:16px;display:none}
@@ -271,8 +270,24 @@ let totalGamesPlayed = 0;
 let _selfPlay={running:false,count:0,fast:true};
 let _sessionInitialized=false;
 let _sessionResumeScheduled=false;
-const _origST=setTimeout;
-setTimeout=function(fn,d,...a){return _origST(fn,_selfPlay.running&&_selfPlay.fast&&d>100?1:d,...a);}; // 总对局数（用于AI自适应）
+function gameSetTimeout(fn,d,...a){return window.setTimeout(fn,_selfPlay.running&&_selfPlay.fast&&d>100?1:d,...a);}
+const AI_HAND_META=new WeakMap();
+function setAiHandMeta(hand,key,value){
+  if(!hand||typeof hand!=='object')return;
+  const meta=AI_HAND_META.get(hand)||{};
+  meta[key]=value;
+  AI_HAND_META.set(hand,meta);
+}
+function getAiHandMeta(hand,key){
+  const meta=AI_HAND_META.get(hand);
+  return meta?meta[key]:undefined;
+}
+function clearAiHandMeta(hand,key){
+  const meta=AI_HAND_META.get(hand);
+  if(!meta)return;
+  delete meta[key];
+  if(Object.keys(meta).length===0)AI_HAND_META.delete(hand);
+}
 
 function clearGameTimers(){
   clearTimeout(GS._aiActionTimer);GS._aiActionTimer=null;
@@ -356,7 +371,7 @@ function restoredPhaseMessage(){
 
 function scheduleRestoredHumanDraw(playerIdx){
   clearTimeout(GS._aiNextTurnTimer);
-  GS._aiNextTurnTimer=setTimeout(function(){
+  GS._aiNextTurnTimer=gameSetTimeout(function(){
     if(GS.phase!=='drawing'||GS.cur!==playerIdx||!GS.players[playerIdx]||!GS.players[playerIdx].human)return;
     completeHumanDraw(playerIdx,'restored-human-draw');
   },300);
@@ -369,28 +384,28 @@ function resumeRestoredGame(){
   const player=GS.players[GS.cur];
   if(GS.phase==='drawing'){
     if(player.human)scheduleRestoredHumanDraw(GS.cur);
-    else{const playerIndex=GS.cur;clearTimeout(GS._aiNextTurnTimer);GS._aiNextTurnTimer=setTimeout(function(){if(GS.phase==='drawing'&&GS.cur===playerIndex&&!GS.players[playerIndex].human)aiTurn(playerIndex);},600);}
+    else{const playerIndex=GS.cur;clearTimeout(GS._aiNextTurnTimer);GS._aiNextTurnTimer=gameSetTimeout(function(){if(GS.phase==='drawing'&&GS.cur===playerIndex&&!GS.players[playerIndex].human)aiTurn(playerIndex);},600);}
     return;
   }
   if(GS.phase==='discarding'){
-    if(!player.human){clearTimeout(GS._aiActionTimer);const playerIndex=GS.cur;GS._aiActionTimer=setTimeout(function(){if(GS.phase==='discarding'&&GS.cur===playerIndex&&!GS.players[playerIndex].human)aiDiscard(playerIndex);},600);}
+    if(!player.human){clearTimeout(GS._aiActionTimer);const playerIndex=GS.cur;GS._aiActionTimer=gameSetTimeout(function(){if(GS.phase==='discarding'&&GS.cur===playerIndex&&!GS.players[playerIndex].human)aiDiscard(playerIndex);},600);}
     return;
   }
   if(GS.phase==='responding'){
     const responder=GS._respP;
     const responsePlayer=responder>=0?GS.players[responder]:null;
     if(responsePlayer&&responsePlayer.human){
-      GS._respTimer=setTimeout(function(){
+      GS._respTimer=gameSetTimeout(function(){
         if(GS.phase==='responding'&&GS._respP===responder){
           GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
           nextTurn();
         }
       },30000);
     }else if(responsePlayer&&GS._responseKind==='win'){
-      GS._aiActionTimer=setTimeout(function(){if(GS.phase==='responding'&&GS._respP===responder)applyWin(responder,'点炮');},500);
+      GS._aiActionTimer=gameSetTimeout(function(){if(GS.phase==='responding'&&GS._respP===responder)applyWin(responder,'点炮');},500);
     }else{
       const responses=Array.isArray(GS._resp)?GS._resp:[];
-      GS._aiActionTimer=setTimeout(function(){if(GS.phase==='responding')aiRespond(responses);},500);
+      GS._aiActionTimer=gameSetTimeout(function(){if(GS.phase==='responding')aiRespond(responses);},500);
     }
   }
 }
@@ -452,17 +467,19 @@ function saveGameLog(result){
   GS._gameLog.result=result;
   GS._gameLog.endTime=new Date().toLocaleString();
   let logs=[];
-  try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){}
+  try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before save',e);}
+  logs=logs.filter(function(log){return !log||log.gameId!==GS._gameLog.gameId;});
   logs.unshift(GS._gameLog);
   if(logs.length>3)logs=logs.slice(0,3);
-  try{localStorage.setItem(LOG_KEY,JSON.stringify(logs));}catch(e){}
+  try{localStorage.setItem(LOG_KEY,JSON.stringify(logs));}catch(e){console.warn('[game log] save failed',e);}
   GS._gameLog=null;
 }
 function exportGameLogs(){
   let logs=[];
-  try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){}
+  try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before export',e);}
   // 如果当前正在对局中，把当前局也纳入导出
   if(GS._gameLog && GS._gameLog.events && GS._gameLog.events.length>0){
+    logs=logs.filter(function(log){return !log||log.gameId!==GS._gameLog.gameId;});
     logs.unshift(GS._gameLog);
   }
   if(!logs.length){alert('暂无游戏记录');return;}
@@ -1063,20 +1080,16 @@ async function loadScores() {
 
 async function saveScores() {
   try {
-    const r = await fetch('/api/rl/load_rl');
-    const all = (r.ok) ? await r.json() : {};
-    all.scores = scores;
-      all.totalGames = totalGamesPlayed;
-      await fetch('/api/rl/save_rl_full', {
+    await fetch('/api/rl/save_rl', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(all)
+      body: JSON.stringify({agent:'scoreboard',scores:scores,totalGames:totalGamesPlayed})
     });
-  } catch(e) {}
+  } catch(e) {console.warn('[scores] save failed',e);}
 }
 
 // game logic
-function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(!_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){}}function _spInitScore(){setTimeout(function(){try{_spUpdateScore();}catch(e){}},100);}function newGame(){
+function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(!_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -1131,7 +1144,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
     }else{
       saveGameSnapshot('new-game-drawing');
       clearTimeout(GS._aiNextTurnTimer);
-      GS._aiNextTurnTimer=setTimeout(()=>{
+      GS._aiNextTurnTimer=gameSetTimeout(()=>{
         if(GS.phase==='drawing'&&GS.players[GS.cur]&&GS.players[GS.cur].human)completeHumanDraw(GS.cur,'new-game-human-draw');
       },700);
     }
@@ -1140,7 +1153,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
     GS.phase='discarding';
     saveGameSnapshot('new-game-dealt');
     clearTimeout(GS._aiActionTimer);
-    GS._aiActionTimer=setTimeout(()=>aiDiscard(GS.cur),700);
+    GS._aiActionTimer=gameSetTimeout(()=>aiDiscard(GS.cur),700);
   }
 }
 
@@ -1356,7 +1369,7 @@ function doDiscard(selectedTile){
 
   // 摸到的牌已在上游推入手牌，此处无需 push
   // Locate the exact selected object so duplicate tiles stay unambiguous.
-  const idx = p.hand.indexOf(selectedTile);
+  const idx = p.hand.findIndex(function(t){return teq(t,selectedTile);});
   if(idx<0 || idx>=p.hand.length){
     clearSelectedTile();render();updateSuggestion();return;
   }
@@ -1370,10 +1383,11 @@ function doDiscard(selectedTile){
 
   logEvent(GS.cur,'弃牌',tile);
   // RL 奖励：向听数变化
-  if(window.RL&&RL.useRL&&p.hand._rlOldShanten!==undefined){
+  const oldShanten=getAiHandMeta(p.hand,'rlOldShanten');
+  if(window.RL&&RL.useRL&&oldShanten!==undefined){
     const newShanten=calcShanten(p.hand);
-    RL.recordShantenChange(GS.cur,p.hand._rlOldShanten,newShanten);
-    delete p.hand._rlOldShanten;
+    RL.recordShantenChange(GS.cur,oldShanten,newShanten);
+    clearAiHandMeta(p.hand,'rlOldShanten');
   }
   checkResponses();
 }
@@ -1398,13 +1412,13 @@ function checkResponses(){
     if(GS.players[pk].human){setMsg('可以胡！（30秒后自动跳过）');render();updateBtns();updateSuggestion();
       saveGameSnapshot('human-win-response');
       if(GS._respTimer)clearTimeout(GS._respTimer);
-      GS._respTimer=setTimeout(()=>{
+      GS._respTimer=gameSetTimeout(()=>{
         if(GS.phase==='responding'){
           GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
           nextTurn();
         }
       },30000);
-    }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){logAiResponseDecision(pk,'win',t,aiBestShantenForPlayer(GS.players[pk].hand,pk),-1,'能胡优先胡');applyWin(pk,'点炮');}},500);}
+    }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){logAiResponseDecision(pk,'win',t,aiBestShantenForPlayer(GS.players[pk].hand,pk),-1,'能胡优先胡');applyWin(pk,'点炮');}},500);}
     return;
   }
   GS.phase='responding';GS._resp=resp;GS._responseKind='calls';GS.canP=GS.canK=GS.canW=false;GS._respP=-1;
@@ -1414,7 +1428,7 @@ function checkResponses(){
     setMsg(`可以${hr.cp?'碰/杠':'杠'}（30秒后自动跳过）`);render();updateBtns();
     updateSuggestion();saveGameSnapshot('human-call-response');
     if(GS._respTimer)clearTimeout(GS._respTimer);
-    GS._respTimer=setTimeout(()=>{
+    GS._respTimer=gameSetTimeout(()=>{
       if(GS.phase==='responding'){
         GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
         nextTurn();
@@ -1440,14 +1454,14 @@ function nextTurn(){
   if(GS.players[GS.cur].human){
     // 玩家回合自动摸牌（摸到的牌立即推入手牌，与AI逻辑对齐）
     clearTimeout(GS._aiNextTurnTimer);
-    GS._aiNextTurnTimer=setTimeout(()=>{
+    GS._aiNextTurnTimer=gameSetTimeout(()=>{
       if(GS.phase==='drawing'&&GS.wall.length>0&&GS.players[GS.cur]&&GS.players[GS.cur].human){
         completeHumanDraw(GS.cur,'turn-human-draw');
       }
     },300);
   }else{
     clearTimeout(GS._aiNextTurnTimer);
-    GS._aiNextTurnTimer=setTimeout(()=>aiTurn(GS.cur),600);
+    GS._aiNextTurnTimer=gameSetTimeout(()=>aiTurn(GS.cur),600);
   }
 }
 
@@ -1481,7 +1495,7 @@ function drawGame(){
   GS._lastResult={title:bankrupt>=0?'流局，积分已重置':'荒牌流局',type:'流局',pts:0,bankrupt:bankrupt};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'draw-settled');
   _spOnGameEnd(-1);
-  if(_selfPlay.running){GS._preWinScores=GS.players.map(function(p){return p.score;});const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | 流局';document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';setTimeout(function(){startSelfPlayGame();},10);return;}
+  if(_selfPlay.running){GS._preWinScores=GS.players.map(function(p){return p.score;});const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | 流局';document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
   setMsg('荒牌流局');showWinDlg('流局','荒牌',0);
 }
 // -- pong/kong --
@@ -1513,7 +1527,7 @@ function doPong(p){
   setMsg(`${GS.players[p].name}碰了${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot('pong');
-  if(!GS.players[p].human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>aiDiscard(p),1200);}
+  if(!GS.players[p].human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>aiDiscard(p),1200);}
   else updateSuggestion();
 }
 
@@ -1551,7 +1565,7 @@ function doKong(p){
   setMsg(`${GS.players[p].name}杠了${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot('open-kong');
-  if(!GS.players[p].human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>aiDiscard(p),1200);}
+  if(!GS.players[p].human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>aiDiscard(p),1200);}
   else updateSuggestion();
 }
 
@@ -1642,7 +1656,7 @@ function applyWin(winner,wt){
   GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
-  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | '+_info;document.getElementById('sp-info').textContent=_info;setTimeout(function(){startSelfPlayGame();},10);return;}
+  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | '+_info;document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
   render();
   const h=classifyWin(eh);
   showWinDlg(`${GS.players[winner].name}胡了！`,`${h}(${wt})`,pts);
@@ -1670,12 +1684,12 @@ async function aiTurn(p){
   saveGameSnapshot('ai-draw');
   if(canSelfWin(effectiveHand(p))){
     logAiResponseDecision(p,'selfDrawWin',dt,aiBestShantenForPlayer(GS.players[p].hand,p),-1,'摸牌后已满足胡牌条件，自摸优先于开杠');
-    render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>applyWin(p,'自摸'),500);return;
+    render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>applyWin(p,'自摸'),500);return;
   }
   // 检查自杠（加杠/暗杠）机会
   const kongInfo=canSelfKong(p);
-  if(kongInfo){render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>aiSelfKong(p,kongInfo),800);return;}
-  render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},1200);
+  if(kongInfo){render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>aiSelfKong(p,kongInfo),800);return;}
+  render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},1200);
 }
 
 function removeTilesForSelfKong(hand,tile,count){
@@ -1731,7 +1745,7 @@ function aiSelfKong(p,kongInfo){
     logAiResponseDecision(p,'skipSelfKong',t,evalInfo.beforeShanten,evalInfo.afterShanten,evalInfo.reason,{candidates:[evalCandidate]});
     render();updateBtns();
     saveGameSnapshot('ai-skip-self-kong');
-    clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},600);
+    clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},600);
     return;
   }
   logAiResponseDecision(p,'selfKong',t,evalInfo.beforeShanten,evalInfo.afterShanten,evalInfo.reason,{candidates:[evalCandidate]});
@@ -1755,7 +1769,7 @@ function aiSelfKong(p,kongInfo){
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot(kongInfo.type==='add'?'ai-add-kong':'ai-concealed-kong');
-  clearTimeout(GS._aiActionTimer);GS._aiActionTimer=setTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},1200);
+  clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},1200);
 }
 
 async function aiDiscard(p){
@@ -1765,8 +1779,8 @@ async function aiDiscard(p){
   if(canSelfWin(effectiveHand(p))&&GS.newDrawnTile){applyWin(p,'自摸');return;}
   const h=GS.players[p].hand,idx=await aiChooseDiscard(h,p);
   const t=h[idx];
-  const decisionLog=h._aiDecisionLog||buildAiDecisionLog(h,p,idx,'fallback','未命中详细决策记录，使用最终弃牌兜底');
-  delete h._aiDecisionLog;
+  const decisionLog=getAiHandMeta(h,'aiDecisionLog')||buildAiDecisionLog(h,p,idx,'fallback','未命中详细决策记录，使用最终弃牌兜底');
+  clearAiHandMeta(h,'aiDecisionLog');
   // 记录 AI 推荐路线日志
   const subLog=h.filter(function(_,j){return j!==idx;});
   const routeValues=aiRouteValuesForPlayer(subLog,p);
@@ -1780,7 +1794,7 @@ async function aiDiscard(p){
   GS._aiDiscardAnim={p:p,idx:sIdx};render();
   // 第二阶段：完成弃牌
   clearTimeout(GS._aiAnimTimer);
-  GS._aiAnimTimer=setTimeout(()=>{
+  GS._aiAnimTimer=gameSetTimeout(()=>{
     // 自弈停止后不修改人类手牌
     if(GS.players[p] && GS.players[p].human){
       GS._aiDiscardAnim=null;render();return;
@@ -1793,10 +1807,11 @@ async function aiDiscard(p){
   _spOnDiscard(p,t);
     logEvent(p,'弃牌',t);
     // RL 奖励：向听数变化
-    if(window.RL&&RL.useRL&&h._rlOldShanten!==undefined){
+    const oldShanten=getAiHandMeta(h,'rlOldShanten');
+    if(window.RL&&RL.useRL&&oldShanten!==undefined){
       const newShanten=aiBestShantenForPlayer(h,p);
-      RL.recordShantenChange(p,h._rlOldShanten,newShanten);
-      delete h._rlOldShanten;
+      RL.recordShantenChange(p,oldShanten,newShanten);
+      clearAiHandMeta(h,'rlOldShanten');
     }
     setMsg(`${GS.players[p].name}打出了${lbl(t)}`);
     render();checkResponses();
@@ -2192,7 +2207,7 @@ async function aiChooseDiscard(hand,playerIdx){
     return aiBestShantenForPlayer(h,playerIdx);
   }
   function commitAiChoice(idx,source,reason,extra){
-    hand._aiDecisionLog=buildAiDecisionLog(hand,playerIdx,idx,source,reason,extra);
+    setAiHandMeta(hand,'aiDecisionLog',buildAiDecisionLog(hand,playerIdx,idx,source,reason,extra));
     return idx;
   }
   // === 规则基础结果（向听数优先，供 MCTS/RL 参考，全难度均计算以兜底）===
@@ -2234,15 +2249,15 @@ async function aiChooseDiscard(hand,playerIdx){
         if(bestAlt>=0 && bestAltS<=mctsShanten+1){
           // 替代候选优于或等于规则结果 → 采用
           if(AI_RULE_CORE.canLearningOverride(bestAltS,_ruleShanten)){
-            hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(bestAlt,'rule','MCTS 候选会拆结构，回退到规则替代候选');
+            setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(bestAlt,'rule','MCTS 候选会拆结构，回退到规则替代候选');
           }
         }
       }
       const _mctsS = combinedShanten(hand.filter((_,_j)=>_j!==idx));
-      if(AI_RULE_CORE.canLearningOverride(_mctsS,_ruleShanten)){ hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(idx,'mcts','MCTS 候选未劣于规则综合向听，允许覆盖'); }
+      if(AI_RULE_CORE.canLearningOverride(_mctsS,_ruleShanten)){ setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(idx,'mcts','MCTS 候选未劣于规则综合向听，允许覆盖'); }
       // MCTS 发现的选择比规则差 → 退回规则结果
-      if(_ruleCand>=0){ hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(_ruleCand,'rule','MCTS 候选向听差于规则结果，回退规则 AI'); }
-      hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(idx,'mcts','MCTS 返回候选，规则兜底不可用');
+      if(_ruleCand>=0){ setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(_ruleCand,'rule','MCTS 候选向听差于规则结果，回退规则 AI'); }
+      setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(idx,'mcts','MCTS 返回候选，规则兜底不可用');
     }
   }
   // RL 模式：同样与规则结果比较
@@ -2273,14 +2288,14 @@ async function aiChooseDiscard(hand,playerIdx){
         }
         if(bestAlt>=0 && bestAltS<=rlShanten+1){
           if(AI_RULE_CORE.canLearningOverride(bestAltS,_ruleShanten)){
-            hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(bestAlt,'rule','RL 候选会拆结构，回退到规则替代候选');
+            setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(bestAlt,'rule','RL 候选会拆结构，回退到规则替代候选');
           }
         }
       }
       const _rlS = combinedShanten(hand.filter((_,_j)=>_j!==idx));
-      if(AI_RULE_CORE.canLearningOverride(_rlS,_ruleShanten)){ hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(idx,'rl','RL 候选未劣于规则综合向听，允许覆盖'); }
-      if(_ruleCand>=0){ hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(_ruleCand,'rule','RL 候选向听差于规则结果，回退规则 AI'); }
-      hand._rlOldShanten=aiBestShantenForPlayer(hand,playerIdx); return commitAiChoice(idx,'rl','RL 返回候选，规则兜底不可用');
+      if(AI_RULE_CORE.canLearningOverride(_rlS,_ruleShanten)){ setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(idx,'rl','RL 候选未劣于规则综合向听，允许覆盖'); }
+      if(_ruleCand>=0){ setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(_ruleCand,'rule','RL 候选向听差于规则结果，回退规则 AI'); }
+      setAiHandMeta(hand,'rlOldShanten',aiBestShantenForPlayer(hand,playerIdx)); return commitAiChoice(idx,'rl','RL 返回候选，规则兜底不可用');
     }
   }
   // 向听数优先（面子手+七对子取优）
@@ -2422,7 +2437,7 @@ async function aiChooseDiscard(hand,playerIdx){
         }
         if(bestAlt>=0&&bestAltS<=curS+1){
           const oldShanten=aiBestShantenForPlayer(hand,playerIdx);
-          hand._rlOldShanten=oldShanten;
+          setAiHandMeta(hand,'rlOldShanten',oldShanten);
           return commitAiChoice(bestAlt,'rule','唯一最佳候选会拆结构，选择向听不显著恶化的替代牌');
         }
       }
@@ -2890,7 +2905,7 @@ function canSelfWin(hand){
     if(calcShantenDalan(hand)===0)return true;
     if(calcShantenBanzhengzong(hand)===0)return true;
     if(calcShantenZhengzong(hand)===0)return true;
-  }catch(e){}
+  }catch(e){console.warn('[win check] special route shanten failed',e);}
   return false;
 }
 
@@ -3042,7 +3057,7 @@ function getAiDecisionLogSource(){
   let decisions=(gameLog&&gameLog.suggestLogs?gameLog.suggestLogs:[]).filter(function(x){return x.isAiDecision;});
   if(decisions.length)return {gameLog:gameLog,decisions:decisions};
   let saved=[];
-  try{saved=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){}
+  try{saved=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[ai log] saved log read failed',e);}
   for(let i=0;i<saved.length;i++){
     const savedDecisions=(saved[i].suggestLogs||[]).filter(function(x){return x.isAiDecision;});
     if(savedDecisions.length)return {gameLog:saved[i],decisions:savedDecisions};
@@ -3470,7 +3485,7 @@ function toggleSelfPlay(){
   configureAiLearning(true);
   _selfPlay.trainer=null;  _selfPlay.buffer=[];  _selfPlay.useGPU=true;
 
-  try{var _mlp=null;try{var _d=localStorage.getItem("rl_model");if(_d){_mlp=GPUMlp.deserialize(_d);}}catch(e){}if(!_mlp)_mlp=new GPUMlp();_selfPlay.trainer=new RLTrainer(_mlp);_selfPlay.trainer.lr=0.001;console.log('[SP] trainer OK');}catch(e){console.warn('[SP] trainer init:',e.message);}
+  try{var _mlp=null;try{var _d=localStorage.getItem("rl_model");if(_d){_mlp=GPUMlp.deserialize(_d);}}catch(e){console.warn('[SP] model load failed',e);}if(!_mlp)_mlp=new GPUMlp();_selfPlay.trainer=new RLTrainer(_mlp);_selfPlay.trainer.lr=0.001;console.log('[SP] trainer OK');}catch(e){console.warn('[SP] trainer init:',e.message);}
   document.getElementById('bt-selfplay').textContent='停止';
   document.getElementById('bt-speed').style.display='inline';
   document.getElementById('sp-status').style.display='block';
@@ -3483,7 +3498,7 @@ function startSelfPlayGame(){
   if(!_selfPlay.running)return;
   _selfPlay.count++;
   document.getElementById('sp-count').textContent=_selfPlay.count;document.getElementById('sp-scorebar').style.display='block';document.getElementById('sp-status').style.display='block';
-  try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;}catch(e){}
+  try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;}catch(e){console.warn('[selfplay] score render failed',e);}
   GS._selfPlay=true;
   // 如果当前没有游戏在进行，则开新局；否则继续当前局，但所有玩家转为AI
   if(!GS.players||GS.players.length===0||GS.phase==='idle'||GS.phase==='ended'){
@@ -3558,7 +3573,7 @@ configureAiLearning(false);
 auditAiEntrypoints();
 // GPU MLP 自检
 window.addEventListener("load",function(){
-  setTimeout(function(){
+  gameSetTimeout(function(){
     if(window.gpu&&window.gpu.available&&window.GPUMlp){
       try{
         const mlp=new GPUMlp();

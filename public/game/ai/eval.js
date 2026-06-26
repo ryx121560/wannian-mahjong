@@ -84,61 +84,38 @@ function fastShanten(hand, biasType) {
   let melds = 0, taatsu = 0, hasPair = false;
 
   // 箭牌（中发白）：任意3张不同=1刻子，2张不同=共享搭子(0.8)
-  let arrowTiles = 0, arrowDistinct = 0;
+  const arrowRemaining = [];
   for (const a of ['zhong', 'fa', 'bai']) {
     const c = honorCounts[a] || 0;
-    arrowTiles += c;
-    if (c > 0) arrowDistinct++;
+    if (c >= 3) melds++;
+    const rest = c % 3;
+    if (rest > 0) arrowRemaining.push({ key: a, count: rest });
   }
-  // 同名箭牌刻子（≥3张）
-  for (const a of ['zhong', 'fa', 'bai']) {
-    const c = honorCounts[a] || 0;
-    if (c >= 3) { melds++; arrowTiles -= 3; }
-  }
-  // 不同箭牌刻子（每3种=1刻子）
-  const arrowMelds = Math.floor(arrowDistinct / 3);
+  const arrowMelds = Math.floor(arrowRemaining.length / 3);
   melds += arrowMelds;
-  arrowTiles -= arrowMelds * 3;
-  // 剩余箭牌：2张=搭子(0.8)，1张=孤张(0.3)
-  if (arrowTiles >= 2 && arrowDistinct >= 2) { taatsu += 0.8; arrowTiles -= 2; }
+  const arrowForTaatsu = arrowRemaining.slice(arrowMelds * 3);
+  let arrowTiles = arrowForTaatsu.reduce(function(sum, item){ return sum + item.count; }, 0);
+  const arrowDistinct = arrowForTaatsu.length;
+  if (arrowDistinct >= 2) { taatsu += 0.8; arrowTiles = Math.max(0, arrowTiles - 2); }
   if (arrowTiles === 2) taatsu += 1.5;
   else if (arrowTiles === 1) taatsu += 0.3;
-  // 剩余箭牌对子（雀头，排除已用于刻子的）
-  if (!hasPair) {
-    for (const a of ['zhong', 'fa', 'bai']) {
-      const c = honorCounts[a] || 0;
-      const used = Math.floor(c / 3) * 3;
-      if (c - used >= 2) { hasPair = true; break; }
-    }
-  }
+  if (!hasPair && arrowForTaatsu.some(function(item){ return item.count >= 2; })) hasPair = true;
 
-  // 风牌（东南西北）：任意3张不同风牌=1刻子，2张不同=共享搭子(0.8)
-  let windTiles = 0, windDistinct = 0;
+  // Wind honors: keep triplets, mixed-wind melds, taatsu and pairs independent.
+  const windRemaining = [];
   for (const w of ['dong', 'nan', 'xi', 'bei']) {
     const c = honorCounts[w] || 0;
-    windTiles += c;
-    if (c > 0) windDistinct++;
+    if (c >= 3) melds++;
+    const rest = c % 3;
+    if (rest > 0) windRemaining.push({ key: w, count: rest });
   }
-  // 同名风牌刻子（≥3张）
-  for (const w of ['dong', 'nan', 'xi', 'bei']) {
-    const c = honorCounts[w] || 0;
-    if (c >= 3) { melds++; windTiles -= 3; }
-  }
-  // 不同风牌刻子（每3种=1刻子）
-  const windMelds = Math.floor(windDistinct / 3);
+  const windMelds = Math.floor(windRemaining.length / 3);
   melds += windMelds;
-  windTiles -= windMelds * 3;
-  // 剩余风牌：2张=搭子(0.8)，1张=孤张(0.3)
+  const windForTaatsu = windRemaining.slice(windMelds * 3);
+  const windTiles = windForTaatsu.reduce(function(sum, item){ return sum + item.count; }, 0);
   if (windTiles === 2) taatsu += 0.8;
   else if (windTiles === 1) taatsu += 0.3;
-  // 剩余风牌对子（雀头，排除已用于刻子的）
-  if (!hasPair) {
-    for (const w of ['dong', 'nan', 'xi', 'bei']) {
-      const c = honorCounts[w] || 0;
-      const used = Math.floor(c / 3) * 3;
-      if (c - used >= 2) { hasPair = true; break; }
-    }
-  }
+  if (!hasPair && windForTaatsu.some(function(item){ return item.count >= 2; })) hasPair = true;
 
   // 数牌：搭子分级权重（两面1.0 > 嵌张0.7 > 边张0.5）
   for (const suit of ['wan', 'tong', 'tiao']) {

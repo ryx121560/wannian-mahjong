@@ -34,6 +34,7 @@ class RLTrainer {
     var gradW = this.mlp.weights.map(function(w){return new Float32Array(w.length);});
     var gradB = this.mlp.biases.map(function(b){return new Float32Array(b.length);});
     var totalLoss = 0;
+    var effectiveBatch = 0;
     for (var si = 0; si < batch; si++) {
       var ex = this.experience[idx[si]];
       var acts = [ex.input];
@@ -53,6 +54,7 @@ class RLTrainer {
       var sumExp = 0;
       for (var i = 0; i < 34; i++) sumExp += Math.exp(lastH[i]);
       if (sumExp === Infinity || sumExp <= 0) continue;
+      effectiveBatch++;
       var delta = new Float32Array(this.mlp.layers[this.mlp.layers.length - 1]);
       for (var i = 0; i < 34; i++) {
         var soft = Math.exp(lastH[i]) / sumExp;
@@ -81,7 +83,8 @@ class RLTrainer {
         }
       }
     }
-    var invB = 1 / batch;
+    if (effectiveBatch === 0) return null;
+    var invB = 1 / effectiveBatch;
     for (var l = 0; l < gradW.length; l++) {
       for (var i = 0; i < gradW[l].length; i++) gradW[l][i] *= invB;
       for (var i = 0; i < gradB[l].length; i++) gradB[l][i] *= invB;
@@ -110,7 +113,7 @@ class RLTrainer {
         d.queue.writeBuffer(this.mlp.gpuB[l], 0, this.mlp.biases[l]);
       }
     }
-    return { loss: totalLoss / batch, samples: batch };
+    return { loss: totalLoss / effectiveBatch, samples: effectiveBatch };
   }
 
   evaluateLoss(examples) {
@@ -131,7 +134,7 @@ class RLTrainer {
     var data = this.mlp.serialize();
     try {
       localStorage.setItem("rl_model", data);
-    } catch (e) {}
+    } catch (e) { console.warn("[RLTrainer] save failed", e); }
     console.log("[RLTrainer] weights saved");
   }
 
@@ -142,7 +145,7 @@ class RLTrainer {
         this.mlp = GPUMlp.deserialize(data);
         return true;
       }
-    } catch (e) {}
+    } catch (e) { console.warn("[RLTrainer] load failed", e); }
     return false;
   }
   // GPU 加速训练：CPU 计算前向+梯度，GPU 执行 Adam 更新
@@ -163,6 +166,7 @@ class RLTrainer {
     var gradW = this.mlp.weights.map(function(w){return new Float32Array(w.length);});
     var gradB = this.mlp.biases.map(function(b){return new Float32Array(b.length);});
     var totalLoss = 0;
+    var effectiveBatch = 0;
     for (var si = 0; si < batch; si++) {
       var ex = this.experience[idx[si]];
       var acts = [ex.input];
@@ -182,6 +186,7 @@ class RLTrainer {
       var sumExp = 0;
       for (var i = 0; i < 34; i++) sumExp += Math.exp(lastH[i]);
       if (sumExp === Infinity || sumExp <= 0) continue;
+      effectiveBatch++;
       var delta = new Float32Array(this.mlp.layers[this.mlp.layers.length - 1]);
       for (var i = 0; i < 34; i++) {
         var soft = Math.exp(lastH[i]) / sumExp;
@@ -210,7 +215,8 @@ class RLTrainer {
         }
       }
     }
-    var invB = 1 / batch;
+    if (effectiveBatch === 0) return null;
+    var invB = 1 / effectiveBatch;
     for (var l = 0; l < gradW.length; l++) {
       for (var i = 0; i < gradW[l].length; i++) gradW[l][i] *= invB;
       for (var i = 0; i < gradB[l].length; i++) gradB[l][i] *= invB;
@@ -234,7 +240,7 @@ class RLTrainer {
       rb.unmap();
       rb.destroy();
     }
-    return { loss: totalLoss / batch, samples: batch };
+    return { loss: totalLoss / effectiveBatch, samples: effectiveBatch };
   }
 }
 

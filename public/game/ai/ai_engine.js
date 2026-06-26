@@ -4,6 +4,14 @@
 // ============================================================
 
 // 染手偏向判定：清一色/混一色/半清方向（含现张感知）
+const AI_ENGINE_HAND_META = new WeakMap();
+function setAiEngineHandMeta(hand, key, value) {
+  if (!hand || typeof hand !== 'object') return;
+  const meta = AI_ENGINE_HAND_META.get(hand) || {};
+  meta[key] = value;
+  AI_ENGINE_HAND_META.set(hand, meta);
+}
+
 function suitBias(hand) {
   const cnt = { wan: 0, tong: 0, tiao: 0 }; let honorCnt = 0;
   for (const t of hand) {
@@ -22,7 +30,7 @@ function suitBias(hand) {
       for (const t of pl.hand) { if (t.t === 'num' && t.s === suit) seen++; }
       for (const m of (pl.melds || [])) {
         if (m.tile && m.tile.t === 'num' && m.tile.s === suit) {
-          seen += (m.type === 'gang' || m.type === 'an_gang') ? 4 : 3;
+          seen += meldVisibleCount(m);
         }
       }
       for (const d of (GS.playerDiscards[pi] || [])) {
@@ -30,13 +38,7 @@ function suitBias(hand) {
       }
     }
     // wall中还有实际可摸的
-    const wallInSuit = GS.wall.filter(k => {
-      if (typeof k !== 'string') return false;
-      const t = { k: k, t: "dongnanxibeizhongfabai".includes(k) ? "honor" : "num" };
-      if (t.t !== 'num') return false;
-      return k.startsWith(suit);
-    }).length;
-    return wallInSuit; // 墙中可摸的数量
+    return Math.max(0, 36 - seen);
   }
 
   // 计算该花色牌的质量：非孤张（有相邻牌）占比
@@ -69,6 +71,7 @@ function suitBias(hand) {
       if (resultType === 'clear') resultType = 'semi-clear';
       else if (resultType === 'semi-clear') resultType = 'mixed-lean';
       else if (resultType === 'mixed') resultType = 'mixed-lean';
+      else if (resultType === 'mixed-lean') resultType = 'none';
     }
 
     if (quality < 0.4 && resultType !== 'none') {
@@ -151,6 +154,13 @@ function countUniquePairs(hand) {
 }
 
 // 统计某张牌已出现的数量（手牌+副露+弃牌堆）
+function meldVisibleCount(meld) {
+  if (!meld) return 0;
+  if (meld.type === 'gang' || meld.type === 'an_gang' || meld.count === 4) return 4;
+  if (meld.type === 'pong' || meld.type === 'chi' || meld.count === 3) return 3;
+  return Number.isFinite(meld.count) ? Math.max(0, meld.count) : 0;
+}
+
 function countSeen(suit, value) {
   const k = suit + value;
   let seen = 0;
@@ -158,9 +168,7 @@ function countSeen(suit, value) {
     const pl = GS.players[pi];
     if (!pl) continue;
     for (const t of pl.hand) if (tkey(t) === k) seen++;
-    for (const m of (pl.melds || [])) {
-      if (tkey(m.tile) === k) seen += (m.count === 4 ? 3 : m.count);
-    }
+    for (const m of (pl.melds || [])) if (tkey(m.tile) === k) seen += meldVisibleCount(m);
     for (const d of (GS.playerDiscards[pi] || [])) if (tkey(d) === k) seen++;
   }
   return seen;
@@ -226,7 +234,7 @@ function routeFeasible(route, hand, excludeIdx) {
   return true;
 }
 
-function aiChooseDiscard(hand, playerIdx) {
+async function aiChooseDiscard(hand, playerIdx) {
   const effHand = effectiveHand(playerIdx);
   initRouteLock(playerIdx);
 
@@ -250,7 +258,7 @@ function aiChooseDiscard(hand, playerIdx) {
 
   // MCTS 路径
   if (window.MCTS && MCTS.useMCTS) {
-    const idx = MCTS.chooseDiscard(hand, playerIdx, GS);
+    const idx = await MCTS.chooseDiscard(hand, playerIdx, GS);
     if (idx >= 0 && idx < hand.length) {
       if (breaksMeld(hand, idx) || breaksPair(hand, idx)) {
         const subMCTS = effHand.filter((_, j) => j !== idx);
@@ -276,14 +284,14 @@ function aiChooseDiscard(hand, playerIdx) {
         }
         if (bestAlt >= 0 && bestAltS <= mctsShanten + 1) {
           if (bestAltS <= _ruleShanten) {
-            hand._rlOldShanten = calcShanten(effHand); return bestAlt;
+            setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return bestAlt;
           }
         }
       }
       const _mctsS = calcShanten(effHand.filter((_, _j) => _j !== idx));
-      if (_mctsS <= _ruleShanten) { hand._rlOldShanten = calcShanten(effHand); return idx; }
-      if (_ruleCand >= 0) { hand._rlOldShanten = calcShanten(effHand); return _ruleCand; }
-      hand._rlOldShanten = calcShanten(effHand); return idx;
+      if (_mctsS <= _ruleShanten) { setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return idx; }
+      if (_ruleCand >= 0) { setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return _ruleCand; }
+      setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return idx;
     }
   }
 
@@ -315,14 +323,14 @@ function aiChooseDiscard(hand, playerIdx) {
         }
         if (bestAlt >= 0 && bestAltS <= rlShanten + 1) {
           if (bestAltS <= _ruleShanten) {
-            hand._rlOldShanten = calcShanten(effHand); return bestAlt;
+            setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return bestAlt;
           }
         }
       }
       const _rlS = calcShanten(effHand.filter((_, _j) => _j !== idx));
-      if (_rlS <= _ruleShanten) { hand._rlOldShanten = calcShanten(effHand); return idx; }
-      if (_ruleCand >= 0) { hand._rlOldShanten = calcShanten(effHand); return _ruleCand; }
-      hand._rlOldShanten = calcShanten(effHand); return idx;
+      if (_rlS <= _ruleShanten) { setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return idx; }
+      if (_ruleCand >= 0) { setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return _ruleCand; }
+      setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand)); return idx;
     }
   }
 
@@ -407,7 +415,7 @@ function aiChooseDiscard(hand, playerIdx) {
           }
         }
         if (bestAlt >= 0 && bestAltS <= curS + 1) {
-          hand._rlOldShanten = calcShanten(effHand);
+          setAiEngineHandMeta(hand, 'rlOldShanten', calcShanten(effHand));
           return bestAlt;
         }
       }

@@ -18,9 +18,18 @@ export async function POST(req: NextRequest) {
 
   let allData: Record<string, unknown> = {};
   if (fs.existsSync(SAVE_FILE)) {
-    try { allData = JSON.parse(fs.readFileSync(SAVE_FILE, "utf-8")); } catch {}
+    try { allData = JSON.parse(fs.readFileSync(SAVE_FILE, "utf-8")); } catch (error) { console.warn("[rl] existing weights read failed", error); }
   }
-  allData[agent] = { nn: data.nn, meta: data.meta };
+  if (Array.isArray(data.scores) && data.scores.length === 4 && data.scores.every(Number.isFinite)) {
+    allData.scores = data.scores;
+  }
+  const totalGames = data.totalGames;
+  if (typeof totalGames === "number" && Number.isInteger(totalGames) && totalGames >= 0) {
+    allData.totalGames = totalGames;
+  }
+  if ("nn" in data || "meta" in data) {
+    allData[agent] = { nn: data.nn, meta: data.meta };
+  }
   fs.writeFileSync(SAVE_FILE, JSON.stringify(allData), "utf-8");
   return NextResponse.json({ ok: true });
 }
