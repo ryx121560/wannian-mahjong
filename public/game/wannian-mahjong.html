@@ -18,7 +18,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 .btn-n{background:#2980b9}.btn-n:hover{background:#3498db}
 
 .btn-eye{background:#555;color:#fff}.btn-eye.on{background:#e67e22}
-#msg{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:gold;padding:8px 20px;border-radius:8px;font-size:16px;display:none}
+#msg{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:gold;padding:10px 24px;border-radius:10px;font-size:15px;display:none;max-width:90vw;white-space:normal;line-height:1.55;text-align:center;border:1px solid rgba(212,160,23,0.4);box-shadow:0 4px 18px rgba(0,0,0,0.35);z-index:20}
 #suggest{position:fixed;top:100px;width:480px;max-height:calc(100vh - 140px);overflow-y:auto;background:rgba(0,0,0,0.85);color:#ccc;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7;pointer-events:auto;display:none;border:1px solid #4a752c}
 #suggest h3{margin:0 0 8px;color:#e8b830;font-size:15px;text-align:center}
 #suggest .rec{background:rgba(232,184,48,0.15);padding:6px 10px;border-radius:6px;margin-bottom:8px;text-align:center;font-size:17px;color:gold}
@@ -1502,7 +1502,8 @@ function drawGame(){
   GS._lastResult={title:bankrupt>=0?'流局，积分已重置':'荒牌流局',type:'流局',pts:0,bankrupt:bankrupt};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'draw-settled');
   _spOnGameEnd(-1);
-  if(_selfPlay.running){GS._preWinScores=GS.players.map(function(p){return p.score;});const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | 流局';document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  GS._preWinScores=GS.players.map(function(p){return p.score;});
+  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | 流局';document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
   setMsg('荒牌流局');showWinDlg('流局','荒牌',0);
 }
 // -- pong/kong --
@@ -1630,10 +1631,11 @@ function applyWin(winner,wt){
   const eh=effectiveHand(winner);
   const pts=calcScore(eh,wt);
   const payer=(wt==='抢杠'&&Number.isInteger(GS._robKongTarget)&&GS._robKongTarget>=0)?GS._robKongTarget:GS.lastDiscardP;
-  GS.players[winner].score+=pts;
   if(wt==='点炮'||wt==='抢杠'){
+    GS.players[winner].score+=pts;
     GS.players[payer].score-=pts;
   }else{
+    GS.players[winner].score+=pts*3;
     for(let i=0;i<4;i++)if(i!==winner)GS.players[i].score-=pts;
   }
   logEvent(winner,'胡牌['+wt+']',null);
@@ -1672,7 +1674,15 @@ function applyWin(winner,wt){
 function showWinDlg(title,type,pts){
   const msg=document.getElementById('msg');
   msg.style.display='block';
-  msg.textContent=`${title}  ${type}  ${pts>0?'+'+pts:pts}分  ${GS.players.map(p=>p.name+':'+p.score).join(' | ')}`;
+  const hasPreScores=Array.isArray(GS._preWinScores)&&GS._preWinScores.length===GS.players.length;
+  const scores=GS.players.map(function(p,i){
+    if(!hasPreScores)return p.name+':'+p.score;
+    var d=p.score-GS._preWinScores[i];
+    var sign=d>=0?'+':'';
+    return p.name+':'+sign+d+'('+p.score+')';
+  }).join(' | ');
+  const displayPts=hasPreScores?Math.max.apply(null,GS.players.map(function(p,i){return p.score-GS._preWinScores[i];})):pts;
+  msg.textContent=`${title}  ${type}  ${displayPts>0?'+'+displayPts:displayPts}分  ${scores}`;
 }
 
 // -- AI --
