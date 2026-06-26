@@ -21,4 +21,9 @@ export function createTiles(): Tile[] {
   return tiles;
 }
 
-export const TILES = createTiles();
+let cachedTiles: Tile[] | null = null;
+
+export function getTiles(): Tile[] {
+  if (!cachedTiles) cachedTiles = createTiles();
+  return cachedTiles;
+}

@@ -44,7 +44,8 @@ function buildRemainingPool(hand, GS) {
 function randomDraw(pool) {
   const idx = Math.floor(Math.random() * pool.length);
   const key = pool[idx];
-  const isHonor = 'dongnanxibeizhongfabai'.includes(key);
+  const honorKeys = typeof HONORS !== 'undefined' ? HONORS : ['dong', 'nan', 'xi', 'bei', 'zhong', 'fa', 'bai'];
+  const isHonor = honorKeys.includes(key);
   return { k: key, t: isHonor ? 'honor' : 'num' };
 }
 

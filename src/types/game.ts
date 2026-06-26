@@ -1,6 +1,28 @@
 import type { Player } from "./player";
 import type { Tile } from "./tile";
 
+export type GamePhase = "idle" | "drawing" | "discarding" | "responding" | "ended";
+
+export interface GameResponse {
+  p: number;
+  cp?: boolean;
+  ck?: boolean;
+  cw?: boolean;
+}
+
+export interface GameResult {
+  winner: number | null;
+  type: string;
+  scores?: Array<{ name: string; score: number }>;
+  [key: string]: unknown;
+}
+
+export interface AiSuggestLog {
+  isAiDecision?: boolean;
+  player?: number;
+  [key: string]: unknown;
+}
+
 export interface GameState {
   wall: Tile[];
   players: Player[];
@@ -8,18 +30,20 @@ export interface GameState {
   lastDiscard: Tile | null;
   lastDiscardP: number;
   cur: number;
-  phase: string;
-  selected: number;
+  phase: GamePhase;
+  selectedTile?: Tile | null;
   dealer: number;
   canP: boolean;
   canK: boolean;
   canW: boolean;
   canWS: boolean;
   diff: "easy" | "normal" | "hard";
-  _resp: unknown;
+  _resp: GameResponse | GameResponse[] | null;
   _respP: number;
-  _hot: unknown[];
-  _kc: Record<string, unknown>;
+  _responseKind?: "win" | "calls" | null;
+  _hot: Array<{ x: number; y: number; w: number; h: number; t: Tile }>;
+  _kc: Record<string, number>;
+  _hasWild?: Record<string, boolean>;
   showAI: boolean;
   newDrawnTile: Tile | null;
   newDrawnIdx: number;
@@ -30,9 +54,11 @@ export interface GameState {
 
 export interface GameLogEvent {
   turn: number;
+  player: number;
   name: string;
   action: string;
-  tile: string;
+  tile: string | null;
+  tileLabel?: string | null;
   hand: string;
 }
 
@@ -43,6 +69,6 @@ export interface GameLog {
   players: string[];
   dealer: number;
   events: GameLogEvent[];
-  suggestLogs?: unknown[];
-  result?: unknown;
+  suggestLogs?: AiSuggestLog[];
+  result?: GameResult;
 }

@@ -493,7 +493,7 @@ const canvas=document.getElementById('c');
 canvas.width=W;canvas.height=H;
 const ctx=canvas.getContext('2d');
 
-function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+function shuffle(a){const r=[...a];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
 
 // Chinese number mapping and honor characters (中至麻将风格)
 const CN=['零','一','二','三','四','五','六','七','八','九'];
@@ -1094,7 +1094,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
   clearGameTimers();
   _sessionResumeScheduled=false;
   if(!_selfPlay.running)configureAiLearning(false);
-  GS.wall=[...TILES];shuffle(GS.wall);
+  GS.wall=shuffle(TILES);
   GS.players=[
     {name:'你',hand:[],human:true,score:scores[0],melds:[]},
     {name:'AI下家',hand:[],human:false,score:scores[1],melds:[]},
@@ -1219,6 +1219,7 @@ function checkWin(tiles,preMelds){
   const tl=tiles.length+preMelds*3;
   if(tl%3!==2)return false;
   if(tl===2)return tiles[0]===tiles[1];
+  // Seven-pairs and dalan are closed-hand patterns; exposed melds intentionally disable them.
   if(tl===14&&preMelds===0){if(is7pairs(tiles))return true;if(isDalan(tiles))return true;}
   const s=[...tiles].sort();
   const c={};s.forEach(t=>c[t]=(c[t]||0)+1);
@@ -1274,7 +1275,7 @@ function isBanzhengzong(s){
   if(Object.values(suitGroups).some(function(groups){return groups.size>1;}))return false;
   return allGroups.size>1;
 }
-function isAllHonor(s){return s.every(k=>'dongnanxibeizhongfabai'.includes(k));}
+function isAllHonor(s){return s.every(k=>honors.includes(k));}
 
 function groupsOk(c){
   const keys=Object.keys(c).filter(k=>c[k]>0);
@@ -1833,7 +1834,7 @@ function calcShanten(hand){
   // 递归分解数牌：返回 [melds, taatsu, hasPair]
   function decNum(cnt,pos,hp,depth){
     if(depth===undefined)depth=0;
-    if(depth>120){let m=0,t=0;for(let k=pos;k<9;k++)if(cnt[k]>0){m+=Math.floor(cnt[k]/3);cnt[k]%=3;if(cnt[k]>=2)t++;else if(cnt[k]===1&&k+1<9&&cnt[k+1]>0){t++;cnt[k+1]--;}}return[m,t,hp||t>0];}
+    if(depth>120){console.warn('[calcShanten] decNum depth fallback',{pos:pos,depth:depth,counts:cnt.slice()});let m=0,t=0;for(let k=pos;k<9;k++)if(cnt[k]>0){m+=Math.floor(cnt[k]/3);cnt[k]%=3;if(cnt[k]>=2)t++;else if(cnt[k]===1&&k+1<9&&cnt[k+1]>0){t++;cnt[k+1]--;}}return[m,t,hp||t>0];}
     while(pos<9&&cnt[pos]===0)pos++;
     if(pos>=9)return[0,0,hp];
     let best=[0,0,false];const score=r=>2*r[0]+r[1]+(r[2]?1:0);
@@ -1858,7 +1859,7 @@ function calcShanten(hand){
   function decHonor(cnt,n,hp,canSeq){
     function dfs(pos,hp2,depth){
       if(depth===undefined)depth=0;
-      if(depth>120){let m=0;for(let k=pos;k<n;k++)if(cnt[k]>=3){m+=Math.floor(cnt[k]/3);cnt[k]%=3;}return[m,0,hp2||cnt.some(c=>c>=2)];}
+      if(depth>120){console.warn('[calcShanten] decHonor depth fallback',{pos:pos,depth:depth,counts:cnt.slice()});let m=0;for(let k=pos;k<n;k++)if(cnt[k]>=3){m+=Math.floor(cnt[k]/3);cnt[k]%=3;}return[m,0,hp2||cnt.some(c=>c>=2)];}
       while(pos<n&&cnt[pos]===0)pos++;
       if(pos>=n)return[0,0,hp2];
       let best=[0,0,false];const score=r=>2*r[0]+(r[2]?1:0);
@@ -2088,6 +2089,33 @@ function aiBestShantenForPlayer(hand,playerIdx,extraMeld){
   return aiRouteSummaryForPlayer(hand,playerIdx,extraMeld).v;
 }
 
+function evaluateDiscardCandidates(hand,playerIdx,options){
+  options=options||{};
+  const candidateIndices=options.candidateIndices||hand.map(function(_,i){return i;});
+  const details=[];
+  let bestShanten=Infinity,bestCands=[],bestPaths=[];
+  for(let ci=0;ci<candidateIndices.length;ci++){
+    const i=candidateIndices[ci];
+    const sub=hand.filter(function(_,j){return j!==i;});
+    const routeValues=aiRouteValuesForPlayer(sub,playerIdx,options.extraMeld);
+    const pairCount=function(){const c={};for(const t of sub)c[t.k]=(c[t.k]||0)+1;let p=0;for(const v of Object.values(c))if(v>=2)p++;return p;}();
+    const s7c=pairCount<3?routeValues['7p']+2:pairCount===3?routeValues['7p']+1:routeValues['7p'];
+    const routes=[
+      {p:'norm',v:routeValues.norm},
+      {p:'7p',v:s7c},
+      {p:'dalan',v:routeValues.dalan},
+      {p:'quanzheng',v:routeValues.quanzheng},
+      {p:'banzheng',v:routeValues.banzheng}
+    ];
+    routes.sort(compareAiRoutes);
+    const top=routes[0];
+    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:top.v,path:top.p,routes:routes});
+    if(top.v<bestShanten){bestShanten=top.v;bestCands=[i];bestPaths=[top.p];}
+    else if(top.v===bestShanten){bestCands.push(i);bestPaths.push(top.p);}
+  }
+  return {bestShanten:bestShanten,bestCands:bestCands,bestPaths:bestPaths,candDetails:details};
+}
+
 function aiBreaksMeld(h,idx){
   const t=h[idx];
   const sub=h.filter(function(_,j){return j!==idx;});
@@ -2212,14 +2240,9 @@ async function aiChooseDiscard(hand,playerIdx){
   }
   // === 规则基础结果（向听数优先，供 MCTS/RL 参考，全难度均计算以兜底）===
   let _ruleCand = -1, _ruleShanten = 999;
-  { // 始终计算，确保 MCTS/RL 的 _mctsS<=_ruleShanten 检查有意义
-    let _bs = Infinity;
-    for (let _i = 0; _i < hand.length; _i++) {
-      const _sub = hand.filter((_,_j)=>_j!==_i);
-      const _s = combinedShanten(_sub);
-      if (_s < _bs) { _bs = _s; _ruleCand = _i; _ruleShanten = _s; }
-    }
-  }
+  const ruleCandidates=evaluateDiscardCandidates(hand,playerIdx);
+  _ruleCand=ruleCandidates.bestCands.length?ruleCandidates.bestCands[0]:-1;
+  _ruleShanten=ruleCandidates.bestShanten;
   // MCTS: 与规则结果比较后决定是否采用（仅当不差于规则时）
   if(window.MCTS&&MCTS.useMCTS){
     const idx=await MCTS.chooseDiscard(hand,playerIdx,GS);
@@ -2941,9 +2964,10 @@ function handPotential(hand){
     const keys=Object.keys(v).map(Number).sort((a,b)=>a-b);
     for(let i=0;i<keys.length;i++){
       const cnt=v[keys[i]];
-      // 刻子/对子潜力
-      if(cnt>=3){score+=6;score+=3;} // 刻子+杠潜力
-      else if(cnt>=2){score+=2;score+=1;} // 对子+碰/杠潜力
+      // Triplet potential includes meld value plus kong upgrade potential.
+      if(cnt>=3){score+=9;}
+      // Pair potential includes pair value plus pong/kong upgrade potential.
+      else if(cnt>=2){score+=3;}
     }
     for(let i=0;i<keys.length-1;i++){
       if(keys[i+1]===keys[i]+1){
@@ -3266,21 +3290,8 @@ function updateSuggestion(){
   for(let i=0;i<realHandLen;i++)candIndices.push(i);
   if(GS.newDrawnTile)candIndices.push(hand.length-1);
 
-  let bestShanten=Infinity,bestCands=[],bestPaths=[],candDetails=[];
-  for(let ci=0;ci<candIndices.length;ci++){
-    const i=candIndices[ci];
-    const sub=hand.filter(function(_,j){return j!==i;});
-    const hasMelds=GS.players[0]&&GS.players[0].melds&&GS.players[0].melds.length>0;
-    const sN=calcShanten(sub),s7=hasMelds?99:calcShanten7Pairs(sub),sD=hasMelds?99:calcShantenDalan(sub),sZ=hasMelds?99:calcShantenZhengzong(sub),sBZ=hasMelds?99:calcShantenBanzhengzong(sub);
-    const _pc7=function(){const c={};for(const t of sub)c[t.k]=(c[t.k]||0)+1;let p=0;for(const v of Object.values(c))if(v>=2)p++;return p;}();
-    const s7c=_pc7<3?s7+2:_pc7===3?s7+1:s7;
-    const sAll=[{p:'norm',v:sN},{p:'7p',v:s7c},{p:'dalan',v:sD},{p:'quanzheng',v:sZ},{p:'banzheng',v:sBZ}];
-    sAll.sort(compareAiRoutes);
-    const s=sAll[0].v,path=sAll[0].p;
-    candDetails.push({tile:hand[i],idx:i,sub:sub,sN:sN,s7:s7,sD:sD,sZ:sZ,sBZ:sBZ,s:s,path:path});
-    if(s<bestShanten){bestShanten=s;bestCands=[i];bestPaths=[path];}
-    else if(s===bestShanten){bestCands.push(i);bestPaths.push(path);}
-  }
+  const evaluated=evaluateDiscardCandidates(hand,0,{candidateIndices:candIndices});
+  let bestShanten=evaluated.bestShanten,bestCands=evaluated.bestCands,bestPaths=evaluated.bestPaths,candDetails=evaluated.candDetails;
 
   let bestIdx=bestCands[0],bestPath=bestPaths[0],candScores=null;
   if(bestCands.length>1){
@@ -3473,10 +3484,11 @@ function toggleSelfPlay(){
     // 恢复玩家0为人类，并重置摸牌状态防止僵尸引用泄漏
     if(GS.players[0])GS.players[0].human=true;
     GS.newDrawnTile=null;GS.newDrawnIdx=-1;
-    // 手牌归一化：确保人类玩家手牌不超过14张（最多刚摸牌等弃牌状态）
+    // Ask the player to resolve abnormal overflow instead of discarding automatically.
     if(GS.players[0]&&GS.players[0].hand&&GS.players[0].hand.length>14){
-      console.warn('[toggleSelfPlay] 手牌异常归一化：'+GS.players[0].hand.length+'→14');
-      while(GS.players[0].hand.length>14)GS.players[0].hand.pop();
+      console.warn('[toggleSelfPlay] 手牌异常，转入玩家弃牌选择：'+GS.players[0].hand.length);
+      GS.cur=0;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS.canWS=canSelfWin(effectiveHand(0));
+      setMsg('手牌数量异常，请先选择一张牌打出');
     }
     fitCanvas();render();saveGameSnapshot('self-play-disabled');
     return;

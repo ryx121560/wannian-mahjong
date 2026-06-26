@@ -8,10 +8,18 @@
     banzheng: 3,
     dalan: 4
   });
+  const UNKNOWN_ROUTE_PRIORITY = Math.max.apply(null, Object.values(ROUTE_PRIORITY)) + 1;
 
   function compareRoutes(a, b) {
     if (a.v !== b.v) return a.v - b.v;
-    return (ROUTE_PRIORITY[a.p] ?? 99) - (ROUTE_PRIORITY[b.p] ?? 99);
+    const left = ROUTE_PRIORITY[a.p] ?? UNKNOWN_ROUTE_PRIORITY;
+    const right = ROUTE_PRIORITY[b.p] ?? UNKNOWN_ROUTE_PRIORITY;
+    if (left !== right) return left - right;
+    if (left === UNKNOWN_ROUTE_PRIORITY && a.p !== b.p) {
+      console.warn('[AIRuleCore] unknown route type', a.p, b.p);
+      return String(a.p).localeCompare(String(b.p));
+    }
+    return 0;
   }
 
   function compareWaitShape(waitBefore, waitAfter) {
