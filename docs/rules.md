@@ -65,9 +65,17 @@
 - AI 杠牌响应会额外记录 `waitBefore`、`waitAfter` 和 `lostWaits`；如果向听恶化或丢失原有待牌，会跳过杠并继续正常流程。
 - 用户反馈某次出牌不合理时，应优先导出 AI 日志或完整游戏记录，并查看对应回合的 `suggestLogs`；对局结束后 AI 日志会回退读取最近一局保存记录。
 
+## 阶段一规则引擎
+
+- 阶段一新增 TypeScript 规则源头：`src/game/rules`。
+- 规则模块提供 `canWin`、`getShanten`、`getLegalActions`、`scoreSettlement` 和 `classifyHand` 五个产品接口。
+- 规则与计分标准牌例位于 `docs/rule-standard-cases.json`，现有 AI 底线牌例继续保留在 `docs/ai-standard-cases.json`。
+- 命令行回归入口为 `npm.cmd run test:rules`。
+- 当前 HTML 游戏入口仍是 `public/game/wannian-mahjong.html`，阶段一不一次性迁移页面，只逐步把规则判断委托给规则模块。
+
 ## 已知限制
 
-- 当前规则仍集中在静态 HTML 中，尚未完整迁移到 `src/game/rules`。
+- 当前 HTML 运行时规则尚未完整迁移到 `src/game/rules`。
 - 当前规则说明以现有代码行为为准，后续迁移时需要用标准牌例集回归确认。
 - 防守模型仍是启发式模型，尚未包含完整对手听牌概率、壁牌和复杂读牌模型。
 - 当前防守模型已经纳入对手听牌威胁估算、副露数量、末盘、连续安全牌、逐个对手的现物、多个高威胁对手、筋牌、壁牌、副露花色危险、分数领先防守和落后近听进攻容忍；这些权重集中在 HTML 内的 `AI_STRATEGY`。

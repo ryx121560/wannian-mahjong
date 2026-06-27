@@ -1,0 +1,208 @@
+{
+  "version": "2026-06-27",
+  "source": "docs/ai-rule-engine-prd.md",
+  "tileNotation": "wan1,tong9,tiao5,dong,nan,xi,bei,zhong,fa,bai",
+  "cases": [
+    {
+      "id": "rule-case-001",
+      "title": "普通面子手自摸平胡",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "wan8", "dong", "dong"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "route": "normal", "handType": "平胡"}
+    },
+    {
+      "id": "rule-case-002",
+      "title": "普通面子手未成牌不可胡",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao8", "wan6", "wan7", "wan8", "dong", "fa"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": false}
+    },
+    {
+      "id": "rule-case-003",
+      "title": "七对子胡牌",
+      "hand": ["wan1", "wan1", "wan3", "wan3", "tong5", "tong5", "tiao7", "tiao7", "dong", "dong", "nan", "nan", "fa", "fa"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "route": "sevenPairs", "handType": "七对"}
+    },
+    {
+      "id": "rule-case-004",
+      "title": "七对子六对一单不可胡",
+      "hand": ["wan1", "wan1", "wan3", "wan3", "tong5", "tong5", "tiao7", "tiao7", "dong", "dong", "nan", "nan", "fa", "bai"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": false}
+    },
+    {
+      "id": "rule-case-005",
+      "title": "打烂五万响应胡牌",
+      "hand": ["tong5", "wan8", "tiao5", "tiao2", "xi", "tiao8", "tong1", "fa", "wan2", "bei", "zhong", "tong8", "bai", "wan5"],
+      "context": {"winType": "点炮", "winTile": "wan5"},
+      "expected": {"canWin": true, "route": "dalan", "handType": "打烂"}
+    },
+    {
+      "id": "rule-case-006",
+      "title": "打烂一万不受序数门槛",
+      "hand": ["wan1", "wan5", "wan9", "tong2", "tong6", "tong9", "tiao3", "tiao7", "dong", "nan", "xi", "zhong", "fa", "bai"],
+      "context": {"winType": "点炮", "winTile": "wan1"},
+      "expected": {"canWin": true, "route": "dalan", "handType": "打烂"}
+    },
+    {
+      "id": "rule-case-007",
+      "title": "打烂同花色间距不足不可胡",
+      "hand": ["wan1", "wan3", "wan7", "tong2", "tong5", "tong8", "tiao3", "tiao6", "tiao9", "dong", "nan", "xi", "zhong", "fa"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": false}
+    },
+    {
+      "id": "rule-case-008",
+      "title": "半正宗胡牌",
+      "hand": ["wan1", "wan4", "wan7", "tong2", "tong5", "tong8", "tiao3", "tiao6", "tiao9", "dong", "nan", "xi", "zhong", "fa"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "route": "banzhengzong", "handType": "半正宗"}
+    },
+    {
+      "id": "rule-case-009",
+      "title": "全正宗胡牌",
+      "hand": ["wan1", "wan4", "wan7", "tong1", "tong4", "tong7", "tiao1", "tiao4", "tiao7", "dong", "nan", "xi", "zhong", "fa"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "route": "quanzhengzong", "handType": "全正宗"}
+    },
+    {
+      "id": "rule-case-010",
+      "title": "七字全正宗分类优先级",
+      "hand": ["wan1", "wan4", "wan7", "tong1", "tong4", "tiao1", "tiao4", "dong", "nan", "xi", "bei", "zhong", "fa", "bai"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "route": "quanzhengzong", "handType": "七字全正宗"}
+    },
+    {
+      "id": "rule-case-011",
+      "title": "全风向胡牌",
+      "hand": ["dong", "dong", "dong", "nan", "nan", "nan", "xi", "xi", "xi", "bei", "bei", "bei", "fa", "fa"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "route": "allHonor", "handType": "全风向"}
+    },
+    {
+      "id": "rule-case-012",
+      "title": "点炮计分",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "wan8", "dong", "dong"],
+      "settlement": {"winner": 2, "winType": "点炮", "scores": [100, 100, 100, 100], "payer": 0},
+      "expected": {"scoreDelta": [-2, 0, 2, 0], "payer": 0, "handType": "平胡"}
+    },
+    {
+      "id": "rule-case-013",
+      "title": "自摸计分",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "wan8", "dong", "dong"],
+      "settlement": {"winner": 3, "winType": "自摸", "scores": [99, 97, 99, 103]},
+      "expected": {"scoreDelta": [-1, -1, -1, 3], "payer": "all", "handType": "平胡"}
+    },
+    {
+      "id": "rule-case-014",
+      "title": "抢杠计分",
+      "hand": ["wan1", "wan2", "wan3", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "wan8", "fa", "fa"],
+      "settlement": {"winner": 1, "winType": "抢杠", "scores": [100, 100, 100, 100], "robKongTarget": 3},
+      "expected": {"scoreDelta": [0, 6, 0, -6], "payer": 3, "handType": "平胡"}
+    },
+    {
+      "id": "rule-case-015",
+      "title": "杠开计分",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "wan8", "dong", "dong"],
+      "settlement": {"winner": 0, "winType": "杠开", "scores": [100, 100, 100, 100]},
+      "expected": {"scoreDelta": [6, -2, -2, -2], "payer": "all", "handType": "平胡"}
+    },
+    {
+      "id": "rule-case-016",
+      "title": "七对子点炮计分",
+      "hand": ["wan1", "wan1", "wan3", "wan3", "tong5", "tong5", "tiao7", "tiao7", "dong", "dong", "nan", "nan", "fa", "fa"],
+      "settlement": {"winner": 0, "winType": "点炮", "scores": [100, 100, 100, 100], "payer": 2},
+      "expected": {"scoreDelta": [4, 0, -4, 0], "payer": 2, "handType": "七对"}
+    },
+    {
+      "id": "rule-case-017",
+      "title": "打烂自摸计分",
+      "hand": ["tong5", "wan8", "tiao5", "tiao2", "xi", "tiao8", "tong1", "fa", "wan2", "bei", "zhong", "tong8", "bai", "wan5"],
+      "settlement": {"winner": 0, "winType": "自摸", "scores": [100, 100, 100, 100]},
+      "expected": {"scoreDelta": [3, -1, -1, -1], "payer": "all", "handType": "打烂"}
+    },
+    {
+      "id": "rule-case-018",
+      "title": "全正宗点炮计分",
+      "hand": ["wan1", "wan4", "wan7", "tong1", "tong4", "tong7", "tiao1", "tiao4", "tiao7", "dong", "nan", "xi", "zhong", "fa"],
+      "settlement": {"winner": 1, "winType": "点炮", "scores": [100, 100, 100, 100], "payer": 0},
+      "expected": {"scoreDelta": [-8, 8, 0, 0], "payer": 0, "handType": "全正宗"}
+    },
+    {
+      "id": "rule-case-019",
+      "title": "可碰",
+      "state": {"phase": "responding", "currentPlayer": 1, "lastDiscard": "tong5", "lastDiscardPlayer": 1, "players": [{"hand": ["tong5", "tong5", "wan1"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"legalActions": ["pong", "pass"]}
+    },
+    {
+      "id": "rule-case-020",
+      "title": "不可碰",
+      "state": {"phase": "responding", "currentPlayer": 1, "lastDiscard": "tong5", "lastDiscardPlayer": 1, "players": [{"hand": ["tong5", "wan1"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"legalActions": ["pass"], "notLegalActions": ["pong"]}
+    },
+    {
+      "id": "rule-case-021",
+      "title": "可明杠",
+      "state": {"phase": "responding", "currentPlayer": 1, "lastDiscard": "tong5", "lastDiscardPlayer": 1, "players": [{"hand": ["tong5", "tong5", "tong5", "wan1"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"legalActions": ["pong", "openKong", "pass"]}
+    },
+    {
+      "id": "rule-case-022",
+      "title": "不可明杠",
+      "state": {"phase": "responding", "currentPlayer": 1, "lastDiscard": "tong5", "lastDiscardPlayer": 1, "players": [{"hand": ["tong5", "tong5", "wan1"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"notLegalActions": ["openKong"]}
+    },
+    {
+      "id": "rule-case-023",
+      "title": "可暗杠",
+      "state": {"phase": "discarding", "currentPlayer": 0, "players": [{"hand": ["tong5", "tong5", "tong5", "tong5", "wan1"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"legalActions": ["discard", "concealedKong"]}
+    },
+    {
+      "id": "rule-case-024",
+      "title": "摸牌后可自摸",
+      "state": {"phase": "discarding", "currentPlayer": 0, "players": [{"hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "wan8", "dong", "dong"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"legalActions": ["discard", "selfWin"]}
+    },
+    {
+      "id": "rule-case-025",
+      "title": "响应阶段可胡",
+      "state": {"phase": "responding", "currentPlayer": 1, "lastDiscard": "wan5", "lastDiscardPlayer": 1, "players": [{"hand": ["tong5", "wan8", "tiao5", "tiao2", "xi", "tiao8", "tong1", "fa", "wan2", "bei", "zhong", "tong8", "bai"]}, {"hand": []}, {"hand": []}, {"hand": []}]},
+      "expected": {"legalActions": ["win", "pass"]}
+    },
+    {
+      "id": "rule-case-026",
+      "title": "普通向听返回推荐路线",
+      "hand": ["wan2", "wan3", "wan4", "tong3", "tong4", "tong5", "tiao5", "tiao6", "tiao7", "wan6", "wan7", "dong", "dong"],
+      "expected": {"recommendedRoute": "normal"}
+    },
+    {
+      "id": "rule-case-027",
+      "title": "打烂向听返回推荐路线",
+      "hand": ["wan1", "wan5", "wan9", "tong2", "tong6", "tiao3", "tiao7", "dong", "nan", "xi", "bei", "zhong", "fa"],
+      "expected": {"recommendedRoute": "dalan"}
+    },
+    {
+      "id": "rule-case-028",
+      "title": "混一色分类",
+      "hand": ["wan2", "wan3", "wan4", "wan6", "wan7", "wan8", "wan9", "wan9", "wan1", "wan1", "wan1", "dong", "dong", "dong"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "handType": "混一色"}
+    },
+    {
+      "id": "rule-case-029",
+      "title": "清一色分类",
+      "hand": ["wan2", "wan3", "wan4", "wan6", "wan7", "wan8", "wan9", "wan9", "wan1", "wan1", "wan1", "wan5", "wan5", "wan5"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "handType": "清一色"}
+    },
+    {
+      "id": "rule-case-030",
+      "title": "碰碰胡分类",
+      "hand": ["wan2", "wan2", "wan2", "tong3", "tong3", "tong3", "tiao5", "tiao5", "tiao5", "wan6", "wan6", "wan6", "dong", "dong"],
+      "context": {"winType": "自摸"},
+      "expected": {"canWin": true, "handType": "碰碰胡"}
+    }
+  ]
+}
