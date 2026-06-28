@@ -106,12 +106,15 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 
 <script src="session_snapshot.js"></script>
 <script src="ai/rule_core.js"></script>
+<script src="rule_engine.js"></script>
 <script>
 const W=1360,H=900,TW=52,TH=72,GAP=2;
 const GAME_SESSION=window.GameSessionSnapshot;
 const AI_RULE_CORE=window.AIRuleCore;
+const RULE_ENGINE=window.WannianRuleEngine;
 if(!GAME_SESSION)throw new Error('Game session snapshot core failed to load');
 if(!AI_RULE_CORE)throw new Error('AI rule core failed to load');
+if(!RULE_ENGINE)throw new Error('Wannian rule engine failed to load');
 const AI_ENGINE_INFO={id:'html-rule-ai',version:'2026-06-20-core-r1',source:'rule',mode:'ordinary',ruleCoreId:AI_RULE_CORE.id,ruleCoreVersion:AI_RULE_CORE.version};
 const AI_RUNTIME_CONFIG={ordinaryMCTS:false,ordinaryRL:false};
 const AI_STRATEGY={
@@ -232,6 +235,34 @@ function kt(k){
   const sk=k.slice(0,k.length-1),v=parseInt(k.slice(-1),10);
   if(!SUIT_KEYS.has(sk)||!Number.isInteger(v)||v<1||v>9)throw new Error('kt: invalid key "'+k+'"');
   return {k,t:'num',s:sk,v:v};
+}
+function ruleTiles(hand){return hand.map(tkey);}
+function ruleMeldsByCount(count){
+  const melds=[];
+  for(let i=0;i<(count||0);i++)melds.push({type:'peng',tiles:['dong','dong','dong']});
+  return melds;
+}
+function ruleMeldsForPlayer(playerIdx){
+  const player=GS.players[playerIdx]||{};
+  return (player.melds||[]).map(function(m){
+    const tile=tkey(m.tile);
+    const type=m.count===4?'mingGang':'peng';
+    return {type:type,tiles:m.count===4?[tile,tile,tile,tile]:[tile,tile,tile],fromPlayer:m.fromPlayer};
+  });
+}
+function ruleWinMethod(wt){
+  if(wt==='点炮')return '点炮';
+  if(wt==='抢杠')return '抢杠';
+  if(wt==='杠开')return '杠开';
+  if(wt==='天胡')return '天胡';
+  if(wt==='地胡')return '地胡';
+  return '自摸';
+}
+function ruleClassification(hand){
+  return RULE_ENGINE.classifyHand(ruleTiles(hand),[]);
+}
+function ruleShantenResult(hand){
+  return RULE_ENGINE.getShanten(ruleTiles(hand),{});
 }
 function tcmp(a,b){
   const o={dong:0,nan:1,xi:2,bei:3,zhong:4,fa:5,bai:6};
@@ -1183,8 +1214,8 @@ function meetsThresh(hand, winTile){
 }
 
 function isSpecial(hand){
-  const s=hand.map(tkey);
-  return is7pairs(s)||isAllHonor(s)||isDalan(s);
+  const result=RULE_ENGINE.canWin(ruleTiles(hand),{});
+  return !!(result&&result.canWin&&['sevenPairs','allHonor','dalan','banzhengzong','quanzhengzong'].includes(result.route));
 }
 
 function effectiveHand(p){
@@ -1200,16 +1231,12 @@ function effectiveHand(p){
 function canHuNormal(hand,useWild,preMelds){
   preMelds=preMelds||0;
   const s=hand.map(tkey);
-  if(checkWin(s,preMelds))return {win:true,useWild:false,type:classifyWin(hand)};
+  const ruleContext={melds:ruleMeldsByCount(preMelds)};
+  const ruleResult=RULE_ENGINE.canWin(s,ruleContext);
+  if(ruleResult&&ruleResult.canWin)return {win:true,useWild:false,type:ruleResult.handType,handTypes:ruleResult.handTypes,baseScore:ruleResult.baseScore,route:ruleResult.route};
   if(useWild){
-    for(let i=0;i<s.length;i++){
-      const t=[...s];t.splice(i,1);
-      for(let k of ALL_KEYS){
-        if(checkWin([...t,k],preMelds)){
-          return {win:true,useWild:true,type:classifyWin([...t.map(kt),kt(k)])};
-        }
-      }
-    }
+    const wildResult=RULE_ENGINE.resolveWildcard(s,ruleContext.melds);
+    if(wildResult&&wildResult.canWin)return {win:true,useWild:!wildResult.isTrueWin,type:wildResult.handType,handTypes:wildResult.handTypes,baseScore:wildResult.baseScore};
   }
   return false;
 }
@@ -1220,119 +1247,21 @@ function st(k){
   return {k,t:'num',s:m[k[0]],v:parseInt(k.slice(1))};
 }
 
-function checkWin(tiles,preMelds){
-  preMelds=preMelds||0;
-  const tl=tiles.length+preMelds*3;
-  if(tl%3!==2)return false;
-  if(tl===2)return tiles[0]===tiles[1];
-  // Seven-pairs and dalan are closed-hand patterns; exposed melds intentionally disable them.
-  if(tl===14&&preMelds===0){if(is7pairs(tiles))return true;if(isDalan(tiles))return true;}
-  const s=[...tiles].sort();
-  const c={};s.forEach(t=>c[t]=(c[t]||0)+1);
-  const u=[...new Set(s)];
-  for(let k of u){
-    if(c[k]>=2){const r={...c};r[k]-=2;if(groupsOk(r))return true;}
-  }
-  return false;
-}
-
-function isDalan(s){
-  if(s.length!==14)return false;
-  const uniq=new Set(s);
-  if(uniq.size!==14)return false;
-  const honors=['dong','nan','xi','bei','zhong','fa','bai'];
-  if(honors.filter(h=>s.includes(h)).length<5)return false;
-  const by={w:[],t:[],j:[]};
-  const suitBucket={wan:'w',tong:'t',tiao:'j'};
-  [...uniq].forEach(k=>{const m=k.match(/^(wan|tong|tiao)(\d+)$/);if(m)by[suitBucket[m[1]]].push(parseInt(m[2]))});
-  for(let su of 'wtj'){
-    by[su].sort((a,b)=>a-b);
-    for(let i=1;i<by[su].length;i++)if(by[su][i]-by[su][i-1]<3)return false;
-  }
-  return true;
-}
-function is7pairs(s){if(s.length!==14)return false;const c={};s.forEach(t=>c[t]=(c[t]||0)+1);return Object.values(c).every(v=>v===2);}
-function isQizi(s){return ['dong','nan','xi','bei','zhong','fa','bai'].every(h=>s.includes(h));}
-function isQuanzhengzong(s){
-  if(!isDalan(s))return false;
-  const nums=[...new Set(s)].filter(k=>/^(wan|tong|tiao)/.test(k));
-  if(nums.length===0)return false;
-  const valid=new Set([1,4,7,2,5,8,3,6,9]);
-  let grp=null;
-  for(let k of nums){
-    const v=parseInt(k.match(/\d+/)[0]);
-    if(!valid.has(v))return false;
-    const g=v%3===1?147:v%3===2?258:369;
-    if(!grp)grp=g;else if(g!==grp)return false;
-  }
-  return true;
-}
-function isBanzhengzong(s){
-  if(!isDalan(s))return false;
-  const nums=[...new Set(s)].filter(k=>/^(wan|tong|tiao)/.test(k));
-  if(nums.length===0)return false;
-  const suitGroups={wan:new Set(),tong:new Set(),tiao:new Set()};
-  const allGroups=new Set();
-  for(let k of nums){
-    const match=k.match(/^(wan|tong|tiao)(\d+)$/);
-    const group=parseInt(match[2])%3;
-    suitGroups[match[1]].add(group);
-    allGroups.add(group);
-  }
-  if(Object.values(suitGroups).some(function(groups){return groups.size>1;}))return false;
-  return allGroups.size>1;
-}
-function isAllHonor(s){return s.every(k=>honors.includes(k));}
-
-function groupsOk(c){
-  const keys=Object.keys(c).filter(k=>c[k]>0);
-  if(keys.length===0)return true;
-  for(const k of keys){
-    if(c[k]>=3){const n={...c};n[k]-=3;if(groupsOk(n))return true;}
-    const pm=k.match(/^(wan|tong|tiao)(\d+)$/);
-    if(pm){
-      const su=pm[1],v=parseInt(pm[2]);
-      if(v<=7){const n1=`${su}${v+1}`,n2=`${su}${v+2}`;if((c[n1]||0)>0&&(c[n2]||0)>0){const n={...c};n[k]--;n[n1]--;n[n2]--;if(groupsOk(n))return true;}}
-    }
-    
-    if('dongnanxibei'.includes(k)){const w=['dong','nan','xi','bei'];const i=w.indexOf(k);const n1=w[(i+1)%4],n2=w[(i+2)%4];if((c[n1]||0)>0&&(c[n2]||0)>0){const n={...c};n[k]--;n[n1]--;n[n2]--;if(groupsOk(n))return true;}}
-    if('zhongfabai'.includes(k)){const a=['zhong','fa','bai'];const i=a.indexOf(k);const n1=a[(i+1)%3],n2=a[(i+2)%3];if((c[n1]||0)>0&&(c[n2]||0)>0){const n={...c};n[k]--;n[n1]--;n[n2]--;if(groupsOk(n))return true;}}
-  }
-  return false;
-}
-
 function classifyWin(hand){
-  const s=hand.map(tkey);
-  if(isAllHonor(s))return '全风向';
-  if(is7pairs(s))return '七对';
-  if(isQizi(s)&&isQuanzhengzong(s))return '七字全正宗';
-  if(isQizi(s)&&isBanzhengzong(s))return '七字半正宗';
-  if(isQuanzhengzong(s))return '全正宗';
-  if(isBanzhengzong(s))return '半正宗';
-  if(isDalan(s))return '打烂';
-  const numSuits=new Set();
-  let hasHonor=false;
-  for(const k of s){
-    if(/^(dong|nan|xi|bei|zhong|fa|bai)$/.test(k)){hasHonor=true;}
-    else{const m=k.match(/^(wan|tong|tiao)/);if(m)numSuits.add(m[1]);}
-  }
-  if(numSuits.size===1&&!hasHonor)return '清一色';
-  if(numSuits.size===1&&hasHonor)return '混一色';
-  const c={};s.forEach(k=>c[k]=(c[k]||0)+1);
-  const tr=Object.values(c).filter(v=>v>=3).length;
-  if(tr===4)return '碰碰胡';
-  return '平胡';
+  return ruleClassification(hand).primaryType;
 }
 
 function calcScore(hand,wt){
-  const h=classifyWin(hand);
-  const m={'平胡':{zm:1,dp:2},'七对':{zm:2,dp:4},'打烂':{zm:1,dp:2},'半正宗':{zm:2,dp:4},'全正宗':{zm:4,dp:8},'七字半正宗':{zm:4,dp:8},'七字全正宗':{zm:8,dp:16},'碰碰胡':{zm:2,dp:4},'混一色':{zm:2,dp:4},'清一色':{zm:4,dp:8},'全风向':{zm:16,dp:16}};
-  const b=m[h]||{zm:1,dp:2};
-  let s=wt==='点炮'?b.dp:b.zm;
-  if(wt==='抢杠')s=b.dp*3;
-  if(wt==='天胡'||wt==='地胡')s=4;
-  if(wt==='杠开'){s*=2;if((GS._kc[GS.cur]||0)>=2)s*=2;}
-  return s;
+  const classification=ruleClassification(hand);
+  const result=RULE_ENGINE.calculateScore({
+    handTypes:classification.handTypes,
+    baseScore:classification.baseScore,
+    winMethod:ruleWinMethod(wt),
+    currentPlayer:0,
+    lianGangCount:wt==='杠开'&&((GS._kc[GS.cur]||0)>=2)?1:0
+  });
+  const pay=Array.isArray(result.scorePerPlayer)?Math.max.apply(null,result.scorePerPlayer):0;
+  return pay||Math.max(0,result.winnerGain);
 }
 
 // -- game flow --
@@ -1520,15 +1449,15 @@ function drawGame(){
   setMsg('荒牌流局');showWinDlg('流局','荒牌',0);
 }
 // -- pong/kong --
-function canPongChk(h,t){return h.filter(x=>teq(x,t)).length>=2;}
-function canKongChk(h,t){return h.filter(x=>teq(x,t)).length>=3;}
+function canPongChk(h,t){return RULE_ENGINE.canPeng(ruleTiles(h),tkey(t));}
+function canKongChk(h,t){return RULE_ENGINE.canQiangXingPaoGang(ruleTiles(h),[],false,tkey(t)).canGang;}
 function canSelfKong(p){
   if(!GS.newDrawnTile) return null;
   const t=GS.newDrawnTile,pl=GS.players[p];
   // 加杠：检查副露中是否有 count=3 的同名牌
-  if(pl.melds){for(let m of pl.melds){if(m.count===3&&teq(m.tile,t)) return {type:'add'};}}
+  if(RULE_ENGINE.canMingGang(ruleTiles(pl.hand),ruleMeldsForPlayer(p),tkey(t))) return {type:'add'};
   // 暗杠：手牌（含刚摸的）中是否有 >=4 张同名牌
-  if(pl.hand.filter(x=>teq(x,t)).length>=4) return {type:'concealed'};
+  if(RULE_ENGINE.canAnGang(ruleTiles(pl.hand)).includes(tkey(t))) return {type:'concealed'};
   return null;
 }
 
@@ -1849,6 +1778,7 @@ async function aiDiscard(p){
 }
 
 function calcShanten(hand){
+  return ruleShantenResult(hand).normal;
   // 数牌统计
   const wan=Array(9).fill(0),tong=Array(9).fill(0),tiao=Array(9).fill(0);
   const winds=[0,0,0,0],dragons=[0,0,0]; // dong/nan/xi/bei  zhong/fa/bai
@@ -1922,6 +1852,7 @@ function calcShanten(hand){
 
 // 七对子向听数
 function calcShanten7Pairs(hand){
+  return ruleShantenResult(hand).sevenPairs;
   const cnt={};
   for(const t of hand){const k=t.k;cnt[k]=(cnt[k]||0)+1;}
   let pairs=0;
@@ -1931,6 +1862,7 @@ function calcShanten7Pairs(hand){
 
 // 打烂向听数：需要14张不重复、≥5字牌、同色数牌间隔≥3
 function calcShantenDalan(hand){
+  return ruleShantenResult(hand).dalan;
   const uniq=new Set(hand.map(t=>t.k));
   let issues=hand.length-uniq.size; // 重复牌=问题
   
@@ -1950,6 +1882,7 @@ function calcShantenDalan(hand){
 
 // 全正宗向听数：打烂基础上数牌必须在{1,4,7,2,5,8,3,6,9}内且同组（147/258/369）
 function calcShantenZhengzong(hand){
+  return ruleShantenResult(hand).quanzhengzong;
   const validNums=new Set([1,4,7,2,5,8,3,6,9]);
   let issues=calcShantenDalan(hand);
   
@@ -1972,6 +1905,7 @@ function calcShantenZhengzong(hand){
 
 // Semi-authentic route: each suit uses one 147/258/369 group; suits may differ.
 function calcShantenBanzhengzong(hand){
+  return ruleShantenResult(hand).banzhengzong;
   let issues=calcShantenDalan(hand);
   const suitGroups={wan:[0,0,0],tong:[0,0,0],tiao:[0,0,0]};
   for(const t of hand){

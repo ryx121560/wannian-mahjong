@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/next-with-port.mjs dev",
-    "prebuild": "node scripts/clean-next-cache.mjs",
+    "predev": "node scripts/build-browser-rule-engine.mjs",
+    "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/clean-next-cache.mjs",
     "build": "next build",
     "start": "node scripts/next-with-port.mjs start",
-    "test:rules": "node scripts/rule-regression.mjs"
+    "test:rules": "node scripts/benchmark-runner.mjs",
+    "verify:browser-rules": "node scripts/build-browser-rule-engine.mjs && node scripts/verify-browser-rule-engine.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",
