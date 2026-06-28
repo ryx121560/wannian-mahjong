@@ -126,6 +126,7 @@ for (const testCase of cases) {
       if (fn === 'canMingGang') value = rules.canMingGang(input.hand, input.melds, input.selfDrawnTile);
       if (fn === 'canZhiChan') value = rules.canZhiChan(input.hand, input.melds, input.isTenpai, input.discardTile, input.discardPlayer).canZhiChan;
       if (fn === 'canLianGang') value = rules.canLianGang(input.hand, input.melds, input.lastGangDrawTile).canLianGang;
+      if (fn === 'canQiangXingPaoGang') value = rules.canQiangXingPaoGang(input.hand, input.melds || [], input.isTenpai, input.discardTile);
       if (fn === 'getGangDrawTile') value = rules.getGangDrawTile(input.wallTiles).drawTile;
       check(sameValue(value, expected.value), `${fn} expected ${JSON.stringify(expected.value)}, actual ${JSON.stringify(value)}`, failures);
     }
@@ -133,6 +134,7 @@ for (const testCase of cases) {
       const result = rules.resolveWildcard(testCase.wildcard.hand, testCase.wildcard.melds || [], testCase.wildcard.drawTile);
       if ('isTrueWin' in expected) check(result.isTrueWin === expected.isTrueWin, `isTrueWin expected ${expected.isTrueWin}, actual ${result.isTrueWin}`, failures);
       if ('isFakeWin' in expected) check(result.isFakeWin === expected.isFakeWin, `isFakeWin expected ${expected.isFakeWin}, actual ${result.isFakeWin}`, failures);
+      if (expected.fakeWinReplacement) check(sameValue(result.fakeWinReplacement, expected.fakeWinReplacement), `fakeWinReplacement expected ${JSON.stringify(expected.fakeWinReplacement)}, actual ${JSON.stringify(result.fakeWinReplacement)}`, failures);
     }
     if (testCase.noColor) {
       const value = rules.checkNoColor(testCase.noColor.hand, testCase.noColor.melds || [], testCase.noColor.drawTile, testCase.noColor.handTypes || []);
@@ -145,10 +147,13 @@ for (const testCase of cases) {
     if (testCase.tenpai) {
       const result = rules.checkTenpai(testCase.tenpai.hand, testCase.tenpai.melds || []);
       check(result.isTenpai === expected.isTenpai, `isTenpai expected ${expected.isTenpai}, actual ${result.isTenpai}`, failures);
+      if (expected.waitingTiles) check(includesAll(result.waitingTiles, expected.waitingTiles), `waitingTiles expected include ${JSON.stringify(expected.waitingTiles)}, actual ${JSON.stringify(result.waitingTiles)}`, failures);
+      if ('minWaitCount' in expected) check(result.waitingTiles.length >= expected.minWaitCount, `waitingTiles length expected >= ${expected.minWaitCount}, actual ${result.waitingTiles.length}`, failures);
     }
     if (testCase.shanten) {
       const result = rules.getShanten(testCase.shanten.hand, testCase.shanten.context || {});
       check(result.shanten <= expected.maxShanten, `shanten expected <= ${expected.maxShanten}, actual ${result.shanten}`, failures);
+      if ('exactShanten' in expected) check(result.shanten === expected.exactShanten, `shanten expected ${expected.exactShanten}, actual ${result.shanten}`, failures);
     }
     if (testCase.purity) {
       const stable = Array.from({ length: testCase.purity.repeat || 100 }, () => JSON.stringify(rules.canWin(testCase.purity.hand, testCase.purity.context || {})));

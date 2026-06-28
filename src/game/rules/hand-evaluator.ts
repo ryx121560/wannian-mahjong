@@ -1,6 +1,9 @@
 import { ALL_TILE_KEYS, ARROW_TILES, HONOR_TILES, NUMBER_SUITS, WIND_TILES, countTileRecord, countTiles, isHonor, isNumberTile, tileMod3Group, tileSuit, tileValue, uniqueTiles } from './tile-utils';
 import type { CanWinResult, HandClassification, HandRoute, HandType, Meld, ShantenResult, TenpaiResult, Tile, WinContext } from './types';
 
+const SHANTEN_CACHE_LIMIT = 5000;
+const shantenResultCache = new Map<string, ShantenResult>();
+
 function isSevenPairs(hand: Tile[]): boolean {
   return hand.length === 14 && Array.from(countTiles(hand).values()).every((count) => count === 2);
 }
@@ -104,7 +107,8 @@ export function checkSevenPairs(hand: Tile[], melds: Meld[] = []): boolean {
 }
 
 export function checkAllWinds(hand: Tile[], melds: Meld[] = []): boolean {
-  return isAllHonor(hand) && checkStandardWin(hand, melds).canWin;
+  const meldTiles = melds.flatMap((meld) => meld.tiles.filter((tile): tile is Tile => !!tile));
+  return hand.length + melds.length * 3 === 14 && hand.concat(meldTiles).every(isHonor);
 }
 
 export function checkDalan(hand: Tile[], melds: Meld[] = []): { isDalan: boolean; handType: HandType } {
@@ -143,7 +147,7 @@ export function classifyHand(hand: Tile[], melds: Meld[] = [], _winTile?: Tile, 
   if (!dalan.isDalan && Array.from(countTiles(hand).values()).filter((count) => count >= 3).length === 4) handTypes.push('碰碰胡');
   if (!handTypes.length) handTypes.push('平胡');
   const primaryType = handTypes.reduce((best, item) => (baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best), handTypes[0]);
-  const baseScore = handTypes.reduce((sum, item) => sum + baseScoreForHandType(item), 0);
+  const baseScore = handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1);
   return { handTypes, primaryType, baseScore, route, isDalan: dalan.isDalan };
 }
 
@@ -208,25 +212,115 @@ function shantenZhengzong(hand: Tile[], unified: boolean): number {
 
 function shantenNormalApprox(hand: Tile[], melds: Meld[] = []): number {
   if (checkStandardWin(hand, melds).canWin) return -1;
-  const counts = countTileRecord(hand);
-  const triplets = Object.values(counts).filter((count) => count >= 3).length;
-  const pairs = Object.values(counts).filter((count) => count >= 2).length;
-  let sequences = 0;
-  for (const suit of NUMBER_SUITS) {
-    for (let value = 1; value <= 7; value += 1) {
-      if (counts[`${suit}${value}`] && counts[`${suit}${value + 1}`] && counts[`${suit}${value + 2}`]) sequences += 1;
-    }
+  const baseCounts = countTileRecord(hand);
+  const fixedMelds = melds.length;
+  const memo = new Map<string, number>();
+  let best = 8;
+
+  function activeTiles(counts: Record<string, number>): Tile[] {
+    return (Object.keys(counts) as Tile[]).filter((tile) => counts[tile] > 0);
   }
-  const complete = Math.min(4, melds.length + triplets + sequences);
-  return Math.max(0, 4 - complete + (pairs > 0 ? 0 : 1));
+
+  function serialize(counts: Record<string, number>, madeMelds: number, pairs: number, taatsu: number): string {
+    return `${madeMelds}|${pairs}|${taatsu}|${ALL_TILE_KEYS.map((tile) => counts[tile] || 0).join('')}`;
+  }
+
+  function applyTerminal(madeMelds: number, pairs: number, taatsu: number): void {
+    const complete = Math.min(4, fixedMelds + madeMelds);
+    const usableTaatsu = Math.min(4 - complete, taatsu);
+    best = Math.min(best, 8 - complete * 2 - usableTaatsu - (pairs > 0 ? 1 : 0));
+  }
+
+  function completeGroups(tile: Tile): Tile[][] {
+    const groups: Tile[][] = [[tile, tile, tile]];
+    if (isNumberTile(tile) && tileValue(tile) <= 7) {
+      const suit = tileSuit(tile);
+      const value = tileValue(tile);
+      groups.push([tile, `${suit}${value + 1}` as Tile, `${suit}${value + 2}` as Tile]);
+    }
+    if (WIND_TILES.includes(tile)) {
+      groups.push(...[
+        ['dong', 'nan', 'xi'],
+        ['dong', 'nan', 'bei'],
+        ['dong', 'xi', 'bei'],
+        ['nan', 'xi', 'bei'],
+      ].filter((group) => group.includes(tile)) as Tile[][]);
+    }
+    if (ARROW_TILES.includes(tile)) groups.push(['zhong', 'fa', 'bai']);
+    return groups;
+  }
+
+  function incompleteGroups(tile: Tile): Tile[][] {
+    const groups: Tile[][] = [[tile, tile]];
+    if (isNumberTile(tile)) {
+      const suit = tileSuit(tile);
+      const value = tileValue(tile);
+      if (value <= 8) groups.push([tile, `${suit}${value + 1}` as Tile]);
+      if (value <= 7) groups.push([tile, `${suit}${value + 2}` as Tile]);
+    }
+    if (WIND_TILES.includes(tile)) {
+      for (const group of [
+        ['dong', 'nan', 'xi'],
+        ['dong', 'nan', 'bei'],
+        ['dong', 'xi', 'bei'],
+        ['nan', 'xi', 'bei'],
+      ] as Tile[][]) {
+        if (group.includes(tile)) for (const other of group) if (other !== tile) groups.push([tile, other]);
+      }
+    }
+    if (ARROW_TILES.includes(tile)) for (const other of ARROW_TILES) if (other !== tile) groups.push([tile, other]);
+    return groups;
+  }
+
+  function dfs(counts: Record<string, number>, madeMelds: number, pairs: number, taatsu: number): void {
+    const key = serialize(counts, madeMelds, pairs, taatsu);
+    const cached = memo.get(key);
+    if (cached !== undefined && cached <= best) return;
+    memo.set(key, best);
+    const active = activeTiles(counts);
+    if (!active.length) {
+      applyTerminal(madeMelds, pairs, taatsu);
+      return;
+    }
+    const tile = active[0];
+    for (const group of completeGroups(tile)) {
+      const next = removeSet(counts, group);
+      if (next) dfs(next, madeMelds + 1, pairs, taatsu);
+    }
+    if (pairs === 0) {
+      const next = removeSet(counts, [tile, tile]);
+      if (next) dfs(next, madeMelds, 1, taatsu);
+    }
+    for (const group of incompleteGroups(tile)) {
+      const next = removeSet(counts, group);
+      if (next) dfs(next, madeMelds, pairs, taatsu + 1);
+    }
+    const skipped = { ...counts, [tile]: counts[tile] - 1 };
+    dfs(skipped, madeMelds, pairs, taatsu);
+  }
+
+  dfs(baseCounts, 0, 0, 0);
+  return Math.max(0, best);
 }
 
 export function calcShanten(hand: Tile[], melds: Meld[] = []): number {
   return getShanten(hand, { melds }).shanten;
 }
 
+function shantenCacheKey(hand: Tile[], melds: Meld[]): string {
+  const handKey = hand.slice().sort((a, b) => ALL_TILE_KEYS.indexOf(a) - ALL_TILE_KEYS.indexOf(b)).join(',');
+  const meldKey = melds
+    .map((meld) => `${meld.type}:${(meld.tiles || []).filter((tile): tile is Tile => !!tile).sort((a, b) => ALL_TILE_KEYS.indexOf(a) - ALL_TILE_KEYS.indexOf(b)).join(',')}`)
+    .sort()
+    .join('|');
+  return `${handKey}#${meldKey}`;
+}
+
 export function getShanten(hand: Tile[], context: WinContext = {}): ShantenResult {
   const melds = context.melds || [];
+  const cacheKey = shantenCacheKey(hand, melds);
+  const cached = shantenResultCache.get(cacheKey);
+  if (cached) return { ...cached };
   const normal = shantenNormalApprox(hand, melds);
   const sevenPairs = melds.length ? 99 : shantenSevenPairs(hand);
   const dalan = melds.length ? 99 : shantenDalan(hand);
@@ -240,7 +334,10 @@ export function getShanten(hand: Tile[], context: WinContext = {}): ShantenResul
     ['normal', normal],
   ];
   entries.sort((a, b) => a[1] - b[1]);
-  return { shanten: entries[0][1], normal, sevenPairs, dalan, banzhengzong, quanzhengzong, recommendedRoute: entries[0][0] };
+  const result = { shanten: entries[0][1], normal, sevenPairs, dalan, banzhengzong, quanzhengzong, recommendedRoute: entries[0][0] };
+  if (shantenResultCache.size >= SHANTEN_CACHE_LIMIT) shantenResultCache.clear();
+  shantenResultCache.set(cacheKey, result);
+  return { ...result };
 }
 
 export function checkTenpai(hand: Tile[], melds: Meld[] = []): TenpaiResult {

@@ -16,6 +16,8 @@ exports.getShanten = getShanten;
 exports.checkTenpai = checkTenpai;
 exports.baseScoreForHandType = baseScoreForHandType;
 const tile_utils_1 = require("./tile-utils");
+const SHANTEN_CACHE_LIMIT = 5000;
+const shantenResultCache = new Map();
 function isSevenPairs(hand) {
     return hand.length === 14 && Array.from((0, tile_utils_1.countTiles)(hand).values()).every((count) => count === 2);
 }
@@ -126,7 +128,8 @@ function checkSevenPairs(hand, melds = []) {
     return melds.length === 0 && isSevenPairs(hand);
 }
 function checkAllWinds(hand, melds = []) {
-    return isAllHonor(hand) && checkStandardWin(hand, melds).canWin;
+    const meldTiles = melds.flatMap((meld) => meld.tiles.filter((tile) => !!tile));
+    return hand.length + melds.length * 3 === 14 && hand.concat(meldTiles).every(tile_utils_1.isHonor);
 }
 function checkDalan(hand, melds = []) {
     if (melds.length > 0 || !checkDalanBasic(hand))
@@ -179,7 +182,7 @@ function classifyHand(hand, melds = [], _winTile, _winMethod) {
     if (!handTypes.length)
         handTypes.push('平胡');
     const primaryType = handTypes.reduce((best, item) => (baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best), handTypes[0]);
-    const baseScore = handTypes.reduce((sum, item) => sum + baseScoreForHandType(item), 0);
+    const baseScore = handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1);
     return { handTypes, primaryType, baseScore, route, isDalan: dalan.isDalan };
 }
 function getPrimaryHandType(hand, melds = [], winTile, winMethod) {
@@ -245,24 +248,119 @@ function shantenZhengzong(hand, unified) {
 function shantenNormalApprox(hand, melds = []) {
     if (checkStandardWin(hand, melds).canWin)
         return -1;
-    const counts = (0, tile_utils_1.countTileRecord)(hand);
-    const triplets = Object.values(counts).filter((count) => count >= 3).length;
-    const pairs = Object.values(counts).filter((count) => count >= 2).length;
-    let sequences = 0;
-    for (const suit of tile_utils_1.NUMBER_SUITS) {
-        for (let value = 1; value <= 7; value += 1) {
-            if (counts[`${suit}${value}`] && counts[`${suit}${value + 1}`] && counts[`${suit}${value + 2}`])
-                sequences += 1;
-        }
+    const baseCounts = (0, tile_utils_1.countTileRecord)(hand);
+    const fixedMelds = melds.length;
+    const memo = new Map();
+    let best = 8;
+    function activeTiles(counts) {
+        return Object.keys(counts).filter((tile) => counts[tile] > 0);
     }
-    const complete = Math.min(4, melds.length + triplets + sequences);
-    return Math.max(0, 4 - complete + (pairs > 0 ? 0 : 1));
+    function serialize(counts, madeMelds, pairs, taatsu) {
+        return `${madeMelds}|${pairs}|${taatsu}|${tile_utils_1.ALL_TILE_KEYS.map((tile) => counts[tile] || 0).join('')}`;
+    }
+    function applyTerminal(madeMelds, pairs, taatsu) {
+        const complete = Math.min(4, fixedMelds + madeMelds);
+        const usableTaatsu = Math.min(4 - complete, taatsu);
+        best = Math.min(best, 8 - complete * 2 - usableTaatsu - (pairs > 0 ? 1 : 0));
+    }
+    function completeGroups(tile) {
+        const groups = [[tile, tile, tile]];
+        if ((0, tile_utils_1.isNumberTile)(tile) && (0, tile_utils_1.tileValue)(tile) <= 7) {
+            const suit = (0, tile_utils_1.tileSuit)(tile);
+            const value = (0, tile_utils_1.tileValue)(tile);
+            groups.push([tile, `${suit}${value + 1}`, `${suit}${value + 2}`]);
+        }
+        if (tile_utils_1.WIND_TILES.includes(tile)) {
+            groups.push(...[
+                ['dong', 'nan', 'xi'],
+                ['dong', 'nan', 'bei'],
+                ['dong', 'xi', 'bei'],
+                ['nan', 'xi', 'bei'],
+            ].filter((group) => group.includes(tile)));
+        }
+        if (tile_utils_1.ARROW_TILES.includes(tile))
+            groups.push(['zhong', 'fa', 'bai']);
+        return groups;
+    }
+    function incompleteGroups(tile) {
+        const groups = [[tile, tile]];
+        if ((0, tile_utils_1.isNumberTile)(tile)) {
+            const suit = (0, tile_utils_1.tileSuit)(tile);
+            const value = (0, tile_utils_1.tileValue)(tile);
+            if (value <= 8)
+                groups.push([tile, `${suit}${value + 1}`]);
+            if (value <= 7)
+                groups.push([tile, `${suit}${value + 2}`]);
+        }
+        if (tile_utils_1.WIND_TILES.includes(tile)) {
+            for (const group of [
+                ['dong', 'nan', 'xi'],
+                ['dong', 'nan', 'bei'],
+                ['dong', 'xi', 'bei'],
+                ['nan', 'xi', 'bei'],
+            ]) {
+                if (group.includes(tile))
+                    for (const other of group)
+                        if (other !== tile)
+                            groups.push([tile, other]);
+            }
+        }
+        if (tile_utils_1.ARROW_TILES.includes(tile))
+            for (const other of tile_utils_1.ARROW_TILES)
+                if (other !== tile)
+                    groups.push([tile, other]);
+        return groups;
+    }
+    function dfs(counts, madeMelds, pairs, taatsu) {
+        const key = serialize(counts, madeMelds, pairs, taatsu);
+        const cached = memo.get(key);
+        if (cached !== undefined && cached <= best)
+            return;
+        memo.set(key, best);
+        const active = activeTiles(counts);
+        if (!active.length) {
+            applyTerminal(madeMelds, pairs, taatsu);
+            return;
+        }
+        const tile = active[0];
+        for (const group of completeGroups(tile)) {
+            const next = removeSet(counts, group);
+            if (next)
+                dfs(next, madeMelds + 1, pairs, taatsu);
+        }
+        if (pairs === 0) {
+            const next = removeSet(counts, [tile, tile]);
+            if (next)
+                dfs(next, madeMelds, 1, taatsu);
+        }
+        for (const group of incompleteGroups(tile)) {
+            const next = removeSet(counts, group);
+            if (next)
+                dfs(next, madeMelds, pairs, taatsu + 1);
+        }
+        const skipped = { ...counts, [tile]: counts[tile] - 1 };
+        dfs(skipped, madeMelds, pairs, taatsu);
+    }
+    dfs(baseCounts, 0, 0, 0);
+    return Math.max(0, best);
 }
 function calcShanten(hand, melds = []) {
     return getShanten(hand, { melds }).shanten;
 }
+function shantenCacheKey(hand, melds) {
+    const handKey = hand.slice().sort((a, b) => tile_utils_1.ALL_TILE_KEYS.indexOf(a) - tile_utils_1.ALL_TILE_KEYS.indexOf(b)).join(',');
+    const meldKey = melds
+        .map((meld) => `${meld.type}:${(meld.tiles || []).filter((tile) => !!tile).sort((a, b) => tile_utils_1.ALL_TILE_KEYS.indexOf(a) - tile_utils_1.ALL_TILE_KEYS.indexOf(b)).join(',')}`)
+        .sort()
+        .join('|');
+    return `${handKey}#${meldKey}`;
+}
 function getShanten(hand, context = {}) {
     const melds = context.melds || [];
+    const cacheKey = shantenCacheKey(hand, melds);
+    const cached = shantenResultCache.get(cacheKey);
+    if (cached)
+        return { ...cached };
     const normal = shantenNormalApprox(hand, melds);
     const sevenPairs = melds.length ? 99 : shantenSevenPairs(hand);
     const dalan = melds.length ? 99 : shantenDalan(hand);
@@ -276,7 +374,11 @@ function getShanten(hand, context = {}) {
         ['normal', normal],
     ];
     entries.sort((a, b) => a[1] - b[1]);
-    return { shanten: entries[0][1], normal, sevenPairs, dalan, banzhengzong, quanzhengzong, recommendedRoute: entries[0][0] };
+    const result = { shanten: entries[0][1], normal, sevenPairs, dalan, banzhengzong, quanzhengzong, recommendedRoute: entries[0][0] };
+    if (shantenResultCache.size >= SHANTEN_CACHE_LIMIT)
+        shantenResultCache.clear();
+    shantenResultCache.set(cacheKey, result);
+    return { ...result };
 }
 function checkTenpai(hand, melds = []) {
     const waitingDetails = tile_utils_1.ALL_TILE_KEYS.map((tile) => {
@@ -394,7 +496,7 @@ function calculateScore(params) {
     const noColorBonus = (_a = params.noColorBonus) !== null && _a !== void 0 ? _a : false;
     const isTrueWin = (_b = params.isTrueWin) !== null && _b !== void 0 ? _b : true;
     const lianGangCount = (_c = params.lianGangCount) !== null && _c !== void 0 ? _c : 0;
-    const baseScore = (_d = params.baseScore) !== null && _d !== void 0 ? _d : params.handTypes.reduce((sum, item) => sum + (0, hand_evaluator_1.baseScoreForHandType)(item), 0);
+    const baseScore = (_d = params.baseScore) !== null && _d !== void 0 ? _d : params.handTypes.reduce((product, item) => product * (0, hand_evaluator_1.baseScoreForHandType)(item), 1);
     let score = baseScore;
     if (params.winMethod === '杠开')
         score *= 2;
@@ -412,25 +514,29 @@ function calculateScore(params) {
         score = 6;
     if (params.winMethod === '天胡' || params.winMethod === '地胡')
         score = 4;
-    const capped = Math.min(score, rule_config_1.DEFAULT_RULES.capAmount);
+    const cappedScore = Math.min(score, rule_config_1.DEFAULT_RULES.capAmount);
+    let capped = score >= rule_config_1.DEFAULT_RULES.capAmount;
     const scorePerPlayer = [0, 0, 0, 0];
     if (params.zhiChanFromPlayer != null) {
-        scorePerPlayer[params.zhiChanFromPlayer] = Math.min(baseScore * 4, rule_config_1.DEFAULT_RULES.capAmount);
+        const zhiChanPayerRaw = score * 2;
+        const otherPayerRaw = score;
+        capped = capped || zhiChanPayerRaw >= rule_config_1.DEFAULT_RULES.capAmount || otherPayerRaw >= rule_config_1.DEFAULT_RULES.capAmount;
+        scorePerPlayer[params.zhiChanFromPlayer] = Math.min(zhiChanPayerRaw, rule_config_1.DEFAULT_RULES.capAmount);
         for (let i = 0; i < 4; i += 1)
             if (i !== params.currentPlayer && i !== params.zhiChanFromPlayer)
-                scorePerPlayer[i] = Math.min(baseScore * 2, rule_config_1.DEFAULT_RULES.capAmount);
+                scorePerPlayer[i] = Math.min(otherPayerRaw, rule_config_1.DEFAULT_RULES.capAmount);
     }
     else if (params.winMethod === '点炮' || params.winMethod === '抢杠') {
         scorePerPlayer.fill(0);
         const payer = (_e = params.payer) !== null && _e !== void 0 ? _e : (params.currentPlayer + 1) % 4;
-        scorePerPlayer[payer] = capped;
+        scorePerPlayer[payer] = cappedScore;
     }
     else {
         for (let i = 0; i < 4; i += 1)
             if (i !== params.currentPlayer)
-                scorePerPlayer[i] = capped;
+                scorePerPlayer[i] = cappedScore;
     }
-    return { scorePerPlayer, winnerGain: scorePerPlayer.reduce((sum, item) => sum + item, 0), capped: score > rule_config_1.DEFAULT_RULES.capAmount };
+    return { scorePerPlayer, winnerGain: scorePerPlayer.reduce((sum, item) => sum + item, 0), capped };
 }
 function pointsFor(hand, winType) {
     const classification = (0, hand_evaluator_1.classifyHand)(hand);
@@ -619,19 +725,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveWildcard = resolveWildcard;
-const tile_utils_1 = require("./tile-utils");
 const hand_evaluator_1 = require("./hand-evaluator");
 function resolveWildcard(hand, melds, zhiChanDrawTile) {
     if ((0, hand_evaluator_1.canWin)(hand, { melds }).canWin)
         return { isTrueWin: true, isFakeWin: false };
     for (let i = 0; i < hand.length; i += 1) {
         const originalTile = hand[i];
-        for (const replacement of tile_utils_1.ALL_TILE_KEYS) {
-            const replaced = hand.slice();
-            replaced[i] = replacement;
-            if ((0, hand_evaluator_1.canWin)(replaced, { melds, winTile: zhiChanDrawTile }).canWin) {
-                return { isTrueWin: false, isFakeWin: true, fakeWinReplacement: { originalTile, replacedBy: replacement } };
-            }
+        const replaced = hand.slice();
+        replaced[i] = zhiChanDrawTile;
+        if ((0, hand_evaluator_1.canWin)(replaced, { melds, winTile: zhiChanDrawTile }).canWin) {
+            return { isTrueWin: false, isFakeWin: true, fakeWinReplacement: { originalTile, replacedBy: zhiChanDrawTile } };
         }
     }
     return { isTrueWin: false, isFakeWin: false };

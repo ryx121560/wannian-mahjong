@@ -3565,11 +3565,13 @@
       "id": "L1-all-winds-006",
       "level": "L1",
       "category": "all-winds",
-      "description": "全字牌必须满足标准胡牌结构",
+      "description": "PRD全风向不要求标准面子结构",
       "hand": [
         "dong",
         "dong",
         "dong",
+        "dong",
+        "nan",
         "nan",
         "nan",
         "nan",
@@ -3577,17 +3579,19 @@
         "xi",
         "xi",
         "bei",
-        "bei",
-        "fa",
-        "fa",
-        "zhong"
+        "zhong",
+        "fa"
       ],
       "context": {
         "winType": "自摸",
-        "winTile": "zhong"
+        "winTile": "fa"
       },
       "expected": {
-        "canWin": false
+        "canWin": true,
+        "handTypes": [
+          "全风向"
+        ],
+        "baseScore": 16
       }
     },
     {
@@ -4744,7 +4748,7 @@
           "清一色",
           "碰碰胡"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -4777,7 +4781,7 @@
           "清一色",
           "碰碰胡"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -4810,7 +4814,7 @@
           "清一色",
           "碰碰胡"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -4843,7 +4847,7 @@
           "清一色",
           "碰碰胡"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -4876,7 +4880,7 @@
           "清一色",
           "碰碰胡"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -5074,7 +5078,7 @@
           "清一色",
           "七对"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -5107,7 +5111,7 @@
           "清一色",
           "七对"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -5140,7 +5144,7 @@
           "清一色",
           "七对"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -5173,7 +5177,7 @@
           "清一色",
           "七对"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -5206,7 +5210,7 @@
           "清一色",
           "七对"
         ],
-        "baseScore": 6
+        "baseScore": 8
       }
     },
     {
@@ -7577,7 +7581,59 @@
       "id": "L1-gang-system-009",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canPeng 9",
+      "description": "杠碰直铲 canQiangXingPaoGang 9",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": false,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": true,
+          "gangTile": "wan2",
+          "isPaoGang": true
+        }
+      }
+    },
+    {
+      "id": "L1-gang-system-010",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canQiangXingPaoGang 10",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": true,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": false,
+          "gangTile": null,
+          "isPaoGang": false
+        }
+      }
+    },
+    {
+      "id": "L1-gang-system-011",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canPeng 11",
       "meldCheck": {
         "fn": "canPeng",
         "input": {
@@ -7593,10 +7649,10 @@
       }
     },
     {
-      "id": "L1-gang-system-010",
+      "id": "L1-gang-system-012",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canPeng 10",
+      "description": "杠碰直铲 canPeng 12",
       "meldCheck": {
         "fn": "canPeng",
         "input": {
@@ -7611,10 +7667,10 @@
       }
     },
     {
-      "id": "L1-gang-system-011",
+      "id": "L1-gang-system-013",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canAnGang 11",
+      "description": "杠碰直铲 canAnGang 13",
       "meldCheck": {
         "fn": "canAnGang",
         "input": {
@@ -7633,10 +7689,10 @@
       }
     },
     {
-      "id": "L1-gang-system-012",
+      "id": "L1-gang-system-014",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canMingGang 12",
+      "description": "杠碰直铲 canMingGang 14",
       "meldCheck": {
         "fn": "canMingGang",
         "input": {
@@ -7661,10 +7717,10 @@
       }
     },
     {
-      "id": "L1-gang-system-013",
+      "id": "L1-gang-system-015",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canZhiChan 13",
+      "description": "杠碰直铲 canZhiChan 15",
       "meldCheck": {
         "fn": "canZhiChan",
         "input": {
@@ -7677,50 +7733,6 @@
           "isTenpai": true,
           "discardTile": "wan1",
           "discardPlayer": 2
-        }
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-gang-system-014",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canZhiChan 14",
-      "meldCheck": {
-        "fn": "canZhiChan",
-        "input": {
-          "hand": [
-            "wan1",
-            "wan1",
-            "wan1"
-          ],
-          "melds": [],
-          "isTenpai": false,
-          "discardTile": "wan1",
-          "discardPlayer": 2
-        }
-      },
-      "expected": {
-        "value": false
-      }
-    },
-    {
-      "id": "L1-gang-system-015",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canLianGang 15",
-      "meldCheck": {
-        "fn": "canLianGang",
-        "input": {
-          "hand": [
-            "wan1",
-            "wan1",
-            "wan1"
-          ],
-          "melds": [],
-          "lastGangDrawTile": "wan1"
         }
       },
       "expected": {
@@ -7731,135 +7743,7 @@
       "id": "L1-gang-system-016",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 getGangDrawTile 16",
-      "meldCheck": {
-        "fn": "getGangDrawTile",
-        "input": {
-          "wallTiles": [
-            "wan1",
-            "tong2"
-          ]
-        }
-      },
-      "expected": {
-        "value": "tong2"
-      }
-    },
-    {
-      "id": "L1-gang-system-017",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canPeng 17",
-      "meldCheck": {
-        "fn": "canPeng",
-        "input": {
-          "hand": [
-            "wan1",
-            "wan1"
-          ],
-          "discardTile": "wan1"
-        }
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-gang-system-018",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canPeng 18",
-      "meldCheck": {
-        "fn": "canPeng",
-        "input": {
-          "hand": [
-            "wan1"
-          ],
-          "discardTile": "wan1"
-        }
-      },
-      "expected": {
-        "value": false
-      }
-    },
-    {
-      "id": "L1-gang-system-019",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canAnGang 19",
-      "meldCheck": {
-        "fn": "canAnGang",
-        "input": {
-          "hand": [
-            "wan1",
-            "wan1",
-            "wan1",
-            "wan1"
-          ]
-        }
-      },
-      "expected": {
-        "value": [
-          "wan1"
-        ]
-      }
-    },
-    {
-      "id": "L1-gang-system-020",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canMingGang 20",
-      "meldCheck": {
-        "fn": "canMingGang",
-        "input": {
-          "hand": [
-            "wan1"
-          ],
-          "melds": [
-            {
-              "type": "peng",
-              "tiles": [
-                "wan1",
-                "wan1",
-                "wan1"
-              ]
-            }
-          ],
-          "selfDrawnTile": "wan1"
-        }
-      },
-      "expected": {
-        "value": "wan1"
-      }
-    },
-    {
-      "id": "L1-gang-system-021",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canZhiChan 21",
-      "meldCheck": {
-        "fn": "canZhiChan",
-        "input": {
-          "hand": [
-            "wan1",
-            "wan1",
-            "wan1"
-          ],
-          "melds": [],
-          "isTenpai": true,
-          "discardTile": "wan1",
-          "discardPlayer": 2
-        }
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-gang-system-022",
-      "level": "L1",
-      "category": "gang-system",
-      "description": "杠碰直铲 canZhiChan 22",
+      "description": "杠碰直铲 canZhiChan 16",
       "meldCheck": {
         "fn": "canZhiChan",
         "input": {
@@ -7879,10 +7763,10 @@
       }
     },
     {
-      "id": "L1-gang-system-023",
+      "id": "L1-gang-system-017",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canLianGang 23",
+      "description": "杠碰直铲 canLianGang 17",
       "meldCheck": {
         "fn": "canLianGang",
         "input": {
@@ -7900,10 +7784,10 @@
       }
     },
     {
-      "id": "L1-gang-system-024",
+      "id": "L1-gang-system-018",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 getGangDrawTile 24",
+      "description": "杠碰直铲 getGangDrawTile 18",
       "meldCheck": {
         "fn": "getGangDrawTile",
         "input": {
@@ -7918,10 +7802,62 @@
       }
     },
     {
-      "id": "L1-gang-system-025",
+      "id": "L1-gang-system-019",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canPeng 25",
+      "description": "杠碰直铲 canQiangXingPaoGang 19",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": false,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": true,
+          "gangTile": "wan2",
+          "isPaoGang": true
+        }
+      }
+    },
+    {
+      "id": "L1-gang-system-020",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canQiangXingPaoGang 20",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": true,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": false,
+          "gangTile": null,
+          "isPaoGang": false
+        }
+      }
+    },
+    {
+      "id": "L1-gang-system-021",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canPeng 21",
       "meldCheck": {
         "fn": "canPeng",
         "input": {
@@ -7937,10 +7873,10 @@
       }
     },
     {
-      "id": "L1-gang-system-026",
+      "id": "L1-gang-system-022",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canPeng 26",
+      "description": "杠碰直铲 canPeng 22",
       "meldCheck": {
         "fn": "canPeng",
         "input": {
@@ -7955,10 +7891,10 @@
       }
     },
     {
-      "id": "L1-gang-system-027",
+      "id": "L1-gang-system-023",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canAnGang 27",
+      "description": "杠碰直铲 canAnGang 23",
       "meldCheck": {
         "fn": "canAnGang",
         "input": {
@@ -7977,10 +7913,10 @@
       }
     },
     {
-      "id": "L1-gang-system-028",
+      "id": "L1-gang-system-024",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canMingGang 28",
+      "description": "杠碰直铲 canMingGang 24",
       "meldCheck": {
         "fn": "canMingGang",
         "input": {
@@ -8005,10 +7941,10 @@
       }
     },
     {
-      "id": "L1-gang-system-029",
+      "id": "L1-gang-system-025",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canZhiChan 29",
+      "description": "杠碰直铲 canZhiChan 25",
       "meldCheck": {
         "fn": "canZhiChan",
         "input": {
@@ -8028,10 +7964,10 @@
       }
     },
     {
-      "id": "L1-gang-system-030",
+      "id": "L1-gang-system-026",
       "level": "L1",
       "category": "gang-system",
-      "description": "杠碰直铲 canZhiChan 30",
+      "description": "杠碰直铲 canZhiChan 26",
       "meldCheck": {
         "fn": "canZhiChan",
         "input": {
@@ -8048,6 +7984,97 @@
       },
       "expected": {
         "value": false
+      }
+    },
+    {
+      "id": "L1-gang-system-027",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canLianGang 27",
+      "meldCheck": {
+        "fn": "canLianGang",
+        "input": {
+          "hand": [
+            "wan1",
+            "wan1",
+            "wan1"
+          ],
+          "melds": [],
+          "lastGangDrawTile": "wan1"
+        }
+      },
+      "expected": {
+        "value": true
+      }
+    },
+    {
+      "id": "L1-gang-system-028",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 getGangDrawTile 28",
+      "meldCheck": {
+        "fn": "getGangDrawTile",
+        "input": {
+          "wallTiles": [
+            "wan1",
+            "tong2"
+          ]
+        }
+      },
+      "expected": {
+        "value": "tong2"
+      }
+    },
+    {
+      "id": "L1-gang-system-029",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canQiangXingPaoGang 29",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": false,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": true,
+          "gangTile": "wan2",
+          "isPaoGang": true
+        }
+      }
+    },
+    {
+      "id": "L1-gang-system-030",
+      "level": "L1",
+      "category": "gang-system",
+      "description": "杠碰直铲 canQiangXingPaoGang 30",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": true,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": false,
+          "gangTile": null,
+          "isPaoGang": false
+        }
       }
     },
     {
@@ -8141,15 +8168,19 @@
       "id": "L1-meld-legality-005",
       "level": "L1",
       "category": "meld-legality",
-      "description": "碰杠合法性 canPeng 5",
+      "description": "碰杠合法性 canZhiChan 5",
       "meldCheck": {
-        "fn": "canPeng",
+        "fn": "canZhiChan",
         "input": {
           "hand": [
             "wan1",
+            "wan1",
             "wan1"
           ],
-          "discardTile": "wan1"
+          "melds": [],
+          "isTenpai": true,
+          "discardTile": "wan1",
+          "discardPlayer": 2
         }
       },
       "expected": {
@@ -8160,14 +8191,19 @@
       "id": "L1-meld-legality-006",
       "level": "L1",
       "category": "meld-legality",
-      "description": "碰杠合法性 canPeng 6",
+      "description": "碰杠合法性 canZhiChan 6",
       "meldCheck": {
-        "fn": "canPeng",
+        "fn": "canZhiChan",
         "input": {
           "hand": [
+            "wan1",
+            "wan1",
             "wan1"
           ],
-          "discardTile": "wan1"
+          "melds": [],
+          "isTenpai": false,
+          "discardTile": "wan1",
+          "discardPlayer": 2
         }
       },
       "expected": {
@@ -8178,65 +8214,17 @@
       "id": "L1-meld-legality-007",
       "level": "L1",
       "category": "meld-legality",
-      "description": "碰杠合法性 canAnGang 7",
+      "description": "碰杠合法性 canLianGang 7",
       "meldCheck": {
-        "fn": "canAnGang",
+        "fn": "canLianGang",
         "input": {
           "hand": [
             "wan1",
             "wan1",
-            "wan1",
-            "wan1"
-          ]
-        }
-      },
-      "expected": {
-        "value": [
-          "wan1"
-        ]
-      }
-    },
-    {
-      "id": "L1-meld-legality-008",
-      "level": "L1",
-      "category": "meld-legality",
-      "description": "碰杠合法性 canMingGang 8",
-      "meldCheck": {
-        "fn": "canMingGang",
-        "input": {
-          "hand": [
             "wan1"
           ],
-          "melds": [
-            {
-              "type": "peng",
-              "tiles": [
-                "wan1",
-                "wan1",
-                "wan1"
-              ]
-            }
-          ],
-          "selfDrawnTile": "wan1"
-        }
-      },
-      "expected": {
-        "value": "wan1"
-      }
-    },
-    {
-      "id": "L1-meld-legality-009",
-      "level": "L1",
-      "category": "meld-legality",
-      "description": "碰杠合法性 canPeng 9",
-      "meldCheck": {
-        "fn": "canPeng",
-        "input": {
-          "hand": [
-            "wan1",
-            "wan1"
-          ],
-          "discardTile": "wan1"
+          "melds": [],
+          "lastGangDrawTile": "wan1"
         }
       },
       "expected": {
@@ -8244,21 +8232,73 @@
       }
     },
     {
-      "id": "L1-meld-legality-010",
+      "id": "L1-meld-legality-008",
       "level": "L1",
       "category": "meld-legality",
-      "description": "碰杠合法性 canPeng 10",
+      "description": "碰杠合法性 getGangDrawTile 8",
       "meldCheck": {
-        "fn": "canPeng",
+        "fn": "getGangDrawTile",
         "input": {
-          "hand": [
-            "wan1"
-          ],
-          "discardTile": "wan1"
+          "wallTiles": [
+            "wan1",
+            "tong2"
+          ]
         }
       },
       "expected": {
-        "value": false
+        "value": "tong2"
+      }
+    },
+    {
+      "id": "L1-meld-legality-009",
+      "level": "L1",
+      "category": "meld-legality",
+      "description": "碰杠合法性 canQiangXingPaoGang 9",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": false,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": true,
+          "gangTile": "wan2",
+          "isPaoGang": true
+        }
+      }
+    },
+    {
+      "id": "L1-meld-legality-010",
+      "level": "L1",
+      "category": "meld-legality",
+      "description": "碰杠合法性 canQiangXingPaoGang 10",
+      "meldCheck": {
+        "fn": "canQiangXingPaoGang",
+        "input": {
+          "hand": [
+            "wan2",
+            "wan2",
+            "wan2"
+          ],
+          "melds": [],
+          "isTenpai": true,
+          "discardTile": "wan2"
+        }
+      },
+      "expected": {
+        "value": {
+          "canGang": false,
+          "gangTile": null,
+          "isPaoGang": false
+        }
       }
     },
     {
@@ -8295,7 +8335,7 @@
       "id": "L1-wildcard-002",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 2",
+      "description": "宝牌假胡-东风替白板 2",
       "wildcard": {
         "hand": [
           "wan2",
@@ -8311,43 +8351,47 @@
           "wan7",
           "wan8",
           "dong",
-          "dong"
+          "bai"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "dong"
       },
       "expected": {
-        "isTrueWin": true,
-        "isFakeWin": false
+        "isTrueWin": false,
+        "isFakeWin": true,
+        "fakeWinReplacement": {
+          "originalTile": "bai",
+          "replacedBy": "dong"
+        }
       }
     },
     {
       "id": "L1-wildcard-003",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 3",
+      "description": "宝牌不能胡 3",
       "wildcard": {
         "hand": [
+          "wan1",
           "wan2",
           "wan3",
           "wan4",
-          "tong3",
-          "tong4",
-          "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
+          "wan5",
           "wan6",
           "wan7",
           "wan8",
+          "wan9",
+          "tong1",
+          "tong2",
+          "tong3",
           "dong",
-          "dong"
+          "fa"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "zhong"
       },
       "expected": {
-        "isTrueWin": true,
+        "isTrueWin": false,
         "isFakeWin": false
       }
     },
@@ -8355,23 +8399,23 @@
       "id": "L1-wildcard-004",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 4",
+      "description": "宝牌七对真胡 4",
       "wildcard": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
+          "tiao7",
           "dong",
-          "dong"
+          "dong",
+          "nan",
+          "nan",
+          "fa",
+          "fa"
         ],
         "melds": [],
         "drawTile": "wan1"
@@ -8415,7 +8459,7 @@
       "id": "L1-wildcard-006",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 6",
+      "description": "宝牌假胡-东风替白板 6",
       "wildcard": {
         "hand": [
           "wan2",
@@ -8431,43 +8475,47 @@
           "wan7",
           "wan8",
           "dong",
-          "dong"
+          "bai"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "dong"
       },
       "expected": {
-        "isTrueWin": true,
-        "isFakeWin": false
+        "isTrueWin": false,
+        "isFakeWin": true,
+        "fakeWinReplacement": {
+          "originalTile": "bai",
+          "replacedBy": "dong"
+        }
       }
     },
     {
       "id": "L1-wildcard-007",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 7",
+      "description": "宝牌不能胡 7",
       "wildcard": {
         "hand": [
+          "wan1",
           "wan2",
           "wan3",
           "wan4",
-          "tong3",
-          "tong4",
-          "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
+          "wan5",
           "wan6",
           "wan7",
           "wan8",
+          "wan9",
+          "tong1",
+          "tong2",
+          "tong3",
           "dong",
-          "dong"
+          "fa"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "zhong"
       },
       "expected": {
-        "isTrueWin": true,
+        "isTrueWin": false,
         "isFakeWin": false
       }
     },
@@ -8475,23 +8523,23 @@
       "id": "L1-wildcard-008",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 8",
+      "description": "宝牌七对真胡 8",
       "wildcard": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
+          "tiao7",
           "dong",
-          "dong"
+          "dong",
+          "nan",
+          "nan",
+          "fa",
+          "fa"
         ],
         "melds": [],
         "drawTile": "wan1"
@@ -8535,7 +8583,7 @@
       "id": "L1-wildcard-010",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 10",
+      "description": "宝牌假胡-东风替白板 10",
       "wildcard": {
         "hand": [
           "wan2",
@@ -8551,43 +8599,47 @@
           "wan7",
           "wan8",
           "dong",
-          "dong"
+          "bai"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "dong"
       },
       "expected": {
-        "isTrueWin": true,
-        "isFakeWin": false
+        "isTrueWin": false,
+        "isFakeWin": true,
+        "fakeWinReplacement": {
+          "originalTile": "bai",
+          "replacedBy": "dong"
+        }
       }
     },
     {
       "id": "L1-wildcard-011",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 11",
+      "description": "宝牌不能胡 11",
       "wildcard": {
         "hand": [
+          "wan1",
           "wan2",
           "wan3",
           "wan4",
-          "tong3",
-          "tong4",
-          "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
+          "wan5",
           "wan6",
           "wan7",
           "wan8",
+          "wan9",
+          "tong1",
+          "tong2",
+          "tong3",
           "dong",
-          "dong"
+          "fa"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "zhong"
       },
       "expected": {
-        "isTrueWin": true,
+        "isTrueWin": false,
         "isFakeWin": false
       }
     },
@@ -8595,23 +8647,23 @@
       "id": "L1-wildcard-012",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 12",
+      "description": "宝牌七对真胡 12",
       "wildcard": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
+          "tiao7",
           "dong",
-          "dong"
+          "dong",
+          "nan",
+          "nan",
+          "fa",
+          "fa"
         ],
         "melds": [],
         "drawTile": "wan1"
@@ -8655,7 +8707,7 @@
       "id": "L1-wildcard-014",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 14",
+      "description": "宝牌假胡-东风替白板 14",
       "wildcard": {
         "hand": [
           "wan2",
@@ -8671,43 +8723,47 @@
           "wan7",
           "wan8",
           "dong",
-          "dong"
+          "bai"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "dong"
       },
       "expected": {
-        "isTrueWin": true,
-        "isFakeWin": false
+        "isTrueWin": false,
+        "isFakeWin": true,
+        "fakeWinReplacement": {
+          "originalTile": "bai",
+          "replacedBy": "dong"
+        }
       }
     },
     {
       "id": "L1-wildcard-015",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 15",
+      "description": "宝牌不能胡 15",
       "wildcard": {
         "hand": [
+          "wan1",
           "wan2",
           "wan3",
           "wan4",
-          "tong3",
-          "tong4",
-          "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
+          "wan5",
           "wan6",
           "wan7",
           "wan8",
+          "wan9",
+          "tong1",
+          "tong2",
+          "tong3",
           "dong",
-          "dong"
+          "fa"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "zhong"
       },
       "expected": {
-        "isTrueWin": true,
+        "isTrueWin": false,
         "isFakeWin": false
       }
     },
@@ -8715,23 +8771,23 @@
       "id": "L1-wildcard-016",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 16",
+      "description": "宝牌七对真胡 16",
       "wildcard": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
+          "tiao7",
           "dong",
-          "dong"
+          "dong",
+          "nan",
+          "nan",
+          "fa",
+          "fa"
         ],
         "melds": [],
         "drawTile": "wan1"
@@ -8775,7 +8831,7 @@
       "id": "L1-wildcard-018",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 18",
+      "description": "宝牌假胡-东风替白板 18",
       "wildcard": {
         "hand": [
           "wan2",
@@ -8791,43 +8847,47 @@
           "wan7",
           "wan8",
           "dong",
-          "dong"
+          "bai"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "dong"
       },
       "expected": {
-        "isTrueWin": true,
-        "isFakeWin": false
+        "isTrueWin": false,
+        "isFakeWin": true,
+        "fakeWinReplacement": {
+          "originalTile": "bai",
+          "replacedBy": "dong"
+        }
       }
     },
     {
       "id": "L1-wildcard-019",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 19",
+      "description": "宝牌不能胡 19",
       "wildcard": {
         "hand": [
+          "wan1",
           "wan2",
           "wan3",
           "wan4",
-          "tong3",
-          "tong4",
-          "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
+          "wan5",
           "wan6",
           "wan7",
           "wan8",
+          "wan9",
+          "tong1",
+          "tong2",
+          "tong3",
           "dong",
-          "dong"
+          "fa"
         ],
         "melds": [],
-        "drawTile": "wan1"
+        "drawTile": "zhong"
       },
       "expected": {
-        "isTrueWin": true,
+        "isTrueWin": false,
         "isFakeWin": false
       }
     },
@@ -8835,23 +8895,23 @@
       "id": "L1-wildcard-020",
       "level": "L1",
       "category": "wildcard",
-      "description": "宝牌真胡 20",
+      "description": "宝牌七对真胡 20",
       "wildcard": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
+          "tiao7",
           "dong",
-          "dong"
+          "dong",
+          "nan",
+          "nan",
+          "fa",
+          "fa"
         ],
         "melds": [],
         "drawTile": "wan1"
@@ -8865,7 +8925,7 @@
       "id": "L1-no-color-001",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 1",
+      "description": "混一色补字牌没走色 1",
       "noColor": {
         "hand": [
           "wan1",
@@ -8882,7 +8942,7 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "wan5"
+        "drawTile": "dong"
       },
       "expected": {
         "value": true
@@ -8892,7 +8952,7 @@
       "id": "L1-no-color-002",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 2",
+      "description": "混一色补同花色没走色 2",
       "noColor": {
         "hand": [
           "wan1",
@@ -8909,7 +8969,7 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "dong"
+        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -8919,7 +8979,7 @@
       "id": "L1-no-color-003",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 3",
+      "description": "混一色补异花色走色 3",
       "noColor": {
         "hand": [
           "wan1",
@@ -8936,17 +8996,43 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "wan5"
+        "drawTile": "tong5"
       },
       "expected": {
-        "value": true
+        "value": false
       }
     },
     {
       "id": "L1-no-color-004",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 4",
+      "description": "清一色补异花色走色 4",
+      "noColor": {
+        "hand": [
+          "tiao1",
+          "tiao2",
+          "tiao3",
+          "tiao4",
+          "tiao5",
+          "tiao6",
+          "tiao7",
+          "tiao8",
+          "tiao9"
+        ],
+        "handTypes": [
+          "清一色"
+        ],
+        "drawTile": "wan5"
+      },
+      "expected": {
+        "value": false
+      }
+    },
+    {
+      "id": "L1-no-color-005",
+      "level": "L1",
+      "category": "no-color",
+      "description": "混一色补字牌没走色 5",
       "noColor": {
         "hand": [
           "wan1",
@@ -8964,33 +9050,6 @@
           "混一色"
         ],
         "drawTile": "dong"
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-no-color-005",
-      "level": "L1",
-      "category": "no-color",
-      "description": "没走色 5",
-      "noColor": {
-        "hand": [
-          "wan1",
-          "wan2",
-          "wan3",
-          "wan4",
-          "wan5",
-          "wan6",
-          "wan7",
-          "wan8",
-          "wan9",
-          "dong"
-        ],
-        "handTypes": [
-          "混一色"
-        ],
-        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9000,7 +9059,7 @@
       "id": "L1-no-color-006",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 6",
+      "description": "混一色补同花色没走色 6",
       "noColor": {
         "hand": [
           "wan1",
@@ -9017,7 +9076,7 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "dong"
+        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9027,7 +9086,7 @@
       "id": "L1-no-color-007",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 7",
+      "description": "混一色补异花色走色 7",
       "noColor": {
         "hand": [
           "wan1",
@@ -9044,17 +9103,43 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "wan5"
+        "drawTile": "tong5"
       },
       "expected": {
-        "value": true
+        "value": false
       }
     },
     {
       "id": "L1-no-color-008",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 8",
+      "description": "清一色补异花色走色 8",
+      "noColor": {
+        "hand": [
+          "tiao1",
+          "tiao2",
+          "tiao3",
+          "tiao4",
+          "tiao5",
+          "tiao6",
+          "tiao7",
+          "tiao8",
+          "tiao9"
+        ],
+        "handTypes": [
+          "清一色"
+        ],
+        "drawTile": "wan5"
+      },
+      "expected": {
+        "value": false
+      }
+    },
+    {
+      "id": "L1-no-color-009",
+      "level": "L1",
+      "category": "no-color",
+      "description": "混一色补字牌没走色 9",
       "noColor": {
         "hand": [
           "wan1",
@@ -9072,33 +9157,6 @@
           "混一色"
         ],
         "drawTile": "dong"
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-no-color-009",
-      "level": "L1",
-      "category": "no-color",
-      "description": "没走色 9",
-      "noColor": {
-        "hand": [
-          "wan1",
-          "wan2",
-          "wan3",
-          "wan4",
-          "wan5",
-          "wan6",
-          "wan7",
-          "wan8",
-          "wan9",
-          "dong"
-        ],
-        "handTypes": [
-          "混一色"
-        ],
-        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9108,7 +9166,7 @@
       "id": "L1-no-color-010",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 10",
+      "description": "混一色补同花色没走色 10",
       "noColor": {
         "hand": [
           "wan1",
@@ -9125,7 +9183,7 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "dong"
+        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9135,7 +9193,7 @@
       "id": "L1-no-color-011",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 11",
+      "description": "混一色补异花色走色 11",
       "noColor": {
         "hand": [
           "wan1",
@@ -9152,17 +9210,43 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "wan5"
+        "drawTile": "tong5"
       },
       "expected": {
-        "value": true
+        "value": false
       }
     },
     {
       "id": "L1-no-color-012",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 12",
+      "description": "清一色补异花色走色 12",
+      "noColor": {
+        "hand": [
+          "tiao1",
+          "tiao2",
+          "tiao3",
+          "tiao4",
+          "tiao5",
+          "tiao6",
+          "tiao7",
+          "tiao8",
+          "tiao9"
+        ],
+        "handTypes": [
+          "清一色"
+        ],
+        "drawTile": "wan5"
+      },
+      "expected": {
+        "value": false
+      }
+    },
+    {
+      "id": "L1-no-color-013",
+      "level": "L1",
+      "category": "no-color",
+      "description": "混一色补字牌没走色 13",
       "noColor": {
         "hand": [
           "wan1",
@@ -9180,33 +9264,6 @@
           "混一色"
         ],
         "drawTile": "dong"
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-no-color-013",
-      "level": "L1",
-      "category": "no-color",
-      "description": "没走色 13",
-      "noColor": {
-        "hand": [
-          "wan1",
-          "wan2",
-          "wan3",
-          "wan4",
-          "wan5",
-          "wan6",
-          "wan7",
-          "wan8",
-          "wan9",
-          "dong"
-        ],
-        "handTypes": [
-          "混一色"
-        ],
-        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9216,7 +9273,7 @@
       "id": "L1-no-color-014",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 14",
+      "description": "混一色补同花色没走色 14",
       "noColor": {
         "hand": [
           "wan1",
@@ -9233,7 +9290,7 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "dong"
+        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9243,7 +9300,7 @@
       "id": "L1-no-color-015",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 15",
+      "description": "混一色补异花色走色 15",
       "noColor": {
         "hand": [
           "wan1",
@@ -9260,17 +9317,43 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "wan5"
+        "drawTile": "tong5"
       },
       "expected": {
-        "value": true
+        "value": false
       }
     },
     {
       "id": "L1-no-color-016",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 16",
+      "description": "清一色补异花色走色 16",
+      "noColor": {
+        "hand": [
+          "tiao1",
+          "tiao2",
+          "tiao3",
+          "tiao4",
+          "tiao5",
+          "tiao6",
+          "tiao7",
+          "tiao8",
+          "tiao9"
+        ],
+        "handTypes": [
+          "清一色"
+        ],
+        "drawTile": "wan5"
+      },
+      "expected": {
+        "value": false
+      }
+    },
+    {
+      "id": "L1-no-color-017",
+      "level": "L1",
+      "category": "no-color",
+      "description": "混一色补字牌没走色 17",
       "noColor": {
         "hand": [
           "wan1",
@@ -9288,33 +9371,6 @@
           "混一色"
         ],
         "drawTile": "dong"
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-no-color-017",
-      "level": "L1",
-      "category": "no-color",
-      "description": "没走色 17",
-      "noColor": {
-        "hand": [
-          "wan1",
-          "wan2",
-          "wan3",
-          "wan4",
-          "wan5",
-          "wan6",
-          "wan7",
-          "wan8",
-          "wan9",
-          "dong"
-        ],
-        "handTypes": [
-          "混一色"
-        ],
-        "drawTile": "wan5"
       },
       "expected": {
         "value": true
@@ -9324,34 +9380,7 @@
       "id": "L1-no-color-018",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 18",
-      "noColor": {
-        "hand": [
-          "wan1",
-          "wan2",
-          "wan3",
-          "wan4",
-          "wan5",
-          "wan6",
-          "wan7",
-          "wan8",
-          "wan9",
-          "dong"
-        ],
-        "handTypes": [
-          "混一色"
-        ],
-        "drawTile": "dong"
-      },
-      "expected": {
-        "value": true
-      }
-    },
-    {
-      "id": "L1-no-color-019",
-      "level": "L1",
-      "category": "no-color",
-      "description": "没走色 19",
+      "description": "混一色补同花色没走色 18",
       "noColor": {
         "hand": [
           "wan1",
@@ -9375,10 +9404,10 @@
       }
     },
     {
-      "id": "L1-no-color-020",
+      "id": "L1-no-color-019",
       "level": "L1",
       "category": "no-color",
-      "description": "没走色 20",
+      "description": "混一色补异花色走色 19",
       "noColor": {
         "hand": [
           "wan1",
@@ -9395,17 +9424,43 @@
         "handTypes": [
           "混一色"
         ],
-        "drawTile": "dong"
+        "drawTile": "tong5"
       },
       "expected": {
-        "value": true
+        "value": false
+      }
+    },
+    {
+      "id": "L1-no-color-020",
+      "level": "L1",
+      "category": "no-color",
+      "description": "清一色补异花色走色 20",
+      "noColor": {
+        "hand": [
+          "tiao1",
+          "tiao2",
+          "tiao3",
+          "tiao4",
+          "tiao5",
+          "tiao6",
+          "tiao7",
+          "tiao8",
+          "tiao9"
+        ],
+        "handTypes": [
+          "清一色"
+        ],
+        "drawTile": "wan5"
+      },
+      "expected": {
+        "value": false
       }
     },
     {
       "id": "L1-pass-rule-001",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 1",
+      "description": "同圈同张不可胡 1",
       "passRule": {
         "passRecords": [
           {
@@ -9426,7 +9481,7 @@
       "id": "L1-pass-rule-002",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 2",
+      "description": "同圈不同张可胡 2",
       "passRule": {
         "passRecords": [
           {
@@ -9436,18 +9491,18 @@
           }
         ],
         "player": 0,
-        "tile": "wan5",
+        "tile": "wan6",
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-003",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 3",
+      "description": "下一圈同张解禁 3",
       "passRule": {
         "passRecords": [
           {
@@ -9458,21 +9513,21 @@
         ],
         "player": 0,
         "tile": "wan5",
-        "round": 1
+        "round": 2
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-004",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 4",
+      "description": "不同玩家不受影响 4",
       "passRule": {
         "passRecords": [
           {
-            "player": 0,
+            "player": 1,
             "tile": "wan5",
             "round": 1
           }
@@ -9482,14 +9537,14 @@
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-005",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 5",
+      "description": "同圈同张不可胡 5",
       "passRule": {
         "passRecords": [
           {
@@ -9510,7 +9565,7 @@
       "id": "L1-pass-rule-006",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 6",
+      "description": "同圈不同张可胡 6",
       "passRule": {
         "passRecords": [
           {
@@ -9520,18 +9575,18 @@
           }
         ],
         "player": 0,
-        "tile": "wan5",
+        "tile": "wan6",
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-007",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 7",
+      "description": "下一圈同张解禁 7",
       "passRule": {
         "passRecords": [
           {
@@ -9542,21 +9597,21 @@
         ],
         "player": 0,
         "tile": "wan5",
-        "round": 1
+        "round": 2
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-008",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 8",
+      "description": "不同玩家不受影响 8",
       "passRule": {
         "passRecords": [
           {
-            "player": 0,
+            "player": 1,
             "tile": "wan5",
             "round": 1
           }
@@ -9566,14 +9621,14 @@
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-009",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 9",
+      "description": "同圈同张不可胡 9",
       "passRule": {
         "passRecords": [
           {
@@ -9594,7 +9649,7 @@
       "id": "L1-pass-rule-010",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 10",
+      "description": "同圈不同张可胡 10",
       "passRule": {
         "passRecords": [
           {
@@ -9604,18 +9659,18 @@
           }
         ],
         "player": 0,
-        "tile": "wan5",
+        "tile": "wan6",
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-011",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 11",
+      "description": "下一圈同张解禁 11",
       "passRule": {
         "passRecords": [
           {
@@ -9626,21 +9681,21 @@
         ],
         "player": 0,
         "tile": "wan5",
-        "round": 1
+        "round": 2
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-012",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 12",
+      "description": "不同玩家不受影响 12",
       "passRule": {
         "passRecords": [
           {
-            "player": 0,
+            "player": 1,
             "tile": "wan5",
             "round": 1
           }
@@ -9650,14 +9705,14 @@
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-013",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 13",
+      "description": "同圈同张不可胡 13",
       "passRule": {
         "passRecords": [
           {
@@ -9678,7 +9733,7 @@
       "id": "L1-pass-rule-014",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 14",
+      "description": "同圈不同张可胡 14",
       "passRule": {
         "passRecords": [
           {
@@ -9688,18 +9743,18 @@
           }
         ],
         "player": 0,
-        "tile": "wan5",
+        "tile": "wan6",
         "round": 1
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-pass-rule-015",
       "level": "L1",
       "category": "pass-rule",
-      "description": "过水占位 15",
+      "description": "下一圈同张解禁 15",
       "passRule": {
         "passRecords": [
           {
@@ -9710,17 +9765,17 @@
         ],
         "player": 0,
         "tile": "wan5",
-        "round": 1
+        "round": 2
       },
       "expected": {
-        "canWinAfterPass": false
+        "canWinAfterPass": true
       }
     },
     {
       "id": "L1-tenpai-001",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 1",
+      "description": "单张听东风 1",
       "tenpai": {
         "hand": [
           "wan2",
@@ -9739,118 +9794,135 @@
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "dong"
+        ],
+        "minWaitCount": 1
       }
     },
     {
       "id": "L1-tenpai-002",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 2",
+      "description": "七对听发财 2",
       "tenpai": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao7",
+          "dong",
+          "dong",
+          "nan",
+          "nan",
+          "fa"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "fa"
+        ],
+        "minWaitCount": 1
       }
     },
     {
       "id": "L1-tenpai-003",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 3",
+      "description": "非听牌散手 3",
       "tenpai": {
         "hand": [
-          "wan2",
-          "wan3",
+          "wan1",
+          "wan1",
           "wan4",
-          "tong3",
-          "tong4",
+          "tong2",
           "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao3",
+          "tiao8",
+          "dong",
+          "nan",
+          "xi",
+          "bei",
+          "zhong",
+          "fa"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": false
       }
     },
     {
       "id": "L1-tenpai-004",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 4",
+      "description": "多面听 4",
       "tenpai": {
         "hand": [
           "wan2",
           "wan3",
           "wan4",
+          "wan5",
+          "wan6",
+          "wan7",
+          "wan8",
           "tong3",
           "tong4",
           "tong5",
           "tiao5",
           "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao7"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "wan5",
+          "wan8"
+        ],
+        "minWaitCount": 2
       }
     },
     {
       "id": "L1-tenpai-005",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 5",
+      "description": "风牌听 5",
       "tenpai": {
         "hand": [
+          "dong",
+          "nan",
+          "xi",
+          "zhong",
+          "fa",
+          "bai",
+          "wan1",
           "wan2",
           "wan3",
-          "wan4",
-          "tong3",
           "tong4",
           "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tong6",
+          "bei"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "bei"
+        ],
+        "minWaitCount": 1
       }
     },
     {
       "id": "L1-tenpai-006",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 6",
+      "description": "单张听东风 6",
       "tenpai": {
         "hand": [
           "wan2",
@@ -9869,118 +9941,135 @@
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "dong"
+        ],
+        "minWaitCount": 1
       }
     },
     {
       "id": "L1-tenpai-007",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 7",
+      "description": "七对听发财 7",
       "tenpai": {
         "hand": [
-          "wan2",
+          "wan1",
+          "wan1",
           "wan3",
-          "wan4",
-          "tong3",
-          "tong4",
+          "wan3",
           "tong5",
-          "tiao5",
-          "tiao6",
+          "tong5",
           "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao7",
+          "dong",
+          "dong",
+          "nan",
+          "nan",
+          "fa"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "fa"
+        ],
+        "minWaitCount": 1
       }
     },
     {
       "id": "L1-tenpai-008",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 8",
+      "description": "非听牌散手 8",
       "tenpai": {
         "hand": [
-          "wan2",
-          "wan3",
+          "wan1",
+          "wan1",
           "wan4",
-          "tong3",
-          "tong4",
+          "tong2",
           "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao3",
+          "tiao8",
+          "dong",
+          "nan",
+          "xi",
+          "bei",
+          "zhong",
+          "fa"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": false
       }
     },
     {
       "id": "L1-tenpai-009",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 9",
+      "description": "多面听 9",
       "tenpai": {
         "hand": [
           "wan2",
           "wan3",
           "wan4",
+          "wan5",
+          "wan6",
+          "wan7",
+          "wan8",
           "tong3",
           "tong4",
           "tong5",
           "tiao5",
           "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao7"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "wan5",
+          "wan8"
+        ],
+        "minWaitCount": 2
       }
     },
     {
       "id": "L1-tenpai-010",
       "level": "L1",
       "category": "tenpai",
-      "description": "听牌 10",
+      "description": "风牌听 10",
       "tenpai": {
         "hand": [
+          "dong",
+          "nan",
+          "xi",
+          "zhong",
+          "fa",
+          "bai",
+          "wan1",
           "wan2",
           "wan3",
-          "wan4",
-          "tong3",
           "tong4",
           "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tong6",
+          "bei"
         ]
       },
       "expected": {
-        "isTenpai": true
+        "isTenpai": true,
+        "waitingTiles": [
+          "bei"
+        ],
+        "minWaitCount": 1
       }
     },
     {
       "id": "L1-shanten-001",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 1",
+      "description": "已胡 1",
       "shanten": {
         "hand": [
           "wan2",
@@ -9995,18 +10084,20 @@
           "wan6",
           "wan7",
           "wan8",
+          "dong",
           "dong"
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": -1,
+        "exactShanten": -1
       }
     },
     {
       "id": "L1-shanten-002",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 2",
+      "description": "已听牌 2",
       "shanten": {
         "hand": [
           "wan2",
@@ -10025,14 +10116,15 @@
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": 0,
+        "exactShanten": 0
       }
     },
     {
       "id": "L1-shanten-003",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 3",
+      "description": "一向听 3",
       "shanten": {
         "hand": [
           "wan2",
@@ -10043,37 +10135,38 @@
           "tong5",
           "tiao5",
           "tiao6",
-          "tiao7",
           "wan6",
           "wan7",
-          "wan8",
-          "dong"
+          "dong",
+          "dong",
+          "fa"
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": 1,
+        "exactShanten": 1
       }
     },
     {
       "id": "L1-shanten-004",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 4",
+      "description": "二向听以内 4",
       "shanten": {
         "hand": [
-          "wan2",
-          "wan3",
+          "wan1",
+          "wan1",
           "wan4",
-          "tong3",
-          "tong4",
+          "tong2",
           "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao3",
+          "tiao8",
+          "dong",
+          "nan",
+          "xi",
+          "bei",
+          "zhong",
+          "fa"
         ]
       },
       "expected": {
@@ -10084,7 +10177,7 @@
       "id": "L1-shanten-005",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 5",
+      "description": "已胡 5",
       "shanten": {
         "hand": [
           "wan2",
@@ -10099,18 +10192,20 @@
           "wan6",
           "wan7",
           "wan8",
+          "dong",
           "dong"
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": -1,
+        "exactShanten": -1
       }
     },
     {
       "id": "L1-shanten-006",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 6",
+      "description": "已听牌 6",
       "shanten": {
         "hand": [
           "wan2",
@@ -10129,14 +10224,15 @@
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": 0,
+        "exactShanten": 0
       }
     },
     {
       "id": "L1-shanten-007",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 7",
+      "description": "一向听 7",
       "shanten": {
         "hand": [
           "wan2",
@@ -10147,37 +10243,38 @@
           "tong5",
           "tiao5",
           "tiao6",
-          "tiao7",
           "wan6",
           "wan7",
-          "wan8",
-          "dong"
+          "dong",
+          "dong",
+          "fa"
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": 1,
+        "exactShanten": 1
       }
     },
     {
       "id": "L1-shanten-008",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 8",
+      "description": "二向听以内 8",
       "shanten": {
         "hand": [
-          "wan2",
-          "wan3",
+          "wan1",
+          "wan1",
           "wan4",
-          "tong3",
-          "tong4",
+          "tong2",
           "tong5",
-          "tiao5",
-          "tiao6",
-          "tiao7",
-          "wan6",
-          "wan7",
-          "wan8",
-          "dong"
+          "tiao3",
+          "tiao8",
+          "dong",
+          "nan",
+          "xi",
+          "bei",
+          "zhong",
+          "fa"
         ]
       },
       "expected": {
@@ -10188,7 +10285,7 @@
       "id": "L1-shanten-009",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 9",
+      "description": "已胡 9",
       "shanten": {
         "hand": [
           "wan2",
@@ -10203,18 +10300,20 @@
           "wan6",
           "wan7",
           "wan8",
+          "dong",
           "dong"
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": -1,
+        "exactShanten": -1
       }
     },
     {
       "id": "L1-shanten-010",
       "level": "L1",
       "category": "shanten",
-      "description": "向听 10",
+      "description": "已听牌 10",
       "shanten": {
         "hand": [
           "wan2",
@@ -10233,7 +10332,8 @@
         ]
       },
       "expected": {
-        "maxShanten": 2
+        "maxShanten": 0,
+        "exactShanten": 0
       }
     },
     {
@@ -13199,6 +13299,129 @@
       },
       "expected": {
         "canWin": true
+      }
+    },
+    {
+      "id": "L1-prd-compliance-001",
+      "level": "L1",
+      "category": "prd-compliance",
+      "description": "PRD全风向十四张字牌可胡",
+      "hand": [
+        "dong",
+        "dong",
+        "dong",
+        "dong",
+        "nan",
+        "nan",
+        "nan",
+        "nan",
+        "xi",
+        "xi",
+        "xi",
+        "bei",
+        "zhong",
+        "fa"
+      ],
+      "context": {
+        "winType": "自摸",
+        "winTile": "fa"
+      },
+      "expected": {
+        "canWin": true,
+        "handTypes": [
+          "全风向"
+        ],
+        "baseScore": 16
+      }
+    },
+    {
+      "id": "L1-prd-compliance-002",
+      "level": "L1",
+      "category": "prd-compliance",
+      "description": "PRD清一色碰碰胡底分相乘",
+      "hand": [
+        "wan1",
+        "wan1",
+        "wan1",
+        "wan2",
+        "wan2",
+        "wan2",
+        "wan3",
+        "wan3",
+        "wan3",
+        "wan4",
+        "wan4",
+        "wan4",
+        "wan5",
+        "wan5"
+      ],
+      "context": {
+        "winType": "自摸",
+        "winTile": "wan5"
+      },
+      "expected": {
+        "canWin": true,
+        "handTypes": [
+          "清一色",
+          "碰碰胡"
+        ],
+        "baseScore": 8
+      }
+    },
+    {
+      "id": "L1-prd-compliance-003",
+      "level": "L1",
+      "category": "prd-compliance",
+      "description": "PRD掷铲按走色倍数封顶结算",
+      "scoreCalc": {
+        "handTypes": [
+          "清一色",
+          "碰碰胡"
+        ],
+        "baseScore": 8,
+        "winMethod": "自摸",
+        "currentPlayer": 0,
+        "zhiChanFromPlayer": 1
+      },
+      "expected": {
+        "scorePerPlayer": [
+          0,
+          16,
+          8,
+          8
+        ],
+        "winnerGain": 32,
+        "capped": true
+      }
+    },
+    {
+      "id": "L1-prd-compliance-004",
+      "level": "L1",
+      "category": "prd-compliance",
+      "description": "PRD宝牌假胡只能替换为掷铲摸牌",
+      "wildcard": {
+        "hand": [
+          "wan1",
+          "wan2",
+          "wan3",
+          "wan4",
+          "wan5",
+          "wan6",
+          "wan7",
+          "wan8",
+          "wan9",
+          "tong1",
+          "tong2",
+          "tong3",
+          "dong",
+          "fa"
+        ],
+        "melds": [],
+        "drawTile": "bai"
+      },
+      "expected": {
+        "isTrueWin": false,
+        "isFakeWin": false
       }
     }
   ]

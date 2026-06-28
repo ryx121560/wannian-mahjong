@@ -30,7 +30,7 @@ export function calculateScore(params: {
   const noColorBonus = params.noColorBonus ?? false;
   const isTrueWin = params.isTrueWin ?? true;
   const lianGangCount = params.lianGangCount ?? 0;
-  const baseScore = params.baseScore ?? params.handTypes.reduce((sum, item) => sum + baseScoreForHandType(item), 0);
+  const baseScore = params.baseScore ?? params.handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1);
   let score = baseScore;
   if (params.winMethod === '杠开') score *= 2;
   if (params.gangType === 'anGang') score *= 2;
@@ -40,19 +40,23 @@ export function calculateScore(params: {
   if (lianGangCount > 0) score *= 2 ** lianGangCount;
   if (params.winMethod === '抢杠') score = 6;
   if (params.winMethod === '天胡' || params.winMethod === '地胡') score = 4;
-  const capped = Math.min(score, DEFAULT_RULES.capAmount);
+  const cappedScore = Math.min(score, DEFAULT_RULES.capAmount);
+  let capped = score >= DEFAULT_RULES.capAmount;
   const scorePerPlayer = [0, 0, 0, 0];
   if (params.zhiChanFromPlayer != null) {
-    scorePerPlayer[params.zhiChanFromPlayer] = Math.min(baseScore * 4, DEFAULT_RULES.capAmount);
-    for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer && i !== params.zhiChanFromPlayer) scorePerPlayer[i] = Math.min(baseScore * 2, DEFAULT_RULES.capAmount);
+    const zhiChanPayerRaw = score * 2;
+    const otherPayerRaw = score;
+    capped = capped || zhiChanPayerRaw >= DEFAULT_RULES.capAmount || otherPayerRaw >= DEFAULT_RULES.capAmount;
+    scorePerPlayer[params.zhiChanFromPlayer] = Math.min(zhiChanPayerRaw, DEFAULT_RULES.capAmount);
+    for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer && i !== params.zhiChanFromPlayer) scorePerPlayer[i] = Math.min(otherPayerRaw, DEFAULT_RULES.capAmount);
   } else if (params.winMethod === '点炮' || params.winMethod === '抢杠') {
     scorePerPlayer.fill(0);
     const payer = params.payer ?? (params.currentPlayer + 1) % 4;
-    scorePerPlayer[payer] = capped;
+    scorePerPlayer[payer] = cappedScore;
   } else {
-    for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer) scorePerPlayer[i] = capped;
+    for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer) scorePerPlayer[i] = cappedScore;
   }
-  return { scorePerPlayer, winnerGain: scorePerPlayer.reduce((sum, item) => sum + item, 0), capped: score > DEFAULT_RULES.capAmount };
+  return { scorePerPlayer, winnerGain: scorePerPlayer.reduce((sum, item) => sum + item, 0), capped };
 }
 
 function pointsFor(hand: Tile[], winType: WinMethod): number {

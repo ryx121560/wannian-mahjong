@@ -302,13 +302,27 @@ function tcmp(a,b){
   const so={wan:0,tong:1,tiao:2};
   return a.s!==b.s?so[a.s]-so[b.s]:a.v-b.v;
 }
+function currentPassRound(){
+  return GS.turn||0;
+}
+function recordPass(playerIdx,tile){
+  if(playerIdx<0||!tile)return;
+  if(!Array.isArray(GS.passRecords))GS.passRecords=[];
+  GS.passRecords.push({player:playerIdx,tile:tkey(tile),round:currentPassRound()});
+}
+function canWinAfterPassRuntime(playerIdx,tile){
+  if(playerIdx<0||!tile)return true;
+  const input={passRecords:GS.passRecords||[],player:playerIdx,tile:tkey(tile),round:currentPassRound()};
+  if(RULE_ENGINE&&typeof RULE_ENGINE.canWinAfterPass==='function')return RULE_ENGINE.canWinAfterPass(input);
+  return !input.passRecords.some(function(record){return record.player===input.player&&record.tile===input.tile&&record.round===input.round;});
+}
 
 // game state
 let GS={wall:[],players:[],discards:[],lastDiscard:null,lastDiscardP:-1,cur:0,phase:'idle',
   selectedTile:null,dealer:0,canP:false,canK:false,canW:false,canWS:false,
   diff:'hard',_resp:null,_respP:-1,_responseKind:null,_hot:[],_kc:{},_hasWild:{},showAI:false,
   newDrawnTile:null,newDrawnIdx:-1,
-  playerDiscards:[[],[],[],[]],turn:0,_lastResult:null};
+  playerDiscards:[[],[],[],[]],passRecords:[],turn:0,_lastResult:null};
 
 function clearSelectedTile(){
   GS.selectedTile=null;
@@ -402,7 +416,7 @@ function enterIdleState(reason){
     cur:0,dealer:0,turn:0,phase:'idle',selectedTile:null,
     canP:false,canK:false,canW:false,canWS:false,
     _resp:null,_respP:-1,_responseKind:null,_hot:[],_kc:{},_hasWild:{},
-    newDrawnTile:null,newDrawnIdx:-1,playerDiscards:[[],[],[],[]],
+    newDrawnTile:null,newDrawnIdx:-1,playerDiscards:[[],[],[],[]],passRecords:[],
     _gameLog:null,_lastResult:null
   });
   document.getElementById('suggest').style.display='none';
@@ -1172,7 +1186,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
   GS.discards=[];GS.lastDiscard=null;GS.lastDiscardP=-1;clearSelectedTile();
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
-  GS.playerDiscards=[[],[],[],[]];GS.turn=0;GS._lastResult=null;
+  GS.playerDiscards=[[],[],[],[]];GS.passRecords=[];GS.turn=0;GS._lastResult=null;
   GS.dealer=Math.floor(Math.random()*4);GS.cur=GS.dealer;
 
   for(let i=0;i<4;i++){
@@ -1259,15 +1273,16 @@ function effectiveHand(p){
   return h;
 }
 
-function canHuNormal(hand,useWild,preMelds){
+function canHuNormal(hand,useWild,preMelds,winTile){
   preMelds=preMelds||0;
   const s=hand.map(tkey);
   const ruleContext={melds:ruleMeldsByCount(preMelds)};
   const ruleResult=RULE_ENGINE.canWin(s,ruleContext);
   if(ruleResult&&ruleResult.canWin)return {win:true,useWild:false,type:ruleResult.handType,handTypes:ruleResult.handTypes,baseScore:ruleResult.baseScore,route:ruleResult.route};
   if(useWild){
-    const wildResult=RULE_ENGINE.resolveWildcard(s,ruleContext.melds);
-    if(wildResult&&wildResult.canWin)return {win:true,useWild:!wildResult.isTrueWin,type:wildResult.handType,handTypes:wildResult.handTypes,baseScore:wildResult.baseScore};
+    const drawKey=winTile?tkey(winTile):s[s.length-1];
+    const wildResult=RULE_ENGINE.resolveWildcard(s,ruleContext.melds,drawKey);
+    if(wildResult&&(wildResult.isTrueWin||wildResult.isFakeWin))return {win:true,useWild:!wildResult.isTrueWin,type:wildResult.isFakeWin?'假胡':(ruleResult&&ruleResult.handType)||'平胡',handTypes:wildResult.isFakeWin?['假胡']:((ruleResult&&ruleResult.handTypes)||['平胡']),baseScore:(ruleResult&&ruleResult.baseScore)||1};
   }
   return false;
 }
@@ -1368,15 +1383,17 @@ function checkResponses(){
     const p=GS.players[i];
     const preMl=(GS.players[i].melds||[]).filter(m=>m.count>=3).length;
     const handOnly=[...GS.players[i].hand,t];
-    const huCheck=canHuNormal(handOnly,false,preMl);
+    const huCheck=canHuNormal(handOnly,false,preMl,t);
     const passesThreshold=meetsThresh(handOnly,t);
-    const canWin=!!huCheck&&passesThreshold;
+    const passesOverwater=canWinAfterPassRuntime(i,t);
+    const canWin=!!huCheck&&passesThreshold&&passesOverwater;
     if(i===0&&!canWin){
       console.log('[hu-check] player0 cannot win on discard',{
         tile:t?tkey(t):null,
         hand:handOnly.map(function(x){return tkey(x);}),
         huCheck:huCheck,
         passesThreshold:passesThreshold,
+        passesOverwater:passesOverwater,
         preMelds:preMl
       });
     }
@@ -1393,7 +1410,8 @@ function checkResponses(){
       saveGameSnapshot('human-win-response');
       if(GS._respTimer)clearTimeout(GS._respTimer);
       GS._respTimer=gameSetTimeout(()=>{
-        if(GS.phase==='responding'){
+      if(GS.phase==='responding'){
+          if(GS.canW&&GS._respP>=0&&GS.lastDiscard)recordPass(GS._respP,GS.lastDiscard);
           GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
           nextTurn();
         }
@@ -2955,7 +2973,7 @@ function canSelfWin(hand){
   if(n&&n.win)return true;
   // 假胡：有万能牌时（摸牌阶段 newDrawnTile 或杠后摸万能牌 _hasWild）
   if(Object.values(GS._hasWild||{}).some(v=>v)){
-    const n2=canHuNormal(hand,true);
+    const n2=canHuNormal(hand,true,0,GS.newDrawnTile);
     if(n2&&n2.win)return true;
   }
   // 打烂/正宗：0 issues = 完成
@@ -3079,6 +3097,7 @@ document.getElementById('bt-win').onclick=()=>{
 };
 document.getElementById('bt-pass').onclick=()=>{
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
+  if(GS.canW&&GS._respP>=0&&GS.lastDiscard)recordPass(GS._respP,GS.lastDiscard);
   GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;
   nextTurn();
 };
