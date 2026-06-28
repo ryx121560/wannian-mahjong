@@ -25,6 +25,7 @@ export function calculateScore(params: {
   lianGangCount?: number;
   zhiChanFromPlayer?: number;
   currentPlayer: number;
+  payer?: number;
 }): { scorePerPlayer: number[]; winnerGain: number; capped: boolean } {
   const noColorBonus = params.noColorBonus ?? false;
   const isTrueWin = params.isTrueWin ?? true;
@@ -46,7 +47,8 @@ export function calculateScore(params: {
     for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer && i !== params.zhiChanFromPlayer) scorePerPlayer[i] = Math.min(baseScore * 2, DEFAULT_RULES.capAmount);
   } else if (params.winMethod === '点炮' || params.winMethod === '抢杠') {
     scorePerPlayer.fill(0);
-    scorePerPlayer[(params.currentPlayer + 1) % 4] = capped;
+    const payer = params.payer ?? (params.currentPlayer + 1) % 4;
+    scorePerPlayer[payer] = capped;
   } else {
     for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer) scorePerPlayer[i] = capped;
   }

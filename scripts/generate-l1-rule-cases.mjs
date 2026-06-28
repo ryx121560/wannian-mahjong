@@ -21,6 +21,7 @@ const dalanWan5 = ['tong5', 'wan8', 'tiao5', 'tiao2', 'xi', 'tiao8', 'tong1', 'f
 const banzheng = ['wan1', 'wan4', 'wan7', 'tong2', 'tong5', 'tong8', 'tiao3', 'tiao6', 'tiao9', 'dong', 'nan', 'xi', 'zhong', 'fa'];
 const quanzheng = ['wan1', 'wan4', 'wan7', 'tong1', 'tong4', 'tong7', 'tiao1', 'tiao4', 'tiao7', 'dong', 'nan', 'xi', 'zhong', 'fa'];
 const allHonor = ['dong', 'dong', 'dong', 'nan', 'nan', 'nan', 'xi', 'xi', 'xi', 'bei', 'bei', 'bei', 'fa', 'fa'];
+const invalidAllHonor = ['dong', 'dong', 'dong', 'nan', 'nan', 'nan', 'xi', 'xi', 'xi', 'bei', 'bei', 'fa', 'fa', 'zhong'];
 
 for (const tile of ['wan1', 'wan5', 'tiao9', 'dong', 'zhong']) add('tile-utils', `tileValue ${tile}`, { tileUtil: { fn: 'tileValue', args: [tile] } }, { value: tile.match(/\d/) ? Number(tile.slice(-1)) : 0 });
 for (const tile of ['wan1', 'tong5', 'tiao9', 'dong', 'zhong']) add('tile-utils', `tileSuit ${tile}`, { tileUtil: { fn: 'tileSuit', args: [tile] } }, { value: tile.startsWith('wan') ? 'wan' : tile.startsWith('tong') ? 'tong' : tile.startsWith('tiao') ? 'tiao' : ['dong', 'nan', 'xi', 'bei'].includes(tile) ? 'feng' : 'jian' });
@@ -52,6 +53,7 @@ for (let i = 0; i < 15; i++) add('standard-win', `标准胡牌 ${i + 1}`, { hand
 for (let i = 0; i < 10; i++) add('wind-shunzi', `风牌顺子 ${i + 1}`, { hand: ['dong', 'nan', 'xi', 'zhong', 'fa', 'bai', 'wan1', 'wan2', 'wan3', 'tong4', 'tong5', 'tong6', 'bei', 'bei'], context: { winType: '自摸' } }, { canWin: true });
 for (let i = 0; i < 10; i++) add('seven-pairs', `七对 ${i + 1}`, { hand: sevenPairs, context: { winType: '自摸' } }, { canWin: true, handType: '七对' });
 for (let i = 0; i < 5; i++) add('all-winds', `全风向 ${i + 1}`, { hand: allHonor, context: { winType: '自摸' } }, { canWin: true, handType: '全风向' });
+add('all-winds', '全字牌必须满足标准胡牌结构', { hand: invalidAllHonor, context: { winType: '自摸', winTile: 'zhong' } }, { canWin: false });
 
 const scoreCases = [
   ['自摸', standardWin, [3, -1, -1, -1], 'all'],
@@ -75,6 +77,7 @@ for (let i = 0; i < 20; i++) {
   add('win-multiplier', `胡牌倍率 ${winType} ${i + 1}`, { hand, settlement }, { scoreDelta: delta, payer });
 }
 for (let i = 0; i < 15; i++) add('hand-stack', `牌型叠加 ${i + 1}`, { scoreCalc: { handTypes: i % 2 ? ['清一色', '碰碰胡'] : ['混一色', '七对'], baseScore: i % 2 ? 8 : 4, winMethod: '自摸', currentPlayer: 0 } }, { winnerGain: i % 2 ? 24 : 12 });
+add('score-calculator', 'calculateScore 点炮使用指定付款人', { scoreCalc: { handTypes: ['平胡'], baseScore: 1, winMethod: '点炮', currentPlayer: 0, payer: 2 } }, { winnerGain: 1, scorePerPlayer: [0, 0, 1, 0] });
 const clearPong = ['wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'wan4', 'wan4', 'wan4', 'wan5', 'wan5'];
 const mixedPong = ['wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'dong', 'dong', 'dong', 'wan5', 'wan5'];
 const clearSevenPairs = ['wan1', 'wan1', 'wan2', 'wan2', 'wan3', 'wan3', 'wan4', 'wan4', 'wan5', 'wan5', 'wan6', 'wan6', 'wan7', 'wan7'];

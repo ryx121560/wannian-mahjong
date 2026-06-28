@@ -103,8 +103,8 @@ export function checkSevenPairs(hand: Tile[], melds: Meld[] = []): boolean {
   return melds.length === 0 && isSevenPairs(hand);
 }
 
-export function checkAllWinds(hand: Tile[], _melds: Meld[] = []): boolean {
-  return isAllHonor(hand);
+export function checkAllWinds(hand: Tile[], melds: Meld[] = []): boolean {
+  return isAllHonor(hand) && checkStandardWin(hand, melds).canWin;
 }
 
 export function checkDalan(hand: Tile[], melds: Meld[] = []): { isDalan: boolean; handType: HandType } {
@@ -152,7 +152,7 @@ export function getPrimaryHandType(hand: Tile[], melds: Meld[] = [], winTile?: T
 }
 
 function isSpecial(hand: Tile[]): boolean {
-  return isSevenPairs(hand) || isAllHonor(hand) || checkDalanBasic(hand);
+  return isSevenPairs(hand) || checkAllWinds(hand) || checkDalanBasic(hand);
 }
 
 function meetsThreshold(hand: Tile[], winTile?: Tile): boolean {

@@ -3562,6 +3562,35 @@
       }
     },
     {
+      "id": "L1-all-winds-006",
+      "level": "L1",
+      "category": "all-winds",
+      "description": "全字牌必须满足标准胡牌结构",
+      "hand": [
+        "dong",
+        "dong",
+        "dong",
+        "nan",
+        "nan",
+        "nan",
+        "xi",
+        "xi",
+        "xi",
+        "bei",
+        "bei",
+        "fa",
+        "fa",
+        "zhong"
+      ],
+      "context": {
+        "winType": "自摸",
+        "winTile": "zhong"
+      },
+      "expected": {
+        "canWin": false
+      }
+    },
+    {
       "id": "L1-win-multiplier-001",
       "level": "L1",
       "category": "win-multiplier",
@@ -4659,6 +4688,30 @@
       },
       "expected": {
         "winnerGain": 12
+      }
+    },
+    {
+      "id": "L1-score-calculator-001",
+      "level": "L1",
+      "category": "score-calculator",
+      "description": "calculateScore 点炮使用指定付款人",
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "点炮",
+        "currentPlayer": 0,
+        "payer": 2
+      },
+      "expected": {
+        "winnerGain": 1,
+        "scorePerPlayer": [
+          0,
+          0,
+          1,
+          0
+        ]
       }
     },
     {
@@ -5772,7 +5825,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-001",
+      "id": "L1-score-calculator-002",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 1",
@@ -5813,7 +5866,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-002",
+      "id": "L1-score-calculator-003",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 2",
@@ -5855,7 +5908,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-003",
+      "id": "L1-score-calculator-004",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 抢杠 3",
@@ -5898,7 +5951,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-004",
+      "id": "L1-score-calculator-005",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 杠开 4",
@@ -5939,7 +5992,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-005",
+      "id": "L1-score-calculator-006",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 天胡 5",
@@ -5980,7 +6033,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-006",
+      "id": "L1-score-calculator-007",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 地胡 6",
@@ -6021,7 +6074,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-007",
+      "id": "L1-score-calculator-008",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 7",
@@ -6062,7 +6115,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-008",
+      "id": "L1-score-calculator-009",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 8",
@@ -6104,7 +6157,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-009",
+      "id": "L1-score-calculator-010",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 9",
@@ -6145,7 +6198,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-010",
+      "id": "L1-score-calculator-011",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 10",
@@ -6187,7 +6240,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-011",
+      "id": "L1-score-calculator-012",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 11",
@@ -6228,7 +6281,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-012",
+      "id": "L1-score-calculator-013",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 12",
@@ -6270,7 +6323,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-013",
+      "id": "L1-score-calculator-014",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 13",
@@ -6311,7 +6364,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-014",
+      "id": "L1-score-calculator-015",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 14",
@@ -6353,7 +6406,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-015",
+      "id": "L1-score-calculator-016",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 抢杠 15",
@@ -6396,7 +6449,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-016",
+      "id": "L1-score-calculator-017",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 杠开 16",
@@ -6437,7 +6490,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-017",
+      "id": "L1-score-calculator-018",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 天胡 17",
@@ -6478,7 +6531,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-018",
+      "id": "L1-score-calculator-019",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 地胡 18",
@@ -6519,7 +6572,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-019",
+      "id": "L1-score-calculator-020",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 19",
@@ -6560,7 +6613,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-020",
+      "id": "L1-score-calculator-021",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 20",
@@ -6602,7 +6655,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-021",
+      "id": "L1-score-calculator-022",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 21",
@@ -6643,7 +6696,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-022",
+      "id": "L1-score-calculator-023",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 22",
@@ -6685,7 +6738,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-023",
+      "id": "L1-score-calculator-024",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 23",
@@ -6726,7 +6779,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-024",
+      "id": "L1-score-calculator-025",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 24",
@@ -6768,7 +6821,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-025",
+      "id": "L1-score-calculator-026",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 25",
@@ -6809,7 +6862,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-026",
+      "id": "L1-score-calculator-027",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 26",
@@ -6851,7 +6904,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-027",
+      "id": "L1-score-calculator-028",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 抢杠 27",
@@ -6894,7 +6947,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-028",
+      "id": "L1-score-calculator-029",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 杠开 28",
@@ -6935,7 +6988,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-029",
+      "id": "L1-score-calculator-030",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 天胡 29",
@@ -6976,7 +7029,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-030",
+      "id": "L1-score-calculator-031",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 地胡 30",
@@ -7017,7 +7070,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-031",
+      "id": "L1-score-calculator-032",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 31",
@@ -7058,7 +7111,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-032",
+      "id": "L1-score-calculator-033",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 32",
@@ -7100,7 +7153,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-033",
+      "id": "L1-score-calculator-034",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 33",
@@ -7141,7 +7194,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-034",
+      "id": "L1-score-calculator-035",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 34",
@@ -7183,7 +7236,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-035",
+      "id": "L1-score-calculator-036",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 35",
@@ -7224,7 +7277,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-036",
+      "id": "L1-score-calculator-037",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 36",
@@ -7266,7 +7319,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-037",
+      "id": "L1-score-calculator-038",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 自摸 37",
@@ -7307,7 +7360,7 @@
       }
     },
     {
-      "id": "L1-score-calculator-038",
+      "id": "L1-score-calculator-039",
       "level": "L1",
       "category": "score-calculator",
       "description": "计分补充 点炮 38",

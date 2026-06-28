@@ -125,8 +125,8 @@ function checkStandardWin(hand, melds = []) {
 function checkSevenPairs(hand, melds = []) {
     return melds.length === 0 && isSevenPairs(hand);
 }
-function checkAllWinds(hand, _melds = []) {
-    return isAllHonor(hand);
+function checkAllWinds(hand, melds = []) {
+    return isAllHonor(hand) && checkStandardWin(hand, melds).canWin;
 }
 function checkDalan(hand, melds = []) {
     if (melds.length > 0 || !checkDalanBasic(hand))
@@ -186,7 +186,7 @@ function getPrimaryHandType(hand, melds = [], winTile, winMethod) {
     return classifyHand(hand, melds, winTile, winMethod).primaryType;
 }
 function isSpecial(hand) {
-    return isSevenPairs(hand) || isAllHonor(hand) || checkDalanBasic(hand);
+    return isSevenPairs(hand) || checkAllWinds(hand) || checkDalanBasic(hand);
 }
 function meetsThreshold(hand, winTile) {
     if (isSpecial(hand))
@@ -390,7 +390,7 @@ function checkNoColor(hand, _melds = [], gangDrawTile, handTypes = []) {
     return (0, tile_utils_1.isHonor)(gangDrawTile) || (0, tile_utils_1.isArrow)(gangDrawTile) || (0, tile_utils_1.tileSuit)(gangDrawTile) === numberSuits[0];
 }
 function calculateScore(params) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const noColorBonus = (_a = params.noColorBonus) !== null && _a !== void 0 ? _a : false;
     const isTrueWin = (_b = params.isTrueWin) !== null && _b !== void 0 ? _b : true;
     const lianGangCount = (_c = params.lianGangCount) !== null && _c !== void 0 ? _c : 0;
@@ -422,7 +422,8 @@ function calculateScore(params) {
     }
     else if (params.winMethod === '点炮' || params.winMethod === '抢杠') {
         scorePerPlayer.fill(0);
-        scorePerPlayer[(params.currentPlayer + 1) % 4] = capped;
+        const payer = (_e = params.payer) !== null && _e !== void 0 ? _e : (params.currentPlayer + 1) % 4;
+        scorePerPlayer[payer] = capped;
     }
     else {
         for (let i = 0; i < 4; i += 1)
