@@ -40,6 +40,9 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-settings-panel h3{color:#e8b830;text-align:center;margin-bottom:8px}
 #ai-settings-panel .option{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #333}
 #ai-settings-panel input{margin-top:4px}
+#ai-settings-panel .dimension{display:grid;grid-template-columns:82px 1fr 48px 32px;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #2a2a2a}
+#ai-settings-panel .dimension input[type=range]{width:100%}
+#ai-settings-panel .dimension .value{color:#e8b830;text-align:right;font-variant-numeric:tabular-nums}
 #ai-settings-panel .hint{color:#aaa;font-size:12px}
 #ai-settings-panel .mode{color:gold;margin:8px 0;text-align:center}
 #ai-settings-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
@@ -92,6 +95,8 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <div class="hint" id="ai-core-label"></div>
 <label class="option"><input type="checkbox" id="ai-use-mcts"><span><b>普通对局启用 MCTS</b><br><span class="hint">默认关闭；开启后 MCTS 只有在不劣于规则结果时才会覆盖。</span></span></label>
 <label class="option"><input type="checkbox" id="ai-use-rl"><span><b>普通对局启用 RL</b><br><span class="hint">默认关闭；开启后 RL 只有在不劣于规则结果时才会覆盖。</span></span></label>
+<div class="hint">强规则 AI 八维参数</div>
+<div id="strong-ai-dimensions"></div>
 <button class="close" id="bt-ai-settings-close">关闭</button>
 </div>
 <div id="ai-log-panel">
@@ -107,16 +112,23 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <script src="session_snapshot.js"></script>
 <script src="ai/rule_core.js"></script>
 <script src="rule_engine.js"></script>
+<script src="strong_rule_ai.js"></script>
 <script>
 const W=1360,H=900,TW=52,TH=72,GAP=2;
 const GAME_SESSION=window.GameSessionSnapshot;
 const AI_RULE_CORE=window.AIRuleCore;
 const RULE_ENGINE=window.WannianRuleEngine;
+const STRONG_RULE_AI=window.WannianStrongRuleAI;
 if(!GAME_SESSION)throw new Error('Game session snapshot core failed to load');
 if(!AI_RULE_CORE)throw new Error('AI rule core failed to load');
 if(!RULE_ENGINE)throw new Error('Wannian rule engine failed to load');
-const AI_ENGINE_INFO={id:'html-rule-ai',version:'2026-06-20-core-r1',source:'rule',mode:'ordinary',ruleCoreId:AI_RULE_CORE.id,ruleCoreVersion:AI_RULE_CORE.version};
-const AI_RUNTIME_CONFIG={ordinaryMCTS:false,ordinaryRL:false};
+if(!STRONG_RULE_AI)throw new Error('Wannian strong rule AI failed to load');
+const AI_ENGINE_INFO={id:'strong-rule-ai',version:'2026-06-27-stage2',source:'strong-rule',mode:'ordinary',ruleCoreId:AI_RULE_CORE.id,ruleCoreVersion:AI_RULE_CORE.version};
+const STRONG_AI_DIMENSIONS=[
+  ['speed','速度'],['handValue','打点'],['waitQuality','听牌'],['kongZhichan','杠铲'],
+  ['dalanRoute','打烂'],['defense','防守'],['position','位置'],['structure','结构']
+];
+const AI_RUNTIME_CONFIG={ordinaryMCTS:false,ordinaryRL:false,strongRule:true,strongWeights:{speed:1,handValue:0.8,waitQuality:0.8,kongZhichan:0.6,dalanRoute:0.7,defense:0.4,position:0.5,structure:1},strongEnabled:{speed:true,handValue:true,waitQuality:true,kongZhichan:true,dalanRoute:true,defense:true,position:true,structure:true}};
 const AI_STRATEGY={
   defenseWeights:{low:1,medium:3,high:6,midFloor:1,lateFloor:4},
   danger:{oneMeld:1,twoMelds:2,late:1,scoreLead:1,repeatedSafe:1},
@@ -130,7 +142,7 @@ function configureAiLearning(enabled){
   AI_ENGINE_INFO.mode=enabled?'selfplay':'ordinary';
   if(window.MCTS)window.MCTS.useMCTS=enabled?true:AI_RUNTIME_CONFIG.ordinaryMCTS;
   if(window.RL)window.RL.useRL=enabled?true:AI_RUNTIME_CONFIG.ordinaryRL;
-  const sources=['rule'];
+  const sources=['strong-rule'];
   if(window.MCTS&&window.MCTS.useMCTS)sources.push('mcts');
   if(window.RL&&window.RL.useRL)sources.push('rl');
   AI_ENGINE_INFO.source=sources.join('+');
@@ -144,12 +156,31 @@ function setOrdinaryAiConfig(useMCTS,useRL){
   renderAiSettingsPanel();
 }
 
+function strongAiConfig(){
+  const enabled=STRONG_AI_DIMENSIONS.filter(function(item){return AI_RUNTIME_CONFIG.strongEnabled[item[0]];}).map(function(item){return item[0];});
+  return {weights:Object.assign({},AI_RUNTIME_CONFIG.strongWeights),enabledDimensions:new Set(enabled)};
+}
+
+function setStrongAiWeight(key,value){
+  AI_RUNTIME_CONFIG.strongWeights[key]=Math.round(Number(value)*10)/10;
+  renderAiSettingsPanel();
+}
+
+function setStrongAiEnabled(key,value){
+  AI_RUNTIME_CONFIG.strongEnabled[key]=!!value;
+  renderAiSettingsPanel();
+}
+
 function renderAiSettingsPanel(){
-  const m=document.getElementById('ai-use-mcts'),r=document.getElementById('ai-use-rl'),label=document.getElementById('ai-mode-label'),coreLabel=document.getElementById('ai-core-label');
+  const m=document.getElementById('ai-use-mcts'),r=document.getElementById('ai-use-rl'),label=document.getElementById('ai-mode-label'),coreLabel=document.getElementById('ai-core-label'),dims=document.getElementById('strong-ai-dimensions');
   if(m)m.checked=!!AI_RUNTIME_CONFIG.ordinaryMCTS;
   if(r)r.checked=!!AI_RUNTIME_CONFIG.ordinaryRL;
   if(label)label.textContent='当前普通对局来源：'+AI_ENGINE_INFO.source;
-  if(coreLabel)coreLabel.textContent='规则核心：'+AI_RULE_CORE.id+' @ '+AI_RULE_CORE.version;
+  if(coreLabel)coreLabel.textContent='规则核心：'+AI_RULE_CORE.id+' @ '+AI_RULE_CORE.version+'；阶段二强规则 AI 默认启用。';
+  if(dims)dims.innerHTML=STRONG_AI_DIMENSIONS.map(function(item){
+    const key=item[0],name=item[1],value=AI_RUNTIME_CONFIG.strongWeights[key],checked=AI_RUNTIME_CONFIG.strongEnabled[key]?'checked':'';
+    return '<div class="dimension"><span>'+name+'</span><input type="range" min="0" max="2" step="0.1" value="'+value+'" data-ai-weight="'+key+'"><span class="value">'+value.toFixed(1)+'</span><input type="checkbox" data-ai-enabled="'+key+'" '+checked+'></div>';
+  }).join('');
 }
 
 function scorePosition(playerIdx){
@@ -2192,6 +2223,39 @@ function buildAiDecisionLog(hand,playerIdx,discardIdx,source,reason,extra){
   },extra||{});
 }
 
+function strongAiMeldsForPlayer(playerIdx){
+  const player=GS.players[playerIdx]||{melds:[]};
+  return (player.melds||[]).map(function(m){
+    const tile=tkey(m.tile||m.tiles&&m.tiles[0]||m);
+    const count=m.count||3;
+    const type=count>=4?'mingGang':'peng';
+    return {type:type,tiles:Array.from({length:count},function(){return tile;})};
+  });
+}
+
+function strongAiStateForPlayer(hand,playerIdx){
+  const melds=[0,1,2,3].map(function(p){return strongAiMeldsForPlayer(p);});
+  return {
+    hand:hand.map(tkey),
+    melds:melds,
+    discards:(GS.playerDiscards||GS.discards||[[],[],[],[]]).map(function(row){return (row||[]).map(tkey);}),
+    scores:GS.players.map(function(p){return p.score;}),
+    turn:Math.max(1,Math.ceil((GS.turn||1)/4)),
+    currentPlayer:playerIdx,
+    dealer:GS.dealer||0,
+    wallRemaining:GS.wall?GS.wall.length:70,
+    newDrawnTile:GS.newDrawnTile?tkey(GS.newDrawnTile):undefined
+  };
+}
+
+function chooseStrongRuleDiscard(hand,playerIdx){
+  if(!STRONG_RULE_AI||!AI_RUNTIME_CONFIG.strongRule)return null;
+  const decision=STRONG_RULE_AI.makeDecision(strongAiStateForPlayer(hand,playerIdx),strongAiConfig());
+  const idx=hand.findIndex(function(tile){return tkey(tile)===decision.selectedTile;});
+  if(idx<0)return null;
+  return {idx:idx,decision:decision};
+}
+
 async function aiChooseDiscard(hand,playerIdx){
   const effH=effectiveHand(playerIdx);
   function combinedShanten(h){
@@ -2200,6 +2264,14 @@ async function aiChooseDiscard(hand,playerIdx){
   function commitAiChoice(idx,source,reason,extra){
     setAiHandMeta(hand,'aiDecisionLog',buildAiDecisionLog(hand,playerIdx,idx,source,reason,extra));
     return idx;
+  }
+  try{
+    const strongChoice=chooseStrongRuleDiscard(hand,playerIdx);
+    if(strongChoice){
+      return commitAiChoice(strongChoice.idx,'strong-rule-ai',strongChoice.decision.reasoning,{strongRuleDecision:strongChoice.decision});
+    }
+  }catch(error){
+    console.warn('[strong-rule-ai] fallback to legacy rule AI',error);
   }
   // === 规则基础结果（向听数优先，供 MCTS/RL 参考，全难度均计算以兜底）===
   let _ruleCand = -1, _ruleShanten = 999;
@@ -3017,6 +3089,8 @@ document.getElementById('bt-ai-settings').onclick=()=>{renderAiSettingsPanel();d
 document.getElementById('bt-ai-settings-close').onclick=()=>{document.getElementById('ai-settings-panel').style.display='none';};
 document.getElementById('ai-use-mcts').onchange=function(){setOrdinaryAiConfig(this.checked,AI_RUNTIME_CONFIG.ordinaryRL);};
 document.getElementById('ai-use-rl').onchange=function(){setOrdinaryAiConfig(AI_RUNTIME_CONFIG.ordinaryMCTS,this.checked);};
+document.getElementById('strong-ai-dimensions').oninput=function(e){if(e.target&&e.target.dataset&&e.target.dataset.aiWeight)setStrongAiWeight(e.target.dataset.aiWeight,e.target.value);};
+document.getElementById('strong-ai-dimensions').onchange=function(e){if(e.target&&e.target.dataset&&e.target.dataset.aiEnabled)setStrongAiEnabled(e.target.dataset.aiEnabled,e.target.checked);};
 document.getElementById('bt-ai-log').onclick=()=>{renderAiLogPanel();document.getElementById('ai-log-panel').style.display='block';};
 document.getElementById('bt-ai-log-export').onclick=exportAiDecisionLogs;
 document.getElementById('bt-ai-log-close').onclick=()=>{document.getElementById('ai-log-panel').style.display='none';};

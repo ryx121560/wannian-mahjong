@@ -4,12 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/next-with-port.mjs dev",
-    "predev": "node scripts/build-browser-rule-engine.mjs",
-    "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/clean-next-cache.mjs",
+    "predev": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs",
+    "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/clean-next-cache.mjs",
     "build": "next build",
     "start": "node scripts/next-with-port.mjs start",
     "test:rules": "node scripts/benchmark-runner.mjs",
-    "verify:browser-rules": "node scripts/build-browser-rule-engine.mjs && node scripts/verify-browser-rule-engine.mjs"
+    "generate:l2-ai": "node scripts/generate-l2-ai-cases.mjs",
+    "test:strong-ai": "node scripts/strong-ai-regression.mjs",
+    "verify:browser-rules": "node scripts/build-browser-rule-engine.mjs && node scripts/verify-browser-rule-engine.mjs",
+    "verify:strong-ai": "node scripts/build-browser-strong-rule-ai.mjs && node scripts/verify-browser-strong-rule-ai.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",
