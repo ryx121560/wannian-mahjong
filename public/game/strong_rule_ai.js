@@ -829,7 +829,7 @@ function enabled(config, key, value) {
     return config.enabledDimensions.has(key) ? value : 0;
 }
 function positionScore(positionOffense, positionDefense, attackScore, defenseScore) {
-    return (positionOffense - 1) * attackScore + (positionDefense - 1) * Math.abs(defenseScore);
+    return (positionOffense - 1) * attackScore + (positionDefense - 1) * positionDefense * defenseScore;
 }
 function reasoningFor(candidate, phase) {
     const b = candidate.breakdown;
@@ -863,10 +863,11 @@ function makeDecision(state, config) {
     const position = (0, position_adjuster_1.analyzePosition)(state.scores || [0, 0, 0, 0], currentPlayer);
     const kongZhichan = (0, kong_zhichan_analyzer_1.analyzeKongZhichan)(hand, melds, tenpai.isTenpai, classification.handTypes, state.wallRemaining || ((_a = state.wallTiles) === null || _a === void 0 ? void 0 : _a.length) || 70);
     const dalanRoute = (0, dalan_router_1.evaluateDalanRoute)(hand, melds, state.turn || 1);
+    const speedContext = { shantenBefore: shanten.shanten };
     const legalDiscards = (0, utils_1.uniqueDiscards)(state.newDrawnTile ? hand.filter((tile) => tile !== state.newDrawnTile) : hand);
     const candidates = legalDiscards.map((tile) => {
         const afterHand = (0, utils_1.removeOne)(hand, tile);
-        const speed = (0, speed_evaluator_1.evaluateSpeed)(hand, melds, tile);
+        const speed = (0, speed_evaluator_1.evaluateSpeed)(hand, melds, tile, speedContext);
         const handValue = (0, hand_value_evaluator_1.evaluateHandValue)(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
         const waitQuality = tenpai.isTenpai ? (0, wait_quality_evaluator_1.evaluateWaitQuality)(afterHand, melds, (0, rules_1.checkTenpai)(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
         const dalanImpact = (0, dalan_router_1.evaluateDalanImpact)(hand, melds, tile, dalanRoute);
@@ -1146,7 +1147,7 @@ exports.getPhaseWeights = getPhaseWeights;
 const PHASE_WEIGHTS = {
     early: { speed: 1.2, handValue: 0.8, waitQuality: 0.6, kongZhichan: 0.5, dalanRoute: 0.8, defense: 0.2, position: 0.5, structure: 1.0 },
     middle: { speed: 1.0, handValue: 1.0, waitQuality: 0.8, kongZhichan: 0.7, dalanRoute: 0.6, defense: 0.5, position: 0.5, structure: 1.0 },
-    late: { speed: 0.6, handValue: 0.8, waitQuality: 1.0, kongZhichan: 0.8, dalanRoute: 0.3, defense: 1.2, position: 0.5, structure: 1.0 },
+    late: { speed: 0.6, handValue: 0.8, waitQuality: 1.0, kongZhichan: 0.8, dalanRoute: 0.3, defense: 1.2, position: 1.0, structure: 1.0 },
 };
 function detectPhase(turn) {
     if (turn <= 6)
@@ -1190,18 +1191,20 @@ function effectiveTiles(hand, melds) {
     const current = (0, rules_1.getShanten)(hand, { melds }).shanten;
     return (0, utils_1.allTileKeys)().filter((tile) => (0, rules_1.getShanten)(hand.concat(tile), { melds }).shanten < current);
 }
-function evaluateSpeed(hand, melds, discardTile) {
+function evaluateSpeed(hand, melds, discardTile, context) {
+    var _a, _b;
     const afterHand = (0, utils_1.removeOne)(hand, discardTile);
-    const shantenBefore = (0, rules_1.getShanten)(hand, { melds }).shanten;
+    const shantenBefore = (_a = context === null || context === void 0 ? void 0 : context.shantenBefore) !== null && _a !== void 0 ? _a : (0, rules_1.getShanten)(hand, { melds }).shanten;
     const shantenAfter = (0, rules_1.getShanten)(afterHand, { melds }).shanten;
-    const beforeEffective = effectiveTiles(hand, melds);
-    const afterEffective = effectiveTiles(afterHand, melds);
+    let afterEffective = [];
     let speedScore = 0;
     if (shantenAfter < shantenBefore)
         speedScore = (0, utils_1.clamp)(0.5 + (shantenBefore - shantenAfter) * 0.25, -1, 1);
     else if (shantenAfter > shantenBefore)
         speedScore = -(0, utils_1.clamp)(0.5 + (shantenAfter - shantenBefore) * 0.25, 0, 1);
     else {
+        const beforeEffective = (_b = context === null || context === void 0 ? void 0 : context.beforeEffective) !== null && _b !== void 0 ? _b : effectiveTiles(hand, melds);
+        afterEffective = effectiveTiles(afterHand, melds);
         const diff = afterEffective.length - beforeEffective.length;
         speedScore = diff === 0 ? 0 : (0, utils_1.clamp)(diff / 12, -0.3, 0.3);
     }

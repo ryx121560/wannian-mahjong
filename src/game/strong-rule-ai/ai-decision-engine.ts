@@ -28,7 +28,7 @@ function enabled(config: DecisionConfig, key: DimensionKey, value: number): numb
 }
 
 function positionScore(positionOffense: number, positionDefense: number, attackScore: number, defenseScore: number): number {
-  return (positionOffense - 1) * attackScore + (positionDefense - 1) * Math.abs(defenseScore);
+  return (positionOffense - 1) * attackScore + (positionDefense - 1) * positionDefense * defenseScore;
 }
 
 function reasoningFor(candidate: CandidateScore, phase: string): string {
@@ -62,10 +62,11 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
   const position = analyzePosition(state.scores || [0, 0, 0, 0], currentPlayer);
   const kongZhichan = analyzeKongZhichan(hand, melds, tenpai.isTenpai, classification.handTypes, state.wallRemaining || state.wallTiles?.length || 70);
   const dalanRoute = evaluateDalanRoute(hand, melds, state.turn || 1);
+  const speedContext = { shantenBefore: shanten.shanten };
   const legalDiscards = uniqueDiscards(state.newDrawnTile ? hand.filter((tile) => tile !== state.newDrawnTile) : hand);
   const candidates = legalDiscards.map((tile): CandidateScore => {
     const afterHand = removeOne(hand, tile);
-    const speed = evaluateSpeed(hand, melds, tile);
+    const speed = evaluateSpeed(hand, melds, tile, speedContext);
     const handValue = evaluateHandValue(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
     const waitQuality = tenpai.isTenpai ? evaluateWaitQuality(afterHand, melds, checkTenpai(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
     const dalanImpact = evaluateDalanImpact(hand, melds, tile, dalanRoute);
