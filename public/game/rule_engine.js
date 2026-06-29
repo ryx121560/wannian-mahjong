@@ -191,8 +191,10 @@ function getPrimaryHandType(hand, melds = [], winTile, winMethod) {
 function isSpecial(hand) {
     return isSevenPairs(hand) || checkAllWinds(hand) || checkDalanBasic(hand);
 }
-function meetsThreshold(hand, winTile) {
+function meetsThreshold(hand, winTile, winType) {
     if (isSpecial(hand))
+        return true;
+    if (winType === '杠开')
         return true;
     if (!winTile || (0, tile_utils_1.isHonor)(winTile))
         return true;
@@ -205,7 +207,7 @@ function canWin(hand, context = {}) {
         return { canWin: false, route: null, handType: null, useWild: false, reason: 'hand-not-complete' };
     const classification = classifyHand(hand, melds, context.winTile, context.winType);
     const handType = classification.primaryType;
-    if (!meetsThreshold(hand, context.winTile))
+    if (!meetsThreshold(hand, context.winTile, context.winType))
         return { canWin: false, route, handType, useWild: false, reason: 'win-tile-below-threshold' };
     return { canWin: true, route, handType, handTypes: classification.handTypes, baseScore: classification.baseScore, useWild: false, reason: 'ok' };
 }

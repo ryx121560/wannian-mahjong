@@ -159,8 +159,9 @@ function isSpecial(hand: Tile[]): boolean {
   return isSevenPairs(hand) || checkAllWinds(hand) || checkDalanBasic(hand);
 }
 
-function meetsThreshold(hand: Tile[], winTile?: Tile): boolean {
+function meetsThreshold(hand: Tile[], winTile?: Tile, winType?: string): boolean {
   if (isSpecial(hand)) return true;
+  if (winType === '杠开') return true;
   if (!winTile || isHonor(winTile)) return true;
   return tileValue(winTile) >= 5;
 }
@@ -171,7 +172,7 @@ export function canWin(hand: Tile[], context: WinContext = {}): CanWinResult {
   if (!route) return { canWin: false, route: null, handType: null, useWild: false, reason: 'hand-not-complete' };
   const classification = classifyHand(hand, melds, context.winTile, context.winType);
   const handType = classification.primaryType;
-  if (!meetsThreshold(hand, context.winTile)) return { canWin: false, route, handType, useWild: false, reason: 'win-tile-below-threshold' };
+  if (!meetsThreshold(hand, context.winTile, context.winType)) return { canWin: false, route, handType, useWild: false, reason: 'win-tile-below-threshold' };
   return { canWin: true, route, handType, handTypes: classification.handTypes, baseScore: classification.baseScore, useWild: false, reason: 'ok' };
 }
 

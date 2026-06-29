@@ -1248,8 +1248,9 @@ function handPts(hand){
   }
   return pts;
 }
-function meetsThresh(hand, winTile){
+function meetsThresh(hand, winTile, winType){
   if(isSpecial(hand))return true;
+  if(winType==='杠开')return true;
   // 天胡地胡不受限制
   if(!winTile)return true;
   // 字牌可胡
@@ -1503,10 +1504,19 @@ function canKongChk(h,t){return RULE_ENGINE.canQiangXingPaoGang(ruleTiles(h),[],
 function canSelfKong(p){
   if(!GS.newDrawnTile) return null;
   const t=GS.newDrawnTile,pl=GS.players[p];
-  // 加杠：检查副露中是否有 count=3 的同名牌
-  if(RULE_ENGINE.canMingGang(ruleTiles(pl.hand),ruleMeldsForPlayer(p),tkey(t))) return {type:'add'};
+  // Add-kong: after drawing, any tile already ponged can be upgraded if one copy remains in hand.
+  if(pl.melds){
+    for(const meld of pl.melds){
+      if(meld.count===3&&pl.hand.some(function(tile){return teq(tile,meld.tile);})&&RULE_ENGINE.canMingGang(ruleTiles(pl.hand),ruleMeldsForPlayer(p),tkey(meld.tile))) return {type:'add',tile:meld.tile};
+    }
+  }
   // 暗杠：手牌（含刚摸的）中是否有 >=4 张同名牌
-  if(RULE_ENGINE.canAnGang(ruleTiles(pl.hand)).includes(tkey(t))) return {type:'concealed'};
+  const anGangTiles=RULE_ENGINE.canAnGang(ruleTiles(pl.hand));
+  if(anGangTiles.includes(tkey(t))) return {type:'concealed',tile:t};
+  for(const k of anGangTiles){
+    const tile=pl.hand.find(function(item){return tkey(item)===k;});
+    if(tile)return {type:'concealed',tile:tile};
+  }
   return null;
 }
 
@@ -1559,7 +1569,7 @@ function doKong(p){
   GS.cur=p;GS.lastDiscard=null;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
   const wr=canHuNormal(effectiveHand(p),false);
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
-  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK)){GS.phase='ended';applyWin(p,'杠开');return;}
+  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.canWS=canSelfWin(effectiveHand(p));
   setMsg(`${GS.players[p].name}杠了${lbl(t)}，请出牌`);
   render();updateBtns();
@@ -1570,9 +1580,12 @@ function doKong(p){
 
 function doSelfKong(p){
   clearSelectedTile();
+  const info=canSelfKong(p);
+  if(!info||!GS.newDrawnTile) return;
+  const t=info.tile||GS.newDrawnTile,pl=GS.players[p];
   // 抢杠检测：其他玩家能否胡这张牌
-  if(GS.newDrawnTile){
-    const _kt=GS.newDrawnTile;
+  if(info.type==='add'){
+    const _kt=t;
     for(let _i=1;_i<4;_i++){
       const _pi=(p+_i)%4;
       if(_pi===p)continue;
@@ -1586,9 +1599,6 @@ function doSelfKong(p){
       }
     }
   }
-  const info=canSelfKong(p);
-  if(!info||!GS.newDrawnTile) return;
-  const t=GS.newDrawnTile,pl=GS.players[p];
   if(info.type==='add'){
     for(let m of pl.melds){if(m.count===3&&teq(m.tile,t)){m.count=4;break;}}
     for(let i=pl.hand.length-1;i>=0;i--){if(teq(pl.hand[i],t)){pl.hand.splice(i,1);break;}}
@@ -1603,7 +1613,7 @@ function doSelfKong(p){
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
   const wr=canHuNormal(effectiveHand(p),false);
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
-  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK)){GS.phase='ended';applyWin(p,'杠开');return;}
+  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;
   GS.canWS=canSelfWin(effectiveHand(p));
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
@@ -1771,7 +1781,7 @@ function aiSelfKong(p,kongInfo){
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
   const wr=canHuNormal(effectiveHand(p),false);
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
-  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK)){GS.phase='ended';applyWin(p,'杠开');return;}
+  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;
   GS.canWS=canSelfWin(effectiveHand(p));
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
