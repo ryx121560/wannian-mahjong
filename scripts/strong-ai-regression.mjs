@@ -46,8 +46,13 @@ function includesKeyword(text, keywords) {
 }
 
 const ai = loadStrongAI();
-const data = JSON.parse(fs.readFileSync(path.join(root, 'docs/strong-rule-ai-l2-cases.json'), 'utf8'));
-const cases = data.cases.filter((item) => !options.category || item.category.includes(options.category));
+const dataFiles = [
+  path.join(root, 'docs/strong-rule-ai-l2-cases.json'),
+  path.join(root, 'docs/strong-rule-ai-l2-defense-cases.json'),
+].filter((file) => fs.existsSync(file));
+const datasets = dataFiles.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+const targetConsistency = Math.max(...datasets.map((data) => data.targetConsistency || 0.85), 0.85);
+const cases = datasets.flatMap((data) => data.cases || []).filter((item) => !options.category || item.category.includes(options.category));
 const failedCases = [];
 let matched = 0;
 const byCategory = {};
@@ -56,13 +61,14 @@ const start = Date.now();
 for (const testCase of cases) {
   const state = {
     hand: testCase.hand,
-    melds: [testCase.melds || [], [], [], []],
+    melds: testCase.allMelds || [testCase.melds || [], [], [], []],
     discards: testCase.discards || [[], [], [], []],
     scores: testCase.scores,
     turn: testCase.turn,
     currentPlayer: testCase.currentPlayer,
     dealer: testCase.dealer,
     wallRemaining: testCase.wallRemaining,
+    passRecords: testCase.passRecords || [],
   };
   byCategory[testCase.category] = byCategory[testCase.category] || { total: 0, matched: 0 };
   byCategory[testCase.category].total += 1;
@@ -70,13 +76,17 @@ for (const testCase of cases) {
   const decision = ai.makeDecision(state);
   const duration = Date.now() - before;
   const failures = [];
-  if (duration > 500) failures.push(`decision latency expected < 500ms, actual ${duration}ms`);
+  const latencyLimit = testCase.category.startsWith('defense-') ? 200 : 500;
+  if (duration > latencyLimit) failures.push(`decision latency expected < ${latencyLimit}ms, actual ${duration}ms`);
   if (!decision.allCandidates?.length) failures.push('expected candidate score details');
   if (!decision.reasoning) failures.push('expected human-readable reasoning');
   if (!includesAny(decision.selectedTile, testCase.expected.bestDiscard)) failures.push(`bestDiscard expected one of ${JSON.stringify(testCase.expected.bestDiscard)}, actual ${decision.selectedTile}`);
   if (testCase.expected.unacceptableDiscards.includes(decision.selectedTile)) failures.push(`selected unacceptable discard ${decision.selectedTile}`);
-  if (!includesKeyword(decision.reasoning, testCase.expected.reasoningKeywords)) failures.push(`reasoning expected keyword ${JSON.stringify(testCase.expected.reasoningKeywords)}, actual ${decision.reasoning}`);
-  if (failures.length) failedCases.push({ id: testCase.id, category: testCase.category, selectedTile: decision.selectedTile, reasoning: decision.reasoning, failures });
+  const defenseReasoning = decision.allCandidates.find((candidate) => candidate.tile === decision.selectedTile)?.metadata?.defense?.reasoning || '';
+  const combinedReasoning = `${decision.reasoning} ${defenseReasoning}`;
+  if (!includesKeyword(combinedReasoning, testCase.expected.reasoningKeywords)) failures.push(`reasoning expected keyword ${JSON.stringify(testCase.expected.reasoningKeywords)}, actual ${combinedReasoning}`);
+  if (testCase.expected.expectedState && decision.metadata?.defenseState?.state !== testCase.expected.expectedState) failures.push(`expectedState ${testCase.expected.expectedState}, actual ${decision.metadata?.defenseState?.state}`);
+  if (failures.length) failedCases.push({ id: testCase.id, category: testCase.category, selectedTile: decision.selectedTile, reasoning: combinedReasoning, failures });
   else {
     matched += 1;
     byCategory[testCase.category].matched += 1;
@@ -90,7 +100,7 @@ const report = {
   matched,
   failed: failedCases.length,
   consistency: `${Math.round(consistency * 10000) / 100}%`,
-  targetConsistency: `${Math.round((data.targetConsistency || 0.85) * 100)}%`,
+  targetConsistency: `${Math.round(targetConsistency * 100)}%`,
   latencyTotalMs: Date.now() - start,
   byCategory,
   failedCases,
@@ -104,4 +114,4 @@ else {
   }
 }
 
-if (consistency < (data.targetConsistency || 0.85) || failedCases.some((item) => item.failures.some((failure) => failure.includes('latency') || failure.includes('candidate')))) process.exit(1);
+if (cases.length && (consistency < targetConsistency || failedCases.some((item) => item.failures.some((failure) => failure.includes('latency') || failure.includes('candidate'))))) process.exit(1);

@@ -806,7 +806,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.makeDecision = makeDecision;
 const rules_1 = require("../rules");
 const dalan_router_1 = require("./dalan-router");
-const defense_basic_1 = require("./defense-basic");
+const defense_engine_1 = require("./defense-engine");
 const kong_zhichan_analyzer_1 = require("./kong-zhichan-analyzer");
 const hand_value_evaluator_1 = require("./hand-value-evaluator");
 const phase_detector_1 = require("./phase-detector");
@@ -816,7 +816,7 @@ const structure_penalty_1 = require("./structure-penalty");
 const utils_1 = require("./utils");
 const wait_quality_evaluator_1 = require("./wait-quality-evaluator");
 const DEFAULT_CONFIG = {
-    weights: { speed: 1.0, handValue: 0.8, waitQuality: 0.8, kongZhichan: 0.6, dalanRoute: 0.7, defense: 0.4, position: 0.5, structure: 1.0 },
+    weights: { speed: 1.0, handValue: 0.8, waitQuality: 0.8, kongZhichan: 0.6, dalanRoute: 0.7, defense: 0.8, position: 0.5, structure: 1.0 },
     enabledDimensions: new Set(utils_1.DEFAULT_DIMENSIONS),
 };
 function mergeConfig(config) {
@@ -847,7 +847,7 @@ function reasoningFor(candidate, phase) {
     return `${phaseLabel}。主要考量${main}。兼顾速度、打点、听牌、杠直铲、打烂、防守、位置和结构。综合得分${candidate.totalScore}，选择弃${(0, utils_1.tileLabel)(candidate.tile)}。`;
 }
 function makeDecision(state, config) {
-    var _a;
+    var _a, _b;
     const hand = (0, utils_1.getPlayerHand)(state);
     const melds = (0, utils_1.getPlayerMelds)(state);
     const currentPlayer = state.currentPlayer;
@@ -871,7 +871,7 @@ function makeDecision(state, config) {
         const handValue = (0, hand_value_evaluator_1.evaluateHandValue)(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
         const waitQuality = tenpai.isTenpai ? (0, wait_quality_evaluator_1.evaluateWaitQuality)(afterHand, melds, (0, rules_1.checkTenpai)(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
         const dalanImpact = (0, dalan_router_1.evaluateDalanImpact)(hand, melds, tile, dalanRoute);
-        const defense = (0, defense_basic_1.evaluateDefenseBasic)(state, tile, currentPlayer);
+        const defense = (0, defense_engine_1.evaluateDefense)(state, tile, currentPlayer);
         const structure = (0, structure_penalty_1.evaluateStructurePenalty)(hand, melds, tile);
         const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
         const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
@@ -904,6 +904,7 @@ function makeDecision(state, config) {
                 effectiveCount: speed.effectiveCount,
                 isDalanRoute: dalanRoute.shouldConsiderDalan,
                 kongOpportunity: kongZhichan.kongZhichanScore > 0,
+                defense,
             },
         };
     }).sort((a, b) => b.totalScore - a.totalScore || a.tile.localeCompare(b.tile));
@@ -916,7 +917,55 @@ function makeDecision(state, config) {
         allCandidates: candidates,
         phase,
         reasoning: reasoningFor(selected, phase),
-        metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position },
+        metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position, defenseState: (_b = selected.metadata.defense) === null || _b === void 0 ? void 0 : _b.state },
+    };
+}
+
+},
+"./attack-defense-fsm": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.determineState = determineState;
+const position_adjuster_1 = require("./position-adjuster");
+const utils_1 = require("./utils");
+function determineState(selfHand, selfMelds, selfShanten, selfTenpai, opponentModels, scores, currentPlayer, turn) {
+    void selfHand;
+    void selfMelds;
+    const maxOpponentTenpaiProb = (0, utils_1.roundScore)(Math.max(0, ...opponentModels.map((model) => model.tenpaiProbability)));
+    const scorePosition = (0, position_adjuster_1.analyzePosition)(scores || [0, 0, 0, 0], currentPlayer).situation;
+    if (selfTenpai || scorePosition === 'bigBehind') {
+        return {
+            state: 'attack',
+            reasoning: selfTenpai ? 'attack-self-tenpai' : 'attack-big-behind',
+            factors: { selfTenpai, selfShanten, maxOpponentTenpaiProb, scorePosition, turn },
+            offenseWeight: 1.5,
+            defenseWeight: 0.3,
+        };
+    }
+    if (maxOpponentTenpaiProb > 0.7 && selfShanten >= 3 && (scorePosition === 'bigLead' || scorePosition === 'smallLead')) {
+        return {
+            state: 'full-fold',
+            reasoning: 'full-fold-leading-high-threat',
+            factors: { selfTenpai, selfShanten, maxOpponentTenpaiProb, scorePosition, turn },
+            offenseWeight: 0.2,
+            defenseWeight: 2.0,
+        };
+    }
+    if (maxOpponentTenpaiProb > 0.5 && selfShanten >= 2) {
+        return {
+            state: 'half-fold',
+            reasoning: 'half-fold-high-threat-far-from-tenpai',
+            factors: { selfTenpai, selfShanten, maxOpponentTenpaiProb, scorePosition, turn },
+            offenseWeight: 0.7,
+            defenseWeight: 1.0,
+        };
+    }
+    return {
+        state: 'attack',
+        reasoning: 'attack-default',
+        factors: { selfTenpai, selfShanten, maxOpponentTenpaiProb, scorePosition, turn },
+        offenseWeight: 1.0,
+        defenseWeight: 1.0,
     };
 }
 
@@ -1070,6 +1119,110 @@ function evaluateDefenseBasic(state, candidateTile, currentPlayer) {
 }
 
 },
+"./defense-engine": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.evaluateDefense = evaluateDefense;
+const rules_1 = require("../rules");
+const attack_defense_fsm_1 = require("./attack-defense-fsm");
+const opponent_modeler_1 = require("./opponent-modeler");
+const safety_evaluator_1 = require("./safety-evaluator");
+const defense_signal_processor_1 = require("./defense-signal-processor");
+const utils_1 = require("./utils");
+function formatDefenseReasoning(result) {
+    const threat = `maxTenpai-${result.state.factors.maxOpponentTenpaiProb}`;
+    const danger = `${result.safety.dangerLevel}-safety-${result.modifiedSafety}`;
+    const reasonTypes = result.safety.reasons.length ? result.safety.reasons.map((reason) => reason.type).join(',') : 'no-safety-reason';
+    const signals = result.signals.length ? result.signals.join(',') : 'no-special-signal';
+    return `${result.state.state}. ${result.state.reasoning}. ${threat}. ${danger}. ${reasonTypes}. ${signals}. defense-score-${result.defenseScore}`;
+}
+function evaluateDefense(state, candidateTile, currentPlayer = state.currentPlayer) {
+    const opponentModels = (0, opponent_modeler_1.buildOpponentModels)(state, currentPlayer);
+    const baseSafety = (0, safety_evaluator_1.evaluateSafety)(candidateTile, state, opponentModels);
+    const special = (0, defense_signal_processor_1.processSpecialSignals)(candidateTile, state, opponentModels, baseSafety);
+    const hand = (0, utils_1.getPlayerHand)(state);
+    const melds = (0, utils_1.getPlayerMelds)(state);
+    const shanten = (0, rules_1.getShanten)(hand, { melds });
+    const tenpai = (0, rules_1.checkTenpai)(hand, melds);
+    const fsmState = (0, attack_defense_fsm_1.determineState)(hand, melds, shanten.shanten, tenpai.isTenpai, opponentModels, state.scores || [0, 0, 0, 0], currentPlayer, state.turn || 1);
+    let defenseScore = (special.modifiedSafety - 1.0) * fsmState.defenseWeight;
+    if (fsmState.state === 'attack')
+        defenseScore *= 0.3;
+    if (fsmState.state === 'full-fold')
+        defenseScore *= 1.5;
+    defenseScore = (0, utils_1.roundScore)((0, utils_1.clamp)(defenseScore, -2, 0));
+    const safetyPerTile = new Map([[candidateTile, { ...baseSafety, safetyScore: special.modifiedSafety }]]);
+    const reasoning = formatDefenseReasoning({
+        modifiedSafety: special.modifiedSafety,
+        state: fsmState,
+        signals: special.signals,
+        defenseScore,
+        safety: baseSafety,
+    });
+    return {
+        safetyPerTile,
+        opponentModels,
+        state: fsmState,
+        defenseScore,
+        reasoning,
+    };
+}
+
+},
+"./defense-signal-processor": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.processSpecialSignals = processSpecialSignals;
+const rules_1 = require("../rules");
+const opponent_modeler_1 = require("./opponent-modeler");
+const utils_1 = require("./utils");
+const safety_evaluator_1 = require("./safety-evaluator");
+function relatedMeldThreat(tile, opponent) {
+    if (!(0, rules_1.isNumberTile)(tile))
+        return false;
+    const suit = (0, rules_1.tileSuit)(tile);
+    return opponent.melds.some((meld) => meld.tiles.some((item) => !!item && (0, rules_1.isNumberTile)(item) && (0, rules_1.tileSuit)(item) === suit));
+}
+function hasCurrentPassRecord(tile, state, opponent) {
+    return (state.passRecords || []).some((record) => record.player === opponent.playerIndex && record.tile === tile && record.round === (state.turn || 1));
+}
+function processSpecialSignals(tile, state, opponentModels, baseSafety) {
+    let safety = baseSafety.safetyScore;
+    const signals = [];
+    for (const opponent of opponentModels) {
+        if (opponent.meldCount > 0 && relatedMeldThreat(tile, opponent)) {
+            safety *= 0.7;
+            signals.push(`meld-threat-vs-${opponent.playerIndex}`);
+        }
+        if (opponent.predictedRoute.type === 'quanfeng') {
+            if ((0, rules_1.isHonor)(tile)) {
+                safety *= 0.3;
+                signals.push(`quanfeng-honor-danger-vs-${opponent.playerIndex}`);
+            }
+            else {
+                safety *= 1.1;
+                signals.push(`quanfeng-number-safer-vs-${opponent.playerIndex}`);
+            }
+        }
+        if ((0, opponent_modeler_1.opponentHasWildcardAbility)(opponent))
+            signals.push(`wildcard-risk-vs-${opponent.playerIndex}`);
+        if (opponent.predictedRoute.type === 'dalan') {
+            safety *= 1.2;
+            signals.push(`dalan-relaxed-vs-${opponent.playerIndex}`);
+        }
+        if (opponent.predictedRoute.type === 'pengpeng' && (0, safety_evaluator_1.tileIsTerminalOrHonor)(tile)) {
+            safety *= 0.5;
+            signals.push(`pengpeng-terminal-honor-risk-vs-${opponent.playerIndex}`);
+        }
+        if (hasCurrentPassRecord(tile, state, opponent)) {
+            safety += 0.3;
+            signals.push(`pass-safe-vs-${opponent.playerIndex}`);
+        }
+    }
+    return { modifiedSafety: (0, utils_1.roundScore)((0, utils_1.clamp)(safety, 0, 1)), signals };
+}
+
+},
 "./hand-value-evaluator": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -1139,15 +1292,209 @@ function analyzeKongZhichan(hand, melds, isTenpai, handTypes = [], wallRemaining
 }
 
 },
+"./opponent-modeler": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.analyzeDiscards = analyzeDiscards;
+exports.estimateHandDistribution = estimateHandDistribution;
+exports.estimateTenpaiProbability = estimateTenpaiProbability;
+exports.predictRoute = predictRoute;
+exports.buildOpponentModel = buildOpponentModel;
+exports.buildOpponentModels = buildOpponentModels;
+exports.opponentHasWildcardAbility = opponentHasWildcardAbility;
+const rules_1 = require("../rules");
+const utils_1 = require("./utils");
+const NUMBER_SUITS = ['wan', 'tiao', 'tong'];
+function opponentMelds(opponentIndex, state) {
+    var _a, _b, _c;
+    return (((_a = state.melds) === null || _a === void 0 ? void 0 : _a[opponentIndex]) || ((_c = (_b = state.players) === null || _b === void 0 ? void 0 : _b[opponentIndex]) === null || _c === void 0 ? void 0 : _c.melds) || []).slice();
+}
+function sequence(opponentIndex, state) {
+    var _a;
+    return (((_a = state.discards) === null || _a === void 0 ? void 0 : _a[opponentIndex]) || []).slice();
+}
+function suitOf(tile) {
+    if ((0, rules_1.isHonor)(tile))
+        return 'honor';
+    return (0, rules_1.tileSuit)(tile);
+}
+function suitDistribution(discardSequence) {
+    const result = { wan: 0, tiao: 0, tong: 0, honor: 0 };
+    if (!discardSequence.length)
+        return result;
+    for (const tile of discardSequence)
+        result[suitOf(tile)] += 1;
+    return {
+        wan: (0, utils_1.roundScore)(result.wan / discardSequence.length),
+        tiao: (0, utils_1.roundScore)(result.tiao / discardSequence.length),
+        tong: (0, utils_1.roundScore)(result.tong / discardSequence.length),
+        honor: (0, utils_1.roundScore)(result.honor / discardSequence.length),
+    };
+}
+function estimateDiscardQuality(discardSequence, turn) {
+    if (discardSequence.length < 3)
+        return 'stable';
+    const recent = discardSequence.slice(-3);
+    const central = recent.filter((tile) => (0, rules_1.isNumberTile)(tile) && (0, rules_1.tileValue)(tile) >= 4 && (0, rules_1.tileValue)(tile) <= 6).length;
+    const terminalOrHonor = recent.filter((tile) => (0, rules_1.isHonor)(tile) || ((0, rules_1.isNumberTile)(tile) && [1, 9].includes((0, rules_1.tileValue)(tile)))).length;
+    if (turn >= 7 && central >= 2)
+        return 'dropping';
+    if (terminalOrHonor >= 2)
+        return 'improving';
+    return 'stable';
+}
+function meldHasSuit(meld, suit) {
+    return meld.tiles.some((tile) => !!tile && (0, rules_1.isNumberTile)(tile) && (0, rules_1.tileSuit)(tile) === suit);
+}
+function hasHonorMeld(melds) {
+    return melds.some((meld) => meld.tiles.some((tile) => !!tile && (0, rules_1.isHonor)(tile)));
+}
+function pongLikeCount(melds) {
+    return melds.filter((meld) => meld.type === 'peng' || meld.type === 'mingGang' || meld.type === 'anGang' || meld.type === 'zhiChan').length;
+}
+function hasWildcardAbility(melds) {
+    return melds.some((meld) => meld.type === 'mingGang' || meld.type === 'anGang' || meld.type === 'zhiChan');
+}
+function discardedByCurrentWithoutCall(tile, opponentIndex, state) {
+    var _a;
+    const current = state.currentPlayer;
+    if (!(((_a = state.discards) === null || _a === void 0 ? void 0 : _a[current]) || []).includes(tile))
+        return false;
+    return !opponentMelds(opponentIndex, state).some((meld) => meld.tiles.includes(tile));
+}
+function analyzeDiscards(opponentIndex, state) {
+    const discardSequence = sequence(opponentIndex, state);
+    return {
+        sequence: discardSequence,
+        qualityChange: estimateDiscardQuality(discardSequence, state.turn || 1),
+        suitDistribution: suitDistribution(discardSequence),
+    };
+}
+function estimateHandDistribution(opponentIndex, state) {
+    const ownHand = (0, utils_1.getPlayerHand)(state);
+    const discardSequence = sequence(opponentIndex, state);
+    const analysis = analyzeDiscards(opponentIndex, state);
+    const melds = opponentMelds(opponentIndex, state);
+    const discarded = new Set(discardSequence);
+    const unknownTotal = Math.max(1, (0, utils_1.allTileKeys)().reduce((sum, tile) => sum + (0, utils_1.remainingCount)(state, tile, ownHand), 0));
+    const raw = new Map();
+    for (const tile of (0, utils_1.allTileKeys)()) {
+        let probability = (0, utils_1.remainingCount)(state, tile, ownHand) / unknownTotal;
+        if (discarded.has(tile))
+            probability *= 0.05;
+        if ((0, rules_1.isNumberTile)(tile) && analysis.suitDistribution[(0, rules_1.tileSuit)(tile)] > 0)
+            probability *= 0.5;
+        if ((0, rules_1.isNumberTile)(tile) && analysis.suitDistribution[(0, rules_1.tileSuit)(tile)] < 0.2 && melds.some((meld) => meldHasSuit(meld, (0, rules_1.tileSuit)(tile))))
+            probability *= 1.4;
+        if (discardedByCurrentWithoutCall(tile, opponentIndex, state))
+            probability *= 0.3;
+        raw.set(tile, Math.max(0, probability));
+    }
+    const concealedSize = Math.max(1, 13 - melds.reduce((sum, meld) => sum + meld.tiles.length, 0));
+    const total = Math.max(0.0001, Array.from(raw.values()).reduce((sum, value) => sum + value, 0));
+    const normalized = new Map();
+    for (const [tile, value] of raw.entries())
+        normalized.set(tile, (0, utils_1.roundScore)((0, utils_1.clamp)((value / total) * concealedSize, 0, 1)));
+    return normalized;
+}
+function estimateTenpaiProbability(opponentIndex, state) {
+    const meldCount = opponentMelds(opponentIndex, state).length;
+    const turn = state.turn || 1;
+    let probability = 0.35;
+    if (meldCount >= 3)
+        probability = 0.9;
+    else if (meldCount === 2 && turn >= 13)
+        probability = 0.85;
+    else if (meldCount === 2 && turn >= 7)
+        probability = 0.65;
+    else if (meldCount === 2)
+        probability = 0.45;
+    else if (meldCount === 1 && turn < 7)
+        probability = 0.2;
+    else if (meldCount === 1 && turn <= 12)
+        probability = 0.45;
+    else if (meldCount === 1)
+        probability = 0.75;
+    else if (turn < 7)
+        probability = 0.05;
+    else if (turn <= 12)
+        probability = 0.15;
+    const quality = analyzeDiscards(opponentIndex, state).qualityChange;
+    if (quality === 'dropping')
+        probability += 0.2;
+    if (quality === 'improving')
+        probability -= 0.1;
+    const confidence = (0, utils_1.clamp)(0.3 + meldCount * 0.15 + (turn >= 13 ? 0.15 : turn >= 7 ? 0.05 : 0), 0.3, 0.9);
+    return { probability: (0, utils_1.roundScore)((0, utils_1.clamp)(probability, 0, 1)), confidence: (0, utils_1.roundScore)(confidence) };
+}
+function route(type, confidence, expectedHandValue, evidence) {
+    return { type, confidence: (0, utils_1.roundScore)(confidence), evidence, expectedHandValue };
+}
+function predictRoute(opponentIndex, state) {
+    const discards = sequence(opponentIndex, state);
+    const melds = opponentMelds(opponentIndex, state);
+    const analysis = analyzeDiscards(opponentIndex, state);
+    const numberDiscards = discards.filter(rules_1.isNumberTile);
+    const honorDiscards = discards.filter(rules_1.isHonor);
+    if (discards.length <= 1 && !melds.length)
+        return route('unknown', 0.1, 2, ['limited-info']);
+    if (!numberDiscards.length && (hasHonorMeld(melds) || honorDiscards.length >= 2))
+        return route('quanfeng', 0.5, 16, ['honor-route']);
+    for (const suit of NUMBER_SUITS) {
+        if (analysis.suitDistribution[suit] < 0.1 && melds.some((meld) => meldHasSuit(meld, suit)))
+            return route('qingyise', 0.7, 4, [`low-${suit}-discard`, `${suit}-meld`]);
+    }
+    for (const suit of NUMBER_SUITS) {
+        if (analysis.suitDistribution[suit] < 0.2 && hasHonorMeld(melds))
+            return route('hunyise', 0.6, 2, [`low-${suit}-discard`, 'honor-meld']);
+    }
+    if (pongLikeCount(melds) >= 2)
+        return route('pengpeng', 0.7, 2, ['multiple-pong-like-melds']);
+    const distinctSuits = new Set(discards.map(suitOf));
+    if (distinctSuits.size >= 3 && honorDiscards.length <= 2)
+        return route('dalan', 0.4, 1, ['wide-discard-spread']);
+    return route('pinghu', 0.3, 1, ['default-route']);
+}
+function buildOpponentModel(opponentIndex, state) {
+    const melds = opponentMelds(opponentIndex, state);
+    const tenpai = estimateTenpaiProbability(opponentIndex, state);
+    const predicted = predictRoute(opponentIndex, state);
+    return {
+        playerIndex: opponentIndex,
+        handDistribution: estimateHandDistribution(opponentIndex, state),
+        tenpaiProbability: tenpai.probability,
+        tenpaiConfidence: tenpai.confidence,
+        predictedRoute: { type: predicted.type, confidence: predicted.confidence, evidence: predicted.evidence },
+        expectedHandValue: predicted.expectedHandValue,
+        melds,
+        meldCount: melds.length,
+        discardAnalysis: analyzeDiscards(opponentIndex, state),
+    };
+}
+function buildOpponentModels(state, currentPlayer = state.currentPlayer) {
+    var _a, _b, _c;
+    const playerCount = Math.max(4, ((_a = state.discards) === null || _a === void 0 ? void 0 : _a.length) || 0, ((_b = state.melds) === null || _b === void 0 ? void 0 : _b.length) || 0, ((_c = state.players) === null || _c === void 0 ? void 0 : _c.length) || 0);
+    const models = [];
+    for (let player = 0; player < playerCount; player += 1) {
+        if (player !== currentPlayer)
+            models.push(buildOpponentModel(player, state));
+    }
+    return models;
+}
+function opponentHasWildcardAbility(opponent) {
+    return hasWildcardAbility(opponent.melds);
+}
+
+},
 "./phase-detector": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.detectPhase = detectPhase;
 exports.getPhaseWeights = getPhaseWeights;
 const PHASE_WEIGHTS = {
-    early: { speed: 1.2, handValue: 0.8, waitQuality: 0.6, kongZhichan: 0.5, dalanRoute: 0.8, defense: 0.2, position: 0.5, structure: 1.0 },
-    middle: { speed: 1.0, handValue: 1.0, waitQuality: 0.8, kongZhichan: 0.7, dalanRoute: 0.6, defense: 0.5, position: 0.5, structure: 1.0 },
-    late: { speed: 0.6, handValue: 0.8, waitQuality: 1.0, kongZhichan: 0.8, dalanRoute: 0.3, defense: 1.2, position: 1.0, structure: 1.0 },
+    early: { speed: 1.2, handValue: 0.8, waitQuality: 0.6, kongZhichan: 0.5, dalanRoute: 0.8, defense: 0.3, position: 0.5, structure: 1.0 },
+    middle: { speed: 1.0, handValue: 1.0, waitQuality: 0.8, kongZhichan: 0.7, dalanRoute: 0.6, defense: 0.8, position: 0.5, structure: 1.0 },
+    late: { speed: 0.6, handValue: 0.8, waitQuality: 1.0, kongZhichan: 0.8, dalanRoute: 0.3, defense: 1.5, position: 1.0, structure: 1.0 },
 };
 function detectPhase(turn) {
     if (turn <= 6)
@@ -1178,6 +1525,198 @@ function analyzePosition(scores, currentPlayer) {
     if (diff >= -8)
         return { situation: 'smallBehind', offenseMultiplier: 1.2, defenseMultiplier: 0.8, riskTolerance: 0.7 };
     return { situation: 'bigBehind', offenseMultiplier: 1.5, defenseMultiplier: 0.5, riskTolerance: 0.9 };
+}
+
+},
+"./safety-evaluator": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.checkGenpai = checkGenpai;
+exports.checkSuji = checkSuji;
+exports.checkKabe = checkKabe;
+exports.checkOuterTile = checkOuterTile;
+exports.applyWildcardModifier = applyWildcardModifier;
+exports.evaluateSafety = evaluateSafety;
+exports.tileIsTerminalOrHonor = tileIsTerminalOrHonor;
+exports.tileMatchesOpponentMeldSuit = tileMatchesOpponentMeldSuit;
+exports.isKnownTile = isKnownTile;
+const rules_1 = require("../rules");
+const opponent_modeler_1 = require("./opponent-modeler");
+const utils_1 = require("./utils");
+const SUJI_GROUPS = [
+    [1, 4, 7],
+    [2, 5, 8],
+    [3, 6, 9],
+];
+function opponentDiscards(opponentIndex, state) {
+    var _a;
+    return ((_a = state.discards) === null || _a === void 0 ? void 0 : _a[opponentIndex]) || [];
+}
+function emptySignal(type, description) {
+    return { type, contribution: 0, description };
+}
+function isSameSuitNumber(tile, suit, value) {
+    return (0, rules_1.isNumberTile)(tile) && (0, rules_1.tileSuit)(tile) === suit && (0, rules_1.tileValue)(tile) === value;
+}
+function checkGenpai(tile, opponentIndex, state) {
+    if (!opponentDiscards(opponentIndex, state).includes(tile))
+        return emptySignal('genpai', `opponent-${opponentIndex}-not-genpai`);
+    return { type: 'genpai', contribution: 0.8, description: `genpai-vs-${opponentIndex}` };
+}
+function checkSuji(tile, opponentIndex, state) {
+    if (!(0, rules_1.isNumberTile)(tile))
+        return emptySignal('suji', 'honor-no-suji');
+    const suit = (0, rules_1.tileSuit)(tile);
+    const value = (0, rules_1.tileValue)(tile);
+    const group = SUJI_GROUPS.find((items) => items.includes(value));
+    if (!group)
+        return emptySignal('suji', 'no-suji-group');
+    const discardedValues = new Set(opponentDiscards(opponentIndex, state)
+        .filter((discard) => (0, rules_1.isNumberTile)(discard) && (0, rules_1.tileSuit)(discard) === suit)
+        .map(rules_1.tileValue));
+    const otherValues = group.filter((item) => item !== value);
+    const hits = otherValues.filter((item) => discardedValues.has(item)).length;
+    if (!hits)
+        return emptySignal('suji', 'no-suji-hit');
+    const base = hits === otherValues.length ? 0.5 : 0.3;
+    return { type: 'suji', contribution: (0, utils_1.roundScore)(base * 0.8), description: hits === otherValues.length ? 'complete-suji' : 'half-suji' };
+}
+function checkKabe(tile, state) {
+    if (!(0, rules_1.isNumberTile)(tile))
+        return emptySignal('kabe', 'honor-no-kabe');
+    const suit = (0, rules_1.tileSuit)(tile);
+    const value = (0, rules_1.tileValue)(tile);
+    const ownHand = (0, utils_1.getPlayerHand)(state);
+    for (let wallValue = 1; wallValue <= 9; wallValue += 1) {
+        const wallTile = `${suit}${wallValue}`;
+        if ((0, utils_1.visibleCount)(state, wallTile, ownHand) < 4)
+            continue;
+        const protectedValues = new Set();
+        for (const start of [wallValue - 2, wallValue - 1, wallValue]) {
+            if (start >= 1 && start + 2 <= 9) {
+                for (const item of [start, start + 1, start + 2])
+                    if (item !== wallValue)
+                        protectedValues.add(item);
+            }
+        }
+        if (protectedValues.has(value))
+            return { type: 'kabe', contribution: 0.4, description: `kabe-${wallTile}` };
+    }
+    return emptySignal('kabe', 'no-kabe');
+}
+function checkOuterTile(tile, opponent) {
+    if ((0, rules_1.isHonor)(tile))
+        return emptySignal('outer', 'honor-no-outer');
+    const suit = (0, rules_1.tileSuit)(tile);
+    const route = opponent.predictedRoute.type;
+    const evidence = opponent.predictedRoute.evidence.join(',');
+    if ((route === 'qingyise' || route === 'hunyise') && !evidence.includes(suit))
+        return { type: 'outer', contribution: 0.3, description: `outer-vs-${route}` };
+    if (route === 'quanfeng' && (0, rules_1.isNumberTile)(tile))
+        return { type: 'outer', contribution: 0.3, description: 'number-outer-vs-quanfeng' };
+    return emptySignal('outer', 'no-outer');
+}
+function checkUnused(tile, opponentIndex, state, opponent) {
+    if (!opponentDiscards(opponentIndex, state).includes(tile))
+        return emptySignal('unused', 'not-discarded');
+    if (opponent.melds.some((meld) => meld.tiles.includes(tile)))
+        return emptySignal('unused', 'called-tile');
+    return { type: 'unused', contribution: 0.2, description: `unused-vs-${opponentIndex}` };
+}
+function checkLateDanger(tile, state) {
+    if ((state.turn || 1) < 13)
+        return emptySignal('late-danger', 'not-late');
+    const revealedInDiscards = (state.discards || []).some((row) => row.includes(tile));
+    if (revealedInDiscards)
+        return emptySignal('late-danger', 'already-revealed');
+    return { type: 'late-danger', contribution: -0.2, description: 'late-unrevealed-danger' };
+}
+function applyWildcardModifier(signal, opponent) {
+    if (!(0, opponent_modeler_1.opponentHasWildcardAbility)(opponent) || signal.contribution <= 0)
+        return signal;
+    const multipliers = { genpai: 0.5, suji: 0.7, kabe: 0.8, outer: 0.6 };
+    const multiplier = multipliers[signal.type] || 1;
+    if (multiplier === 1)
+        return signal;
+    return {
+        ...signal,
+        contribution: (0, utils_1.roundScore)(signal.contribution * multiplier),
+        description: `${signal.description}-wildcard-risk`,
+    };
+}
+function strongestSignal(signals) {
+    const positive = signals.filter((signal) => signal.contribution > 0).sort((a, b) => b.contribution - a.contribution);
+    if (positive.length)
+        return positive[0];
+    return signals.sort((a, b) => a.contribution - b.contribution)[0] || emptySignal('late-danger', 'no-signal');
+}
+function dangerLevel(score) {
+    if (score >= 0.8)
+        return 'safe';
+    if (score >= 0.5)
+        return 'low';
+    if (score >= 0.3)
+        return 'medium';
+    if (score >= 0.1)
+        return 'high';
+    return 'extreme';
+}
+function reasonFromSignal(signal, opponentIndex) {
+    return {
+        type: signal.type,
+        description: signal.description,
+        weight: signal.contribution,
+        perOpponent: [{ playerIndex: opponentIndex, contribution: signal.contribution }],
+    };
+}
+function evaluateSafety(tile, state, opponentModels) {
+    const reasons = [];
+    const perOpponentSafety = new Map();
+    for (const opponent of opponentModels) {
+        const signals = [
+            checkGenpai(tile, opponent.playerIndex, state),
+            checkSuji(tile, opponent.playerIndex, state),
+            checkKabe(tile, state),
+            checkOuterTile(tile, opponent),
+            checkUnused(tile, opponent.playerIndex, state, opponent),
+            checkLateDanger(tile, state),
+        ];
+        const selected = applyWildcardModifier(strongestSignal(signals), opponent);
+        perOpponentSafety.set(opponent.playerIndex, selected.contribution);
+        if (selected.contribution !== 0)
+            reasons.push(reasonFromSignal(selected, opponent.playerIndex));
+        if ((0, opponent_modeler_1.opponentHasWildcardAbility)(opponent)) {
+            reasons.push({
+                type: 'wildcard-risk',
+                description: `wildcard-risk-vs-${opponent.playerIndex}`,
+                weight: -0.1,
+                perOpponent: [{ playerIndex: opponent.playerIndex, contribution: -0.1 }],
+            });
+        }
+    }
+    const rawRisk = opponentModels.reduce((sum, opponent) => {
+        const opponentSafety = perOpponentSafety.get(opponent.playerIndex) || 0;
+        return sum + opponent.tenpaiProbability * (1 - opponentSafety);
+    }, 0);
+    const safetyScore = (0, utils_1.roundScore)((0, utils_1.clamp)(1 - rawRisk, 0, 1));
+    return {
+        tile,
+        safetyScore,
+        dangerLevel: dangerLevel(safetyScore),
+        reasons,
+    };
+}
+function tileIsTerminalOrHonor(tile) {
+    return (0, rules_1.isHonor)(tile) || ((0, rules_1.isNumberTile)(tile) && [1, 9].includes((0, rules_1.tileValue)(tile)));
+}
+function tileMatchesOpponentMeldSuit(tile, opponent) {
+    if (!(0, rules_1.isNumberTile)(tile))
+        return false;
+    const suit = (0, rules_1.tileSuit)(tile);
+    return opponent.melds.some((meld) => meld.tiles.some((meldTile) => !!meldTile && isSameSuitNumber(meldTile, suit, (0, rules_1.tileValue)(meldTile))));
+}
+function isKnownTile(tile) {
+    return (0, utils_1.allTileKeys)().includes(tile);
 }
 
 },
@@ -1461,6 +2000,11 @@ __exportStar(require("./wait-quality-evaluator"), exports);
 __exportStar(require("./dalan-router"), exports);
 __exportStar(require("./kong-zhichan-analyzer"), exports);
 __exportStar(require("./defense-basic"), exports);
+__exportStar(require("./opponent-modeler"), exports);
+__exportStar(require("./safety-evaluator"), exports);
+__exportStar(require("./attack-defense-fsm"), exports);
+__exportStar(require("./defense-signal-processor"), exports);
+__exportStar(require("./defense-engine"), exports);
 __exportStar(require("./position-adjuster"), exports);
 __exportStar(require("./structure-penalty"), exports);
 __exportStar(require("./ai-decision-engine"), exports);

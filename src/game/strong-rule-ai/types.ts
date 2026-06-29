@@ -23,6 +23,7 @@ export interface CandidateScore {
     effectiveCount: number;
     isDalanRoute: boolean;
     kongOpportunity: boolean;
+    defense?: DefenseResult;
   };
 }
 
@@ -76,6 +77,7 @@ export interface StrongAIGameState {
   wallRemaining?: number;
   players?: Array<{ hand: Tile[]; melds?: Meld[]; score?: number }>;
   newDrawnTile?: Tile;
+  passRecords?: { player: number; tile: Tile; round: number }[];
 }
 
 export interface AIDecision {
@@ -90,6 +92,7 @@ export interface AIDecision {
     dalanRoute: DalanRouteAnalysis | null;
     kongZhichan: KongZhichanPotential;
     position: PositionAdjustment;
+    defenseState?: AttackDefenseStatus;
   };
 }
 
@@ -137,6 +140,67 @@ export interface DefenseBasicResult {
   safeTiles: Tile[];
   opponentTenpaiProb: number[];
   defenseScore: number;
+}
+
+export type RouteType = 'unknown' | 'qingyise' | 'hunyise' | 'pengpeng' | 'dalan' | 'quanfeng' | 'pinghu';
+export type AttackDefenseState = 'attack' | 'half-fold' | 'full-fold';
+export type DangerLevel = 'safe' | 'low' | 'medium' | 'high' | 'extreme';
+export type SafetyReasonType = 'genpai' | 'suji' | 'kabe' | 'outer' | 'unused' | 'wildcard-risk' | 'late-danger' | 'special-signal';
+
+export interface OpponentModel {
+  playerIndex: number;
+  handDistribution: Map<Tile, number>;
+  tenpaiProbability: number;
+  tenpaiConfidence: number;
+  predictedRoute: {
+    type: RouteType;
+    confidence: number;
+    evidence: string[];
+  };
+  expectedHandValue: number;
+  melds: Meld[];
+  meldCount: number;
+  discardAnalysis: {
+    sequence: Tile[];
+    qualityChange: 'stable' | 'improving' | 'dropping';
+    suitDistribution: { wan: number; tiao: number; tong: number; honor: number };
+  };
+}
+
+export interface SafetyReason {
+  type: SafetyReasonType;
+  description: string;
+  weight: number;
+  perOpponent: { playerIndex: number; contribution: number }[];
+}
+
+export interface SafetyEvaluation {
+  tile: Tile;
+  safetyScore: number;
+  dangerLevel: DangerLevel;
+  reasons: SafetyReason[];
+}
+
+export interface AttackDefenseStatus {
+  state: AttackDefenseState;
+  reasoning: string;
+  factors: {
+    selfTenpai: boolean;
+    selfShanten: number;
+    maxOpponentTenpaiProb: number;
+    scorePosition: 'bigLead' | 'smallLead' | 'even' | 'smallBehind' | 'bigBehind';
+    turn: number;
+  };
+  offenseWeight: number;
+  defenseWeight: number;
+}
+
+export interface DefenseResult {
+  safetyPerTile: Map<Tile, SafetyEvaluation>;
+  opponentModels: OpponentModel[];
+  state: AttackDefenseStatus;
+  defenseScore: number;
+  reasoning: string;
 }
 
 export interface StructurePenaltyResult {

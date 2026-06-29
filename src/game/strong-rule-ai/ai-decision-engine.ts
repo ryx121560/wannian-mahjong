@@ -1,6 +1,6 @@
 import { checkTenpai, classifyHand, getShanten } from '../rules';
 import { evaluateDalanImpact, evaluateDalanRoute } from './dalan-router';
-import { evaluateDefenseBasic } from './defense-basic';
+import { evaluateDefense } from './defense-engine';
 import { analyzeKongZhichan } from './kong-zhichan-analyzer';
 import { evaluateHandValue } from './hand-value-evaluator';
 import { detectPhase, getPhaseWeights } from './phase-detector';
@@ -12,7 +12,7 @@ import { DEFAULT_DIMENSIONS, getPlayerHand, getPlayerMelds, removeOne, roundScor
 import { evaluateWaitQuality } from './wait-quality-evaluator';
 
 const DEFAULT_CONFIG: DecisionConfig = {
-  weights: { speed: 1.0, handValue: 0.8, waitQuality: 0.8, kongZhichan: 0.6, dalanRoute: 0.7, defense: 0.4, position: 0.5, structure: 1.0 },
+  weights: { speed: 1.0, handValue: 0.8, waitQuality: 0.8, kongZhichan: 0.6, dalanRoute: 0.7, defense: 0.8, position: 0.5, structure: 1.0 },
   enabledDimensions: new Set(DEFAULT_DIMENSIONS),
 };
 
@@ -70,7 +70,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
     const handValue = evaluateHandValue(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
     const waitQuality = tenpai.isTenpai ? evaluateWaitQuality(afterHand, melds, checkTenpai(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
     const dalanImpact = evaluateDalanImpact(hand, melds, tile, dalanRoute);
-    const defense = evaluateDefenseBasic(state, tile, currentPlayer);
+    const defense = evaluateDefense(state, tile, currentPlayer);
     const structure = evaluateStructurePenalty(hand, melds, tile);
     const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
     const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
@@ -105,6 +105,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
         effectiveCount: speed.effectiveCount,
         isDalanRoute: dalanRoute.shouldConsiderDalan,
         kongOpportunity: kongZhichan.kongZhichanScore > 0,
+        defense,
       },
     };
   }).sort((a, b) => b.totalScore - a.totalScore || a.tile.localeCompare(b.tile));
@@ -116,6 +117,6 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
     allCandidates: candidates,
     phase,
     reasoning: reasoningFor(selected, phase),
-    metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position },
+    metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position, defenseState: selected.metadata.defense?.state },
   };
 }
