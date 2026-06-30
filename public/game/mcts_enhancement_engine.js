@@ -109,9 +109,25 @@ function actionPriorityAdjustment(candidate, context) {
         return 0.4;
     return 0;
 }
+function invalidReadyAdjustment(candidate) {
+    var _a;
+    if (candidate.action !== 'discard')
+        return 0;
+    if (candidate.shantenAfter !== 0)
+        return 0;
+    if (((_a = candidate.waitCount) !== null && _a !== void 0 ? _a : 1) > 0)
+        return 0;
+    return -6;
+}
+function hasInvalidReadyWait(candidate) {
+    var _a;
+    return candidate.action === 'discard' && candidate.shantenAfter === 0 && ((_a = candidate.waitCount) !== null && _a !== void 0 ? _a : 1) <= 0;
+}
 function mainRisk(candidate, context) {
     if (!candidate.legal)
         return '非法动作';
+    if (hasInvalidReadyWait(candidate))
+        return '没有合法待牌';
     if (candidate.action === 'kong' && clampRisk(candidate.kongRisk) >= 0.55)
         return '杠后风险较高';
     if (isHonor(candidate.tile) && candidate.action === 'kong')
@@ -131,6 +147,7 @@ function scoreCandidate(candidate, context) {
             + defenseAdjustment(candidate, context)
             + kongAdjustment(candidate, context)
             + routeProtectionAdjustment(candidate)
+            + invalidReadyAdjustment(candidate)
             + actionPriorityAdjustment(candidate, context)
         : -Infinity;
     return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
@@ -148,6 +165,9 @@ function chooseFinal(scored, context) {
         throw new Error('MCTS requires at least one candidate');
     if (!strong || !strong.legal)
         return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选不可用，采用搜索收益最高的合法动作', notReason: null };
+    if (hasInvalidReadyWait(strong)) {
+        return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选形成的听牌没有合法待牌，采用可实际胡牌的候选', notReason: null };
+    }
     const gap = fallback.value - strong.value;
     if (gap < WEAK_GAP) {
         return { best: strong, mctsBest: fallback, strong, reason: null, notReason: '搜索收益差距较小，保留强规则 AI 的稳定选择' };

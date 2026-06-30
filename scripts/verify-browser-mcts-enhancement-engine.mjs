@@ -48,4 +48,12 @@ const kong = engine.decideWithMcts({ ...base([
 ]), opponentThreats: [{ player: 0, tenpaiRisk: 0.8, dalanRisk: 0.8, honorRisk: 0.8 }], strongRuleAction: '过' });
 if (kong.finalAction !== '过') throw new Error(`risky honor kong should be rejected: ${kong.finalAction}`);
 
+const invalidWait = engine.decideWithMcts({ ...base([
+  { id: 'discard-nan', action: 'discard', tile: 'nan', tileLabel: '南', legal: true, baseScore: 8, shantenAfter: 0, waitCount: 0, isStrongRuleChoice: true },
+  { id: 'discard-tong2', action: 'discard', tile: 'tong2', tileLabel: '2筒', legal: true, baseScore: 7.2, shantenAfter: 0, waitCount: 1 },
+]), strongRuleAction: '打南' });
+if (invalidWait.finalAction !== '打2筒' || !invalidWait.overridden) {
+  throw new Error(`invalid low-wait strong rule should be overridden: ${invalidWait.finalAction}`);
+}
+
 console.log('Browser MCTS enhancement engine verified');

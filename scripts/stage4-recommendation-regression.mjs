@@ -54,6 +54,15 @@ if (!runtimeHtml.includes('导出失败：生成或下载 JSON 文件失败') ||
 if (!runtimeHtml.includes('recordAiDiscardInterpretation') || !runtimeHtml.includes("createRecommendationRecord('ai-discard'")) {
   failures.push('stage4-runtime: ai discard interpretation is not recorded');
 }
+if (!/function canSelfWin\s*\(\s*hand\s*,\s*winTile/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: self draw win check does not accept winTile');
+}
+if (/canSelfWin\(effectiveHand\(p\)\)/.test(runtimeHtml) || /canSelfWin\(hand\)\{recordRecommendationChoice\('response','胡'\)/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: self draw win check still omits winTile at call site');
+}
+if (!runtimeHtml.includes("canHuNormal(testHand,false,preMelds,winTile,'自摸')")) {
+  failures.push('stage4-runtime: wait enumeration does not pass winTile');
+}
 
 const summaryContext = {
   ...raw.cases[0].context,

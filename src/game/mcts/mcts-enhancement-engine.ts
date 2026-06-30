@@ -14,6 +14,8 @@ export interface MctsCandidate {
   dealInRisk?: number;
   kongRisk?: number;
   scoreImpact?: number;
+  waitCount?: number;
+  waitRemaining?: number;
   isStrongRuleChoice?: boolean;
 }
 
@@ -164,8 +166,20 @@ function actionPriorityAdjustment(candidate: MctsCandidate, context: MctsDecisio
   return 0;
 }
 
+function invalidReadyAdjustment(candidate: MctsCandidate): number {
+  if (candidate.action !== 'discard') return 0;
+  if (candidate.shantenAfter !== 0) return 0;
+  if ((candidate.waitCount ?? 1) > 0) return 0;
+  return -6;
+}
+
+function hasInvalidReadyWait(candidate: MctsCandidate): boolean {
+  return candidate.action === 'discard' && candidate.shantenAfter === 0 && (candidate.waitCount ?? 1) <= 0;
+}
+
 function mainRisk(candidate: MctsCandidate, context: MctsDecisionContext): string {
   if (!candidate.legal) return '非法动作';
+  if (hasInvalidReadyWait(candidate)) return '没有合法待牌';
   if (candidate.action === 'kong' && clampRisk(candidate.kongRisk) >= 0.55) return '杠后风险较高';
   if (isHonor(candidate.tile) && candidate.action === 'kong') return '风牌/字牌杠需要谨慎';
   if (clampRisk(candidate.dealInRisk) >= 0.55) return '放炮风险较高';
@@ -181,6 +195,7 @@ function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext):
       + defenseAdjustment(candidate, context)
       + kongAdjustment(candidate, context)
       + routeProtectionAdjustment(candidate)
+      + invalidReadyAdjustment(candidate)
       + actionPriorityAdjustment(candidate, context)
     : -Infinity;
   return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
@@ -198,6 +213,9 @@ function chooseFinal(scored: ScoredCandidate[], context: MctsDecisionContext): {
   const strong = findStrongRule(scored, context);
   if (!fallback) throw new Error('MCTS requires at least one candidate');
   if (!strong || !strong.legal) return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选不可用，采用搜索收益最高的合法动作', notReason: null };
+  if (hasInvalidReadyWait(strong)) {
+    return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选形成的听牌没有合法待牌，采用可实际胡牌的候选', notReason: null };
+  }
   const gap = fallback.value - strong.value;
   if (gap < WEAK_GAP) {
     return { best: strong, mctsBest: fallback, strong, reason: null, notReason: '搜索收益差距较小，保留强规则 AI 的稳定选择' };

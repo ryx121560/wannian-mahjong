@@ -1313,10 +1313,10 @@ function effectiveHand(p){
   return h;
 }
 
-function canHuNormal(hand,useWild,preMelds,winTile){
+function canHuNormal(hand,useWild,preMelds,winTile,winType){
   preMelds=preMelds||0;
   const s=hand.map(tkey);
-  const ruleContext={melds:ruleMeldsByCount(preMelds)};
+  const ruleContext={melds:ruleMeldsByCount(preMelds),winTile:winTile?tkey(winTile):undefined,winType:winType};
   const ruleResult=RULE_ENGINE.canWin(s,ruleContext);
   if(ruleResult&&ruleResult.canWin)return {win:true,useWild:false,type:ruleResult.handType,handTypes:ruleResult.handTypes,baseScore:ruleResult.baseScore,route:ruleResult.route};
   if(useWild){
@@ -1370,7 +1370,7 @@ function completeHumanDraw(playerIdx,reason){
   logEvent(playerIdx,'摸牌',GS.newDrawnTile);
   GS.newDrawnIdx=GS.players[playerIdx].hand.length-1;
   clearSelectedTile();
-  GS.canWS=canSelfWin(effectiveHand(playerIdx));
+  GS.canWS=canSelfWin(effectiveHand(playerIdx),GS.newDrawnTile,'自摸');
   GS.canK=!!canSelfKong(playerIdx);
   GS.phase='discarding';
   setMsg('选择要打出的牌（新摸的牌在最右边）');
@@ -1576,7 +1576,7 @@ function doKong(p){
     const _pi=(p+_i)%4;
     if(_pi===p)continue;
     const _test=[...effectiveHand(_pi),t];
-    const _chk=canHuNormal(_test,false);
+    const _chk=canHuNormal(_test,false,0,t,'抢杠');
     if(_chk&&_chk.win){
       setMsg(GS.players[_pi].name+'抢杠胡牌！');
       GS._robKongTarget=p;
@@ -1594,10 +1594,10 @@ function doKong(p){
   if(GS.wall.length>0){const dt=GS.wall.pop();GS.players[p].hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   GS.cur=p;GS.lastDiscard=null;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
-  const wr=canHuNormal(effectiveHand(p),false);
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
+  const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
-  GS.canWS=canSelfWin(effectiveHand(p));
+  GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
   setMsg(`${GS.players[p].name}杠了${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot('open-kong');
@@ -1617,7 +1617,7 @@ function doSelfKong(p){
       const _pi=(p+_i)%4;
       if(_pi===p)continue;
       const _test=[...effectiveHand(_pi),_kt];
-      const _chk=canHuNormal(_test,false);
+      const _chk=canHuNormal(_test,false,0,_kt,'抢杠');
       if(_chk&&_chk.win){
         GS.newDrawnTile=null;GS.newDrawnIdx=-1;
         setMsg(GS.players[_pi].name+'抢杠胡牌！');
@@ -1638,11 +1638,11 @@ function doSelfKong(p){
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   logEvent(p,info.type==='add'?'加杠':'暗杠',t);
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
-  const wr=canHuNormal(effectiveHand(p),false);
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
+  const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;
-  GS.canWS=canSelfWin(effectiveHand(p));
+  GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot(info.type==='add'?'add-kong':'concealed-kong');
@@ -1729,7 +1729,7 @@ async function aiTurn(p){
   logEvent(p,'摸牌',dt);
   GS.phase='discarding';
   saveGameSnapshot('ai-draw');
-  if(canSelfWin(effectiveHand(p))){
+  if(canSelfWin(effectiveHand(p),dt,'自摸')){
     logAiResponseDecision(p,'selfDrawWin',dt,aiBestShantenForPlayer(GS.players[p].hand,p),-1,'摸牌后已满足胡牌条件，自摸优先于开杠');
     render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>applyWin(p,'自摸'),500);return;
   }
@@ -1808,11 +1808,11 @@ function aiSelfKong(p,kongInfo){
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   logEvent(p,kongInfo.type==='add'?'加杠':'暗杠',t);
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
-  const wr=canHuNormal(effectiveHand(p),false);
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
+  const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;
-  GS.canWS=canSelfWin(effectiveHand(p));
+  GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot(kongInfo.type==='add'?'ai-add-kong':'ai-concealed-kong');
@@ -1823,7 +1823,7 @@ async function aiDiscard(p){
   if(GS.phase!=='discarding')return;
   // 自弈停止后禁止AI操作人类玩家手牌
   if(GS.players[p] && GS.players[p].human) return;
-  if(canSelfWin(effectiveHand(p))&&GS.newDrawnTile){applyWin(p,'自摸');return;}
+  if(canSelfWin(effectiveHand(p),GS.newDrawnTile,'自摸')&&GS.newDrawnTile){applyWin(p,'自摸');return;}
   const h=GS.players[p].hand,idx=await aiChooseDiscard(h,p);
   const t=h[idx];
   const decisionLog=getAiHandMeta(h,'aiDecisionLog')||buildAiDecisionLog(h,p,idx,'fallback','未命中详细决策记录，使用最终弃牌兜底');
@@ -2294,7 +2294,7 @@ function mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongActionText,c
   const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
   const waitInfo=aiWaitInfoAfterDiscard(detail.sub||hand.filter(function(_,j){return j!==detail.idx;}),playerIdx,route,tile);
   const base=(scoreInfo?scoreInfo.sc:0)-(detail.s||0)*2+(waitInfo.remaining||0)*0.25;
-  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0};
+  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
   action.isStrongRuleChoice=mctsActionText(action)===strongActionText;
   return action;
 }
@@ -3162,14 +3162,14 @@ function detectHonorTaatsu(hand){
 
 
 // 综合自摸判断：检查所有牌型（面子手、七对子、打烂、半正宗、全正宗）
-function canSelfWin(hand){
+function canSelfWin(hand,winTile,winType){
   if(!hand||hand.length<14)return false;
   // 面子手 + 七对子（真胡）
-  const n=canHuNormal(hand,false);
+  const n=canHuNormal(hand,false,0,winTile,winType);
   if(n&&n.win)return true;
   // 假胡：有万能牌时（摸牌阶段 newDrawnTile 或杠后摸万能牌 _hasWild）
   if(Object.values(GS._hasWild||{}).some(v=>v)){
-    const n2=canHuNormal(hand,true,0,GS.newDrawnTile);
+    const n2=canHuNormal(hand,true,0,winTile||GS.newDrawnTile,winType);
     if(n2&&n2.win)return true;
   }
   // 打烂/正宗：0 issues = 完成
@@ -3191,7 +3191,8 @@ function listWaitsForMeldCount(hand,playerIdx,preMelds,unavailableTileKey){
   for(const k of ALL_KEYS){
     if(k===unavailableTileKey||aiRemainingCountForWait(k,playerIdx,hand)<=0)continue;
     const testHand=[...hand,kt(k)];
-    const win=canHuNormal(testHand,false,preMelds);
+    const winTile=kt(k);
+    const win=canHuNormal(testHand,false,preMelds,winTile,'自摸');
     if(win&&win.win)result.push(k);
   }
   return result;
@@ -3288,7 +3289,7 @@ document.getElementById('bt-win').onclick=()=>{
   if(GS.canW&&GS._respP===0){recordRecommendationChoice('response','胡');applyWin(0,'点炮');}
   else if(GS.canWS&&GS.phase==='discarding'&&GS.players[GS.cur].human){
     const hand = effectiveHand(0);
-    if(canSelfWin(hand)){recordRecommendationChoice('response','胡');applyWin(0,'自摸');}
+    if(canSelfWin(hand,GS.newDrawnTile,'自摸')){recordRecommendationChoice('response','胡');applyWin(0,'自摸');}
   }
 };
 document.getElementById('bt-pass').onclick=()=>{
@@ -3871,7 +3872,7 @@ function toggleSelfPlay(){
     // Ask the player to resolve abnormal overflow instead of discarding automatically.
     if(GS.players[0]&&GS.players[0].hand&&GS.players[0].hand.length>14){
       console.warn('[toggleSelfPlay] 手牌异常，转入玩家弃牌选择：'+GS.players[0].hand.length);
-      GS.cur=0;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS.canWS=canSelfWin(effectiveHand(0));
+      GS.cur=0;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS.canWS=canSelfWin(effectiveHand(0),GS.newDrawnTile,'自摸');
       setMsg('手牌数量异常，请先选择一张牌打出');
     }
     fitCanvas();render();saveGameSnapshot('self-play-disabled');
