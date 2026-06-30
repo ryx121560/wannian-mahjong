@@ -450,6 +450,14 @@ function restoredPhaseMessage(){
     setMsg(title+'，请点击“新游戏”');
     const message=document.getElementById('msg');
     message.style.display='block';
+    if(GS._lastResult&&GS._lastResult.displayText){
+      message.textContent=GS._lastResult.displayText;
+      return;
+    }
+    if(GS._lastResult&&GS._lastResult.huType&&GS._lastResult.type){
+      message.textContent=formatWinSettlementText(title,GS._lastResult.huType+'('+GS._lastResult.type+')',GS._lastResult.pts||0);
+      return;
+    }
     message.textContent=title+' | '+GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');
     return;
   }
@@ -1692,7 +1700,7 @@ function applyWin(winner,wt){
   // 每局结束保存RL权重
   window.RL&&RL.saveAll();
   const resultTitle=GS.players[winner].name+'胡了！';
-  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt};
+  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,classifyWin(eh)+'('+wt+')',pts)};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
   if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | '+_info;document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
@@ -1704,6 +1712,10 @@ function applyWin(winner,wt){
 function showWinDlg(title,type,pts){
   const msg=document.getElementById('msg');
   msg.style.display='block';
+  msg.textContent=formatWinSettlementText(title,type,pts);
+}
+
+function formatWinSettlementText(title,type,pts){
   const hasPreScores=Array.isArray(GS._preWinScores)&&GS._preWinScores.length===GS.players.length;
   const scores=GS.players.map(function(p,i){
     if(!hasPreScores)return p.name+':'+p.score;
@@ -1712,7 +1724,7 @@ function showWinDlg(title,type,pts){
     return p.name+':'+sign+d+'('+p.score+')';
   }).join(' | ');
   const displayPts=hasPreScores?Math.max.apply(null,GS.players.map(function(p,i){return p.score-GS._preWinScores[i];})):pts;
-  msg.textContent=`${title}  ${type}  ${displayPts>0?'+'+displayPts:displayPts}分  ${scores}`;
+  return `${title}  ${type}  ${displayPts>0?'+'+displayPts:displayPts}分  ${scores}`;
 }
 
 // -- AI --

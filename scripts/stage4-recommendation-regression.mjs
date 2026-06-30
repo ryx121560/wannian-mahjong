@@ -63,6 +63,12 @@ if (/canSelfWin\(effectiveHand\(p\)\)/.test(runtimeHtml) || /canSelfWin\(hand\)\
 if (!runtimeHtml.includes("canHuNormal(testHand,false,preMelds,winTile,'自摸')")) {
   failures.push('stage4-runtime: wait enumeration does not pass winTile');
 }
+if (!runtimeHtml.includes('function formatWinSettlementText') || !runtimeHtml.includes('displayText:formatWinSettlementText')) {
+  failures.push('stage4-runtime: settled win result is not persisted with full score deltas');
+}
+if (!/GS\._lastResult\.displayText[\s\S]{0,220}message\.textContent=GS\._lastResult\.displayText/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: restored ended game does not show full settlement details');
+}
 
 const summaryContext = {
   ...raw.cases[0].context,
