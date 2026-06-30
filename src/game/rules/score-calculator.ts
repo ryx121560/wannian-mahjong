@@ -22,6 +22,7 @@ export function calculateScore(params: {
   gangType?: MeldType;
   noColorBonus?: boolean;
   isTrueWin?: boolean;
+  trueWinBonus?: boolean;
   lianGangCount?: number;
   zhiChanFromPlayer?: number;
   currentPlayer: number;
@@ -36,6 +37,7 @@ export function calculateScore(params: {
   if (params.gangType === 'anGang') score *= 2;
   if (noColorBonus) score *= 2;
   if (noColorBonus && isTrueWin) score *= 2;
+  if (params.trueWinBonus) score *= 2;
   if (!isTrueWin) score *= 2;
   if (lianGangCount > 0) score *= 2 ** lianGangCount;
   if (params.winMethod === '抢杠') score = 6;

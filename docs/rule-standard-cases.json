@@ -13423,6 +13423,563 @@
         "isTrueWin": false,
         "isFakeWin": false
       }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-001",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "已碰七条且手中有第4张七条，摸四万后仍应允许七条加杠",
+      "state": {
+        "phase": "discarding",
+        "currentPlayer": 0,
+        "players": [
+          {
+            "hand": [
+              "wan3",
+              "wan5",
+              "tong3",
+              "tong4",
+              "tong5",
+              "tiao7",
+              "xi",
+              "xi",
+              "fa",
+              "fa",
+              "wan4"
+            ],
+            "melds": [
+              {
+                "type": "peng",
+                "tiles": [
+                  "tiao7",
+                  "tiao7",
+                  "tiao7"
+                ]
+              }
+            ]
+          }
+        ],
+        "melds": [
+          [
+            {
+              "type": "peng",
+              "tiles": [
+                "tiao7",
+                "tiao7",
+                "tiao7"
+              ]
+            }
+          ],
+          [],
+          [],
+          []
+        ],
+        "discards": [
+          [],
+          [],
+          [],
+          []
+        ],
+        "turn": 9,
+        "dealer": 0,
+        "scores": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "wallTiles": [],
+        "passRecords": [],
+        "newDrawnTile": "wan4"
+      },
+      "expected": {
+        "legalActions": [
+          "addedKong"
+        ]
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-002",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "已碰七条且手中有第4张七条，摸发财后仍应允许七条加杠",
+      "state": {
+        "phase": "discarding",
+        "currentPlayer": 0,
+        "players": [
+          {
+            "hand": [
+              "wan3",
+              "wan5",
+              "tong3",
+              "tong4",
+              "tong5",
+              "tiao7",
+              "xi",
+              "xi",
+              "fa",
+              "fa",
+              "fa"
+            ],
+            "melds": [
+              {
+                "type": "peng",
+                "tiles": [
+                  "tiao7",
+                  "tiao7",
+                  "tiao7"
+                ]
+              }
+            ]
+          }
+        ],
+        "melds": [
+          [
+            {
+              "type": "peng",
+              "tiles": [
+                "tiao7",
+                "tiao7",
+                "tiao7"
+              ]
+            }
+          ],
+          [],
+          [],
+          []
+        ],
+        "discards": [
+          [],
+          [],
+          [],
+          []
+        ],
+        "turn": 9,
+        "dealer": 0,
+        "scores": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "wallTiles": [],
+        "passRecords": [],
+        "newDrawnTile": "fa"
+      },
+      "expected": {
+        "legalActions": [
+          "addedKong"
+        ]
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-003",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "已碰七条且手中有第4张七条，摸西风后仍应允许七条加杠",
+      "state": {
+        "phase": "discarding",
+        "currentPlayer": 0,
+        "players": [
+          {
+            "hand": [
+              "wan3",
+              "wan5",
+              "tong3",
+              "tong4",
+              "tong5",
+              "tiao7",
+              "xi",
+              "xi",
+              "xi",
+              "fa",
+              "fa"
+            ],
+            "melds": [
+              {
+                "type": "peng",
+                "tiles": [
+                  "tiao7",
+                  "tiao7",
+                  "tiao7"
+                ]
+              }
+            ]
+          }
+        ],
+        "melds": [
+          [
+            {
+              "type": "peng",
+              "tiles": [
+                "tiao7",
+                "tiao7",
+                "tiao7"
+              ]
+            }
+          ],
+          [],
+          [],
+          []
+        ],
+        "discards": [
+          [],
+          [],
+          [],
+          []
+        ],
+        "turn": 9,
+        "dealer": 0,
+        "scores": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "wallTiles": [],
+        "passRecords": [],
+        "newDrawnTile": "xi"
+      },
+      "expected": {
+        "legalActions": [
+          "addedKong"
+        ]
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-004",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸四万后七条加杠，杠补西风应组成345万+345饼+西风刻+发财将并杠开真胡",
+      "hand": [
+        "wan3",
+        "wan4",
+        "wan5",
+        "tong3",
+        "tong4",
+        "tong5",
+        "xi",
+        "xi",
+        "xi",
+        "fa",
+        "fa"
+      ],
+      "context": {
+        "winType": "杠开",
+        "winTile": "xi",
+        "melds": [
+          {
+            "type": "mingGang",
+            "tiles": [
+              "tiao7",
+              "tiao7",
+              "tiao7",
+              "tiao7"
+            ]
+          }
+        ]
+      },
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": true,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "canWin": true,
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "scorePerPlayer": [
+          0,
+          4,
+          4,
+          4
+        ],
+        "winnerGain": 12,
+        "capped": false
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-005",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸四万后七条加杠，杠补发财应组成345万+345饼+发财刻+西风将并杠开真胡",
+      "hand": [
+        "wan3",
+        "wan4",
+        "wan5",
+        "tong3",
+        "tong4",
+        "tong5",
+        "xi",
+        "xi",
+        "fa",
+        "fa",
+        "fa"
+      ],
+      "context": {
+        "winType": "杠开",
+        "winTile": "fa",
+        "melds": [
+          {
+            "type": "mingGang",
+            "tiles": [
+              "tiao7",
+              "tiao7",
+              "tiao7",
+              "tiao7"
+            ]
+          }
+        ]
+      },
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": true,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "canWin": true,
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "scorePerPlayer": [
+          0,
+          4,
+          4,
+          4
+        ],
+        "winnerGain": 12,
+        "capped": false
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-006",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸四万后七条加杠，杠补二万不算真胡，但按普通杠开胡每家2分结算",
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": false,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "scorePerPlayer": [
+          0,
+          2,
+          2,
+          2
+        ],
+        "winnerGain": 6,
+        "capped": false
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-007",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸发财后七条加杠，杠补四万应组成345万+345饼+发财刻+西风将并杠开真胡",
+      "hand": [
+        "wan3",
+        "wan5",
+        "tong3",
+        "tong4",
+        "tong5",
+        "xi",
+        "xi",
+        "fa",
+        "fa",
+        "fa",
+        "wan4"
+      ],
+      "context": {
+        "winType": "杠开",
+        "winTile": "wan4",
+        "melds": [
+          {
+            "type": "mingGang",
+            "tiles": [
+              "tiao7",
+              "tiao7",
+              "tiao7",
+              "tiao7"
+            ]
+          }
+        ]
+      },
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": true,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "canWin": true,
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "scorePerPlayer": [
+          0,
+          4,
+          4,
+          4
+        ],
+        "winnerGain": 12,
+        "capped": false
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-008",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸发财后七条加杠，杠补西风不算真胡，但按普通杠开胡每家2分结算",
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": false,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "scorePerPlayer": [
+          0,
+          2,
+          2,
+          2
+        ],
+        "winnerGain": 6,
+        "capped": false
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-009",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸西风后七条加杠，杠补四万应组成345万+345饼+西风刻+发财将并杠开真胡",
+      "hand": [
+        "wan3",
+        "wan5",
+        "tong3",
+        "tong4",
+        "tong5",
+        "xi",
+        "xi",
+        "xi",
+        "fa",
+        "fa",
+        "wan4"
+      ],
+      "context": {
+        "winType": "杠开",
+        "winTile": "wan4",
+        "melds": [
+          {
+            "type": "mingGang",
+            "tiles": [
+              "tiao7",
+              "tiao7",
+              "tiao7",
+              "tiao7"
+            ]
+          }
+        ]
+      },
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": true,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "canWin": true,
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "scorePerPlayer": [
+          0,
+          4,
+          4,
+          4
+        ],
+        "winnerGain": 12,
+        "capped": false
+      }
+    },
+    {
+      "id": "L1-bug-regression-kong-wildcard-010",
+      "level": "L1",
+      "category": "bug-regression",
+      "description": "摸西风后七条加杠，杠补发财不算真胡，但按普通杠开胡每家2分结算",
+      "scoreCalc": {
+        "handTypes": [
+          "平胡"
+        ],
+        "baseScore": 1,
+        "winMethod": "杠开",
+        "gangType": "mingGang",
+        "noColorBonus": false,
+        "isTrueWin": true,
+        "trueWinBonus": false,
+        "lianGangCount": 0,
+        "currentPlayer": 0
+      },
+      "expected": {
+        "scorePerPlayer": [
+          0,
+          2,
+          2,
+          2
+        ],
+        "winnerGain": 6,
+        "capped": false
+      }
     }
   ]
 }

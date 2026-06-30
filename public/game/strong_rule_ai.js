@@ -508,6 +508,8 @@ function calculateScore(params) {
         score *= 2;
     if (noColorBonus && isTrueWin)
         score *= 2;
+    if (params.trueWinBonus)
+        score *= 2;
     if (!isTrueWin)
         score *= 2;
     if (lianGangCount > 0)
