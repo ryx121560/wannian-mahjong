@@ -1,0 +1,285 @@
+export type MctsActionType = 'discard' | 'pong' | 'kong' | 'win' | 'pass';
+
+export interface MctsCandidate {
+  id: string;
+  action: MctsActionType;
+  tile?: string;
+  tileLabel?: string;
+  legal: boolean;
+  baseScore: number;
+  shantenAfter?: number;
+  route?: string;
+  breaksRoute?: boolean;
+  defenseRisk?: number;
+  dealInRisk?: number;
+  kongRisk?: number;
+  scoreImpact?: number;
+  isStrongRuleChoice?: boolean;
+}
+
+export interface MctsDecisionContext {
+  turn: number;
+  player: number;
+  phase: 'discarding' | 'responding' | 'recommendation';
+  timeLimitMs?: number;
+  scores: number[];
+  dealer?: number;
+  wallRemaining?: number;
+  discards: string[][];
+  melds: { player: number; tile: string; count: number; type?: string }[];
+  handSummary: string[];
+  opponentThreats?: { player: number; tenpaiRisk: number; dalanRisk: number; honorRisk: number }[];
+  strongRuleAction?: string | null;
+  candidates: MctsCandidate[];
+}
+
+export interface MctsDecisionSummary {
+  schemaVersion: 'mcts-decision-v1';
+  turn: number;
+  player: number;
+  phase: string;
+  finalAction: string;
+  strongRuleAction: string | null;
+  mctsAction: string;
+  overridden: boolean;
+  overrideReason: string | null;
+  notOverrideReason: string | null;
+  candidates: Array<{
+    action: string;
+    averageValue: number;
+    mainRisk: string;
+    dealInRisk: number;
+    kongRisk: number;
+  }>;
+  defenseInfluence: string;
+  hiddenInferenceUsed: boolean;
+  hiddenInferenceNote: string;
+  scoreSituationNote: string;
+  kongRiskNote: string;
+  elapsedMs: number;
+  timedOut: boolean;
+  fallbackReason: string | null;
+  currentBestOnTimeout: string | null;
+  playerExplanation: string;
+}
+
+interface ScoredCandidate extends MctsCandidate {
+  value: number;
+  mainRisk: string;
+}
+
+const WEAK_GAP = 1.5;
+
+function actionText(candidate: Pick<MctsCandidate, 'action' | 'tileLabel' | 'tile'>): string {
+  if (candidate.action === 'discard') return `打${candidate.tileLabel || candidate.tile || ''}`;
+  if (candidate.action === 'pong') return `碰${candidate.tileLabel || candidate.tile || ''}`;
+  if (candidate.action === 'kong') return `杠${candidate.tileLabel || candidate.tile || ''}`;
+  if (candidate.action === 'win') return '胡';
+  return '过';
+}
+
+function clampRisk(value?: number): number {
+  if (!Number.isFinite(value || 0)) return 0;
+  return Math.max(0, Math.min(1, Number(value || 0)));
+}
+
+function scorePosition(context: MctsDecisionContext): 'leading' | 'behind' | 'neutral' {
+  const me = context.scores[context.player] || 0;
+  const others = context.scores.filter((_, idx) => idx !== context.player);
+  const maxOther = Math.max(...others);
+  const minOther = Math.min(...others);
+  if (me >= maxOther + 15) return 'leading';
+  if (me <= minOther - 15) return 'behind';
+  return 'neutral';
+}
+
+function strongestThreat(context: MctsDecisionContext): number {
+  return Math.max(0, ...(context.opponentThreats || []).map((item) => clampRisk(item.tenpaiRisk)));
+}
+
+function hasDalanThreat(context: MctsDecisionContext): boolean {
+  return (context.opponentThreats || []).some((item) => clampRisk(item.dalanRisk) >= 0.55);
+}
+
+function isHonor(tile?: string): boolean {
+  return !!tile && ['dong', 'nan', 'xi', 'bei', 'zhong', 'fa', 'bai'].includes(tile);
+}
+
+function numberValue(tile?: string): number | null {
+  if (!tile) return null;
+  const match = tile.match(/(\d)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function scorePositionAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  const pos = scorePosition(context);
+  if (pos === 'leading') {
+    if ((candidate.dealInRisk || 0) > 0.45 || (candidate.kongRisk || 0) > 0.45) return -3.5;
+    if (candidate.action === 'win') return 2.5;
+    return 0.8;
+  }
+  if (pos === 'behind') {
+    if (candidate.action === 'win' && (candidate.scoreImpact || 0) < 2 && (candidate.route || '') !== 'high-value') return -0.7;
+    if ((candidate.scoreImpact || 0) >= 4 || ['dalan', '7p', 'quanzheng', 'banzheng'].includes(candidate.route || '')) return 2.2;
+    return 0;
+  }
+  return 0;
+}
+
+function defenseAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  const defenseRisk = clampRisk(candidate.defenseRisk);
+  const dealInRisk = clampRisk(candidate.dealInRisk);
+  const late = context.turn >= 48;
+  const leading = scorePosition(context) === 'leading';
+  const threat = strongestThreat(context);
+  const weight = (late ? 3.2 : 2.1) + (leading ? 1.4 : 0) + threat;
+  return -(defenseRisk * 2 + dealInRisk * 3) * weight;
+}
+
+function kongAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  if (candidate.action !== 'kong') return 0;
+  let risk = clampRisk(candidate.kongRisk);
+  const num = numberValue(candidate.tile);
+  if (isHonor(candidate.tile)) risk += 0.25;
+  if (num != null && num >= 5) risk += 0.15;
+  if (hasDalanThreat(context)) risk += 0.2;
+  risk += strongestThreat(context) * 0.2;
+  const behind = scorePosition(context) === 'behind';
+  const reward = (candidate.scoreImpact || 0) + (behind ? 1.2 : 0);
+  return reward - Math.min(1.4, risk) * 5.5;
+}
+
+function routeProtectionAdjustment(candidate: MctsCandidate): number {
+  if (!candidate.breaksRoute) return 0;
+  const protectedRoute = ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(candidate.route || '');
+  return protectedRoute ? -4.5 : -2;
+}
+
+function actionPriorityAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  const hasWin = context.candidates.some((item) => item.legal && item.action === 'win');
+  if (candidate.action === 'win') return 12 + (candidate.scoreImpact || 0);
+  if (candidate.action === 'pass' && hasWin) return -16;
+  if (candidate.action === 'pong') return 0.5;
+  if (candidate.action === 'kong') return 0.4;
+  return 0;
+}
+
+function mainRisk(candidate: MctsCandidate, context: MctsDecisionContext): string {
+  if (!candidate.legal) return '非法动作';
+  if (candidate.action === 'kong' && clampRisk(candidate.kongRisk) >= 0.55) return '杠后风险较高';
+  if (isHonor(candidate.tile) && candidate.action === 'kong') return '风牌/字牌杠需要谨慎';
+  if (clampRisk(candidate.dealInRisk) >= 0.55) return '放炮风险较高';
+  if (clampRisk(candidate.defenseRisk) >= 0.55 || strongestThreat(context) >= 0.65) return '对手威胁较高';
+  if (candidate.breaksRoute) return '可能破坏高价值路线';
+  return '风险可控';
+}
+
+function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext): ScoredCandidate {
+  const value = candidate.legal
+    ? candidate.baseScore
+      + scorePositionAdjustment(candidate, context)
+      + defenseAdjustment(candidate, context)
+      + kongAdjustment(candidate, context)
+      + routeProtectionAdjustment(candidate)
+      + actionPriorityAdjustment(candidate, context)
+    : -Infinity;
+  return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
+}
+
+function findStrongRule(scored: ScoredCandidate[], context: MctsDecisionContext): ScoredCandidate | null {
+  return scored.find((item) => item.isStrongRuleChoice)
+    || scored.find((item) => actionText(item) === context.strongRuleAction)
+    || null;
+}
+
+function chooseFinal(scored: ScoredCandidate[], context: MctsDecisionContext): { best: ScoredCandidate; mctsBest: ScoredCandidate; strong: ScoredCandidate | null; reason: string | null; notReason: string | null } {
+  const legal = scored.filter((item) => item.legal).sort((a, b) => b.value - a.value);
+  const fallback = legal[0] || scored[0];
+  const strong = findStrongRule(scored, context);
+  if (!fallback) throw new Error('MCTS requires at least one candidate');
+  if (!strong || !strong.legal) return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选不可用，采用搜索收益最高的合法动作', notReason: null };
+  const gap = fallback.value - strong.value;
+  if (gap < WEAK_GAP) {
+    return { best: strong, mctsBest: fallback, strong, reason: null, notReason: '搜索收益差距较小，保留强规则 AI 的稳定选择' };
+  }
+  return { best: fallback, mctsBest: fallback, strong, reason: mainRisk(fallback, context) === '风险可控' ? '后续平均收益明显更高且风险可控' : '后续收益优势覆盖主要风险', notReason: null };
+}
+
+function defenseInfluence(context: MctsDecisionContext): string {
+  const threat = strongestThreat(context);
+  if (threat >= 0.7) return '对手威胁较高，搜索已提高防守权重';
+  if (context.turn >= 48) return '终盘阶段，搜索更重视安全牌和放炮风险';
+  return '防守系统已参与候选收益修正';
+}
+
+function scoreSituationNote(context: MctsDecisionContext): string {
+  const pos = scorePosition(context);
+  if (pos === 'leading') return '当前玩家领先，搜索倾向稳定收益和降低放炮风险';
+  if (pos === 'behind') return '当前玩家落后，搜索允许有收益依据的追分路线';
+  return '当前分差接近，搜索优先选择平均收益更稳定的路线';
+}
+
+function kongRiskNote(scored: ScoredCandidate[]): string {
+  const kong = scored.filter((item) => item.action === 'kong');
+  if (!kong.length) return '本次没有杠牌候选';
+  const risky = kong.some((item) => clampRisk(item.kongRisk) >= 0.55 || isHonor(item.tile) || (numberValue(item.tile) || 0) >= 5);
+  return risky ? '杠牌候选已评估抢杠、风牌和高牌风险' : '杠牌候选风险较低，已纳入补牌和杠开收益';
+}
+
+function explanation(final: ScoredCandidate, summary: Pick<MctsDecisionSummary, 'overridden' | 'overrideReason' | 'notOverrideReason'>, context: MctsDecisionContext): string {
+  const action = actionText(final);
+  if (summary.overridden) return `${action} 是搜索复核后的选择：${summary.overrideReason}。${scoreSituationNote(context)}。`;
+  return `${action} 保留为当前建议：${summary.notOverrideReason || '搜索复核后仍然稳定'}。${defenseInfluence(context)}。`;
+}
+
+export function decideWithMcts(context: MctsDecisionContext, now = () => Date.now()): MctsDecisionSummary {
+  const start = now();
+  const timeLimit = Math.max(1, context.timeLimitMs || 10000);
+  const scored = (context.candidates || []).map((candidate) => scoreCandidate(candidate, context));
+  if (!scored.length) throw new Error('MCTS requires at least one candidate');
+  const timedOut = now() - start >= timeLimit;
+  const decision = chooseFinal(scored, context);
+  const elapsedMs = Math.max(0, now() - start);
+  const finalAction = actionText(decision.best);
+  const mctsAction = actionText(decision.mctsBest);
+  const strongRuleAction = context.strongRuleAction || (decision.strong ? actionText(decision.strong) : null);
+  const overridden = !!strongRuleAction && finalAction !== strongRuleAction;
+  const base = {
+    overridden,
+    overrideReason: overridden ? decision.reason : null,
+    notOverrideReason: overridden ? null : decision.notReason,
+  };
+  return {
+    schemaVersion: 'mcts-decision-v1',
+    turn: context.turn,
+    player: context.player,
+    phase: context.phase,
+    finalAction,
+    strongRuleAction,
+    mctsAction,
+    overridden,
+    overrideReason: base.overrideReason,
+    notOverrideReason: base.notOverrideReason,
+    candidates: scored
+      .filter((item) => item.legal)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6)
+      .map((item) => ({
+        action: actionText(item),
+        averageValue: Number(item.value.toFixed(2)),
+        mainRisk: item.mainRisk,
+        dealInRisk: Number(clampRisk(item.dealInRisk).toFixed(2)),
+        kongRisk: Number(clampRisk(item.kongRisk).toFixed(2)),
+      })),
+    defenseInfluence: defenseInfluence(context),
+    hiddenInferenceUsed: true,
+    hiddenInferenceNote: '已根据弃牌、副露、对手威胁和剩余可见牌做隐藏信息风险修正',
+    scoreSituationNote: scoreSituationNote(context),
+    kongRiskNote: kongRiskNote(scored),
+    elapsedMs,
+    timedOut,
+    fallbackReason: timedOut ? '达到决策时间上限，返回当前最优候选' : null,
+    currentBestOnTimeout: timedOut ? mctsAction : null,
+    playerExplanation: explanation(decision.best, base, context),
+  };
+}

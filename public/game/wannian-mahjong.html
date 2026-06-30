@@ -79,7 +79,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="btn-p" id="bt-pass">过</button>
 <button class="btn-n" id="bt-rules">规则</button>
 <button class="btn-n" id="bt-ai-settings">AI设置</button>
-<button class="btn-n" id="bt-ai-log">AI日志</button>
 <button class="btn-n" id="bt-new">新游戏</button>
 
 <button class="btn-eye" id="bt-eye" title="显示/隐藏AI手牌">👁</button>
@@ -94,7 +93,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <li>当前版本不吃牌，保留碰、明杠、暗杠、加杠、胡和自摸。</li>
 <li>支持普通面子手、七对子、打烂、半正宗、全正宗路线。</li>
 <li>东南西北和中发白包含万年麻将字牌特殊组合判定。</li>
-<li>普通对局默认使用稳定规则 AI；可在 AI 设置中手动启用 MCTS/RL。</li>
+<li>普通对局默认启用阶段五 MCTS 增强决策；AI 设置仅保留训练相关开关。</li>
 </ul>
 <button class="close" id="bt-rules-close">关闭</button>
 </div>
@@ -102,7 +101,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <h3>AI 设置</h3>
 <div class="mode" id="ai-mode-label"></div>
 <div class="hint" id="ai-core-label"></div>
-<label class="option"><input type="checkbox" id="ai-use-mcts"><span><b>普通对局启用 MCTS</b><br><span class="hint">默认关闭；开启后 MCTS 只有在不劣于规则结果时才会覆盖。</span></span></label>
 <label class="option"><input type="checkbox" id="ai-use-rl"><span><b>普通对局启用 RL</b><br><span class="hint">默认关闭；开启后 RL 只有在不劣于规则结果时才会覆盖。</span></span></label>
 <div class="hint">强规则 AI 八维参数</div>
 <div id="strong-ai-dimensions"></div>
@@ -123,6 +121,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <script src="rule_engine.js"></script>
 <script src="strong_rule_ai.js"></script>
 <script src="recommendation_engine.js"></script>
+<script src="mcts_enhancement_engine.js"></script>
 <script>
 const W=1360,H=900,TW=52,TH=72,GAP=2;
 const GAME_SESSION=window.GameSessionSnapshot;
@@ -130,17 +129,19 @@ const AI_RULE_CORE=window.AIRuleCore;
 const RULE_ENGINE=window.WannianRuleEngine;
 const STRONG_RULE_AI=window.WannianStrongRuleAI;
 const RECOMMENDATION_ENGINE=window.WannianRecommendationEngine;
+const MCTS_ENHANCEMENT=window.WannianMctsEnhancement;
 if(!GAME_SESSION)throw new Error('Game session snapshot core failed to load');
 if(!AI_RULE_CORE)throw new Error('AI rule core failed to load');
 if(!RULE_ENGINE)throw new Error('Wannian rule engine failed to load');
 if(!STRONG_RULE_AI)throw new Error('Wannian strong rule AI failed to load');
 if(!RECOMMENDATION_ENGINE)throw new Error('Wannian recommendation engine failed to load');
+if(!MCTS_ENHANCEMENT)throw new Error('Wannian MCTS enhancement engine failed to load');
 const AI_ENGINE_INFO={id:'strong-rule-ai',version:'2026-06-27-stage2',source:'strong-rule',mode:'ordinary',ruleCoreId:AI_RULE_CORE.id,ruleCoreVersion:AI_RULE_CORE.version};
 const STRONG_AI_DIMENSIONS=[
   ['speed','速度'],['handValue','打点'],['waitQuality','听牌'],['kongZhichan','杠铲'],
   ['dalanRoute','打烂'],['defense','防守'],['position','位置'],['structure','结构']
 ];
-const AI_RUNTIME_CONFIG={ordinaryMCTS:false,ordinaryRL:false,strongRule:true,strongWeights:{speed:1,handValue:0.8,waitQuality:0.8,kongZhichan:0.6,dalanRoute:0.7,defense:0.4,position:0.5,structure:1},strongEnabled:{speed:true,handValue:true,waitQuality:true,kongZhichan:true,dalanRoute:true,defense:true,position:true,structure:true}};
+const AI_RUNTIME_CONFIG={ordinaryMCTS:true,ordinaryRL:false,strongRule:true,strongWeights:{speed:1,handValue:0.8,waitQuality:0.8,kongZhichan:0.6,dalanRoute:0.7,defense:0.4,position:0.5,structure:1},strongEnabled:{speed:true,handValue:true,kongZhichan:true,waitQuality:true,dalanRoute:true,defense:true,position:true,structure:true}};
 const AI_STRATEGY={
   defenseWeights:{low:1,medium:3,high:6,midFloor:1,lateFloor:4},
   danger:{oneMeld:1,twoMelds:2,late:1,scoreLead:1,repeatedSafe:1},
@@ -162,7 +163,7 @@ function configureAiLearning(enabled){
 }
 
 function setOrdinaryAiConfig(useMCTS,useRL){
-  AI_RUNTIME_CONFIG.ordinaryMCTS=!!useMCTS;
+  AI_RUNTIME_CONFIG.ordinaryMCTS=true;
   AI_RUNTIME_CONFIG.ordinaryRL=!!useRL;
   if(!_selfPlay.running)configureAiLearning(false);
   renderAiSettingsPanel();
@@ -184,11 +185,10 @@ function setStrongAiEnabled(key,value){
 }
 
 function renderAiSettingsPanel(){
-  const m=document.getElementById('ai-use-mcts'),r=document.getElementById('ai-use-rl'),label=document.getElementById('ai-mode-label'),coreLabel=document.getElementById('ai-core-label'),dims=document.getElementById('strong-ai-dimensions');
-  if(m)m.checked=!!AI_RUNTIME_CONFIG.ordinaryMCTS;
+  const r=document.getElementById('ai-use-rl'),label=document.getElementById('ai-mode-label'),coreLabel=document.getElementById('ai-core-label'),dims=document.getElementById('strong-ai-dimensions');
   if(r)r.checked=!!AI_RUNTIME_CONFIG.ordinaryRL;
   if(label)label.textContent='当前普通对局来源：'+AI_ENGINE_INFO.source;
-  if(coreLabel)coreLabel.textContent='规则核心：'+AI_RULE_CORE.id+' @ '+AI_RULE_CORE.version+'；阶段二强规则 AI 默认启用。';
+  if(coreLabel)coreLabel.textContent='规则核心：'+AI_RULE_CORE.id+' @ '+AI_RULE_CORE.version+'；阶段五 MCTS 增强默认启用。';
   if(dims)dims.innerHTML=STRONG_AI_DIMENSIONS.map(function(item){
     const key=item[0],name=item[1],value=AI_RUNTIME_CONFIG.strongWeights[key],checked=AI_RUNTIME_CONFIG.strongEnabled[key]?'checked':'';
     return '<div class="dimension"><span>'+name+'</span><input type="range" min="0" max="2" step="0.1" value="'+value+'" data-ai-weight="'+key+'"><span class="value">'+value.toFixed(1)+'</span><input type="checkbox" data-ai-enabled="'+key+'" '+checked+'></div>';
@@ -550,6 +550,7 @@ function ensureRecommendationLog(){
   if(!GS._gameLog)return null;
   if(!Array.isArray(GS._gameLog.recommendationRecords))GS._gameLog.recommendationRecords=[];
   if(!GS._gameLog.recommendationSummary)GS._gameLog.recommendationSummary=null;
+  if(!Array.isArray(GS._gameLog.mctsDecisionLogs))GS._gameLog.mctsDecisionLogs=[];
   return GS._gameLog;
 }
 function logEvent(p,action,tile){
@@ -1233,6 +1234,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
     aiEngine:{id:AI_ENGINE_INFO.id,version:AI_ENGINE_INFO.version,mode:AI_ENGINE_INFO.mode,source:AI_ENGINE_INFO.source,ruleCore:{id:AI_RULE_CORE.id,version:AI_RULE_CORE.version},mcts:window.MCTS?!!window.MCTS.useMCTS:false,rl:window.RL?!!window.RL.useRL:false,entryAudit:AI_ENGINE_INFO.entryAudit||auditAiEntrypoints()},
     events:[],
     suggestLogs:[],
+    mctsDecisionLogs:[],
     recommendationRecords:[],
     recommendationSummary:null
   };
@@ -1449,7 +1451,7 @@ function checkResponses(){
           nextTurn();
         }
       },30000);
-    }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){logAiResponseDecision(pk,'win',t,aiBestShantenForPlayer(GS.players[pk].hand,pk),-1,'能胡优先胡');applyWin(pk,'点炮');}},500);}
+    }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){aiRespond([{p:pk,cw:true,cp:false,ck:false}]);}},500);}
     return;
   }
   GS.phase='responding';GS._resp=resp;GS._responseKind='calls';GS.canP=GS.canK=GS.canW=false;GS._respP=-1;
@@ -1853,6 +1855,7 @@ async function aiDiscard(p){
     if(GS.players[p] && GS.players[p].human){
       GS._aiDiscardAnim=null;render();return;
     }
+    const aiDecisionLog=getAiHandMeta(h,'aiDecisionLog');
     h.splice(idx,1);
     GS.discards.push(t);GS.lastDiscard=t;GS.lastDiscardP=p;
     GS.playerDiscards[p].push(t);
@@ -1861,7 +1864,7 @@ async function aiDiscard(p){
   _spOnDiscard(p,t);
     logEvent(p,'弃牌',t);
     if(GS._recommendation){
-      GS._recommendation.lastAiInterpretation={player:p,playerName:GS.players[p]?GS.players[p].name:'AI',tile:tkey(t),tileLabel:lbl(t)};
+      GS._recommendation.lastAiInterpretation={player:p,playerName:GS.players[p]?GS.players[p].name:'AI',tile:tkey(t),tileLabel:lbl(t),mctsSummary:aiDecisionLog&&aiDecisionLog.mctsSummary?aiDecisionLog.mctsSummary:null};
     }
     // RL 奖励：向听数变化
     const oldShanten=getAiHandMeta(h,'rlOldShanten');
@@ -2231,6 +2234,84 @@ function aiWaitInfoAfterDiscard(sub,playerIdx,route,discardTile){
   }catch(e){return {count:0,remaining:0,tiles:[]};}
 }
 
+function mctsPublicMelds(){
+  const rows=[];
+  for(let p=0;p<4;p++){
+    const melds=GS.players[p]&&GS.players[p].melds?GS.players[p].melds:[];
+    for(const meld of melds)rows.push({player:p,tile:tkey(meld.tile),count:meld.count||3,type:meld.type||''});
+  }
+  return rows;
+}
+
+function mctsOpponentThreats(playerIdx){
+  const threats=[];
+  for(let p=0;p<4;p++){
+    if(p===playerIdx)continue;
+    const river=(GS.playerDiscards&&GS.playerDiscards[p])||[];
+    const melds=GS.players[p]&&GS.players[p].melds?GS.players[p].melds:[];
+    const dl=typeof dangerLevel==='function'?dangerLevel(playerIdx):0;
+    const late=GS.turn>=48?0.25:0;
+    const meldRisk=Math.min(0.45,melds.length*0.18);
+    const riverRisk=Math.min(0.25,river.length*0.015);
+    const tenpaiRisk=Math.max(0,Math.min(1,dl*0.15+meldRisk+riverRisk+late));
+    const dalanRisk=Math.max(0,Math.min(1,(melds.some(function(m){return m&&m.tile&&m.tile.t==='honor';})?0.25:0)+riverRisk+(GS.turn>=36?0.15:0)));
+    const honorRisk=Math.max(0,Math.min(1,(melds.filter(function(m){return m&&m.tile&&m.tile.t==='honor';}).length*0.25)+late));
+    threats.push({player:p,tenpaiRisk:tenpaiRisk,dalanRisk:dalanRisk,honorRisk:honorRisk});
+  }
+  return threats;
+}
+
+function mctsActionText(candidate){
+  if(!candidate)return '';
+  if(candidate.action==='discard')return '打'+(candidate.tileLabel||candidate.tile||'');
+  if(candidate.action==='pong')return '碰'+(candidate.tileLabel||candidate.tile||'');
+  if(candidate.action==='kong')return '杠'+(candidate.tileLabel||candidate.tile||'');
+  if(candidate.action==='win')return '胡';
+  return '过';
+}
+
+function mctsDecisionContext(playerIdx,phase,candidates,strongRuleAction,handKeys){
+  return {
+    turn:GS.turn||0,
+    player:playerIdx,
+    phase:phase,
+    timeLimitMs:10000,
+    scores:GS.players.map(function(p){return p.score;}),
+    dealer:GS.dealer||0,
+    wallRemaining:GS.wall?GS.wall.length:0,
+    discards:(GS.playerDiscards||[[],[],[],[]]).map(function(row){return (row||[]).map(tkey);}),
+    melds:mctsPublicMelds(),
+    handSummary:handKeys||((GS.players[playerIdx]&&GS.players[playerIdx].hand)||[]).map(tkey),
+    opponentThreats:mctsOpponentThreats(playerIdx),
+    strongRuleAction:strongRuleAction||null,
+    candidates:candidates||[]
+  };
+}
+
+function appendMctsDecisionSummary(summary){
+  const log=ensureRecommendationLog();
+  if(!log||!summary)return;
+  log.mctsDecisionLogs.push(summary);
+  if(log.mctsDecisionLogs.length>240)log.mctsDecisionLogs=log.mctsDecisionLogs.slice(-240);
+}
+
+function mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongActionText,candScores){
+  const tile=hand[detail.idx]||detail.tile;
+  const key=tkey(tile);
+  const route=detail.path||'norm';
+  const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
+  const waitInfo=aiWaitInfoAfterDiscard(detail.sub||hand.filter(function(_,j){return j!==detail.idx;}),playerIdx,route,tile);
+  const base=(scoreInfo?scoreInfo.sc:0)-(detail.s||0)*2+(waitInfo.remaining||0)*0.25;
+  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0};
+  action.isStrongRuleChoice=mctsActionText(action)===strongActionText;
+  return action;
+}
+
+function mctsSummaryFinalCandidate(summary,candidates){
+  if(!summary)return null;
+  return (candidates||[]).find(function(candidate){return mctsActionText(candidate)===summary.finalAction;})||null;
+}
+
 function buildAiDecisionLog(hand,playerIdx,discardIdx,source,reason,extra){
   const before=aiRouteSummaryForPlayer(hand,playerIdx);
   const candidates=[];
@@ -2332,11 +2413,9 @@ async function aiChooseDiscard(hand,playerIdx){
     setAiHandMeta(hand,'aiDecisionLog',buildAiDecisionLog(hand,playerIdx,idx,source,reason,extra));
     return idx;
   }
+  let strongChoice=null;
   try{
-    const strongChoice=chooseStrongRuleDiscard(hand,playerIdx);
-    if(strongChoice){
-      return commitAiChoice(strongChoice.idx,'strong-rule-ai',strongChoice.decision.reasoning,{strongRuleDecision:strongChoice.decision});
-    }
+    strongChoice=chooseStrongRuleDiscard(hand,playerIdx);
   }catch(error){
     console.warn('[strong-rule-ai] fallback to legacy rule AI',error);
   }
@@ -2345,6 +2424,37 @@ async function aiChooseDiscard(hand,playerIdx){
   const ruleCandidates=evaluateDiscardCandidates(hand,playerIdx);
   _ruleCand=ruleCandidates.bestCands.length?ruleCandidates.bestCands[0]:-1;
   _ruleShanten=ruleCandidates.bestShanten;
+  try{
+    if(MCTS_ENHANCEMENT&&ruleCandidates.candDetails&&ruleCandidates.candDetails.length){
+      const strongAction=strongChoice?'打'+lbl(hand[strongChoice.idx]):(_ruleCand>=0?'打'+lbl(hand[_ruleCand]):null);
+      const mctsCandidates=ruleCandidates.candDetails.map(function(detail){
+        return mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongAction,null);
+      });
+      if(strongChoice&&!mctsCandidates.some(function(item){return item.id==='discard:'+strongChoice.idx+':'+tkey(hand[strongChoice.idx]);})){
+        const sub=hand.filter(function(_,j){return j!==strongChoice.idx;});
+        const route=aiRouteSummaryForPlayer(sub,playerIdx);
+        const tile=hand[strongChoice.idx];
+        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
+        mctsCandidates.push(action);
+      }
+      const context=mctsDecisionContext(playerIdx,'discarding',mctsCandidates,strongAction,hand.map(tkey));
+      const summary=MCTS_ENHANCEMENT.decideWithMcts(context);
+      appendMctsDecisionSummary(summary);
+      const finalCandidate=mctsSummaryFinalCandidate(summary,mctsCandidates);
+      if(finalCandidate&&finalCandidate.id){
+        const idx=Number(finalCandidate.id.split(':')[1]);
+        if(idx>=0&&idx<hand.length){
+          const source=summary.overridden?'mcts':'mcts';
+          return commitAiChoice(idx,source,summary.playerExplanation,{strongRuleDecision:strongChoice?strongChoice.decision:null,mctsSummary:summary});
+        }
+      }
+    }
+  }catch(error){
+    console.warn('[mcts-enhancement] discard fallback to rule AI',error);
+  }
+  if(strongChoice){
+    return commitAiChoice(strongChoice.idx,'strong-rule-ai',strongChoice.decision.reasoning,{strongRuleDecision:strongChoice.decision});
+  }
   // MCTS: 与规则结果比较后决定是否采用（仅当不差于规则时）
   if(window.MCTS&&MCTS.useMCTS){
     const idx=await MCTS.chooseDiscard(hand,playerIdx,GS);
@@ -2818,6 +2928,51 @@ function aiRespond(resp){
   if(GS.phase!=='responding')return;
   const t=GS.lastDiscard;
   let hadResponseOption=false;
+  try{
+    if(MCTS_ENHANCEMENT&&t){
+      const candidates=[];
+      const byId={};
+      for(const r of resp){
+        const curShanten=aiBestShantenForPlayer(GS.players[r.p].hand,r.p);
+        if(r.cw){
+          const c={id:'win:'+r.p,action:'win',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:30,shantenAfter:-1,route:'response',defenseRisk:0,dealInRisk:0,kongRisk:0,scoreImpact:6,isStrongRuleChoice:true};
+          candidates.push(c);byId[c.id]={resp:r,before:curShanten,after:-1};
+        }
+        if(r.ck){
+          const hand=simAfterPongKong(GS.players[r.p].hand,t,3);
+          const kongEval=calledMeldShanten(hand,r.p,t);
+          const postShanten=kongEval.adjusted;
+          const num=t.t==='num'?t.v:0;
+          const c={id:'kong:'+r.p,action:'kong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:(curShanten-postShanten)*4+4,shantenAfter:postShanten,route:kongEval.route||'response',defenseRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/5)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/5)),kongRisk:Math.max(0,Math.min(1,(t.t==='honor'?0.55:0.2)+(num>=5?0.2:0)+(dangerLevel(r.p)*0.08))),scoreImpact:2,isStrongRuleChoice:false};
+          candidates.push(c);byId[c.id]={resp:r,before:curShanten,after:postShanten};
+        }
+        if(r.cp){
+          const hand=simAfterPongKong(GS.players[r.p].hand,t,2);
+          const pongEval=calledMeldShanten(hand,r.p,t,true);
+          const postShanten=pongEval.adjusted;
+          const c={id:'pong:'+r.p,action:'pong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:(curShanten-postShanten)*4+2,shantenAfter:postShanten,route:pongEval.route||'response',defenseRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/6)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/6)),kongRisk:0,scoreImpact:1,isStrongRuleChoice:false};
+          candidates.push(c);byId[c.id]={resp:r,before:curShanten,after:postShanten};
+        }
+        const pass={id:'pass:'+r.p,action:'pass',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:r.cw?-20:1,shantenAfter:curShanten,route:'response',defenseRisk:0,dealInRisk:0,kongRisk:0,scoreImpact:0,isStrongRuleChoice:!r.cw&&!r.cp&&!r.ck};
+        candidates.push(pass);byId[pass.id]={resp:r,before:curShanten,after:curShanten};
+      }
+      if(candidates.length){
+        const strong=candidates.find(function(c){return c.isStrongRuleChoice;})||candidates.find(function(c){return c.action==='win';})||candidates[0];
+        const summary=MCTS_ENHANCEMENT.decideWithMcts(mctsDecisionContext(strong.player||Number(strong.id.split(':')[1])||0,'responding',candidates,mctsActionText(strong),[]));
+        appendMctsDecisionSummary(summary);
+        const finalCandidate=mctsSummaryFinalCandidate(summary,candidates)||strong;
+        const meta=byId[finalCandidate.id]||{};
+        const r=meta.resp||resp[0];
+        if(finalCandidate.action==='win'){logAiResponseDecision(r.p,'win',t,meta.before,-1,summary.playerExplanation,{mctsSummary:summary});applyWin(r.p,'点炮');return;}
+        if(finalCandidate.action==='kong'){logAiResponseDecision(r.p,'kong',t,meta.before,meta.after,summary.playerExplanation,{mctsSummary:summary});doKong(r.p);return;}
+        if(finalCandidate.action==='pong'){logAiResponseDecision(r.p,'pong',t,meta.before,meta.after,summary.playerExplanation,{mctsSummary:summary});doPong(r.p);return;}
+        logAiResponseDecision(r.p,'pass',t,meta.before,meta.before,summary.playerExplanation,{mctsSummary:summary});
+        nextTurn();return;
+      }
+    }
+  }catch(error){
+    console.warn('[mcts-enhancement] response fallback to rule AI',error);
+  }
   
   // 1. 能胡就胡
   for(let r of resp){if(r.cw){logAiResponseDecision(r.p,'win',t,aiBestShantenForPlayer(GS.players[r.p].hand,r.p),-1,'能胡优先胡');applyWin(r.p,'点炮');return;}}
@@ -3156,13 +3311,11 @@ document.getElementById('bt-rules').onclick=()=>{document.getElementById('rules-
 document.getElementById('bt-rules-close').onclick=()=>{document.getElementById('rules-panel').style.display='none';};
 document.getElementById('bt-ai-settings').onclick=()=>{renderAiSettingsPanel();document.getElementById('ai-settings-panel').style.display='block';};
 document.getElementById('bt-ai-settings-close').onclick=()=>{document.getElementById('ai-settings-panel').style.display='none';};
-document.getElementById('ai-use-mcts').onchange=function(){setOrdinaryAiConfig(this.checked,AI_RUNTIME_CONFIG.ordinaryRL);};
-document.getElementById('ai-use-rl').onchange=function(){setOrdinaryAiConfig(AI_RUNTIME_CONFIG.ordinaryMCTS,this.checked);};
+document.getElementById('ai-use-rl').onchange=function(){setOrdinaryAiConfig(true,this.checked);};
 document.getElementById('strong-ai-dimensions').oninput=function(e){if(e.target&&e.target.dataset&&e.target.dataset.aiWeight)setStrongAiWeight(e.target.dataset.aiWeight,e.target.value);};
 document.getElementById('strong-ai-dimensions').onchange=function(e){if(e.target&&e.target.dataset&&e.target.dataset.aiEnabled)setStrongAiEnabled(e.target.dataset.aiEnabled,e.target.checked);};
-document.getElementById('bt-ai-log').onclick=()=>{renderAiLogPanel();document.getElementById('ai-log-panel').style.display='block';};
-document.getElementById('bt-ai-log-export').onclick=exportAiDecisionLogs;
-document.getElementById('bt-ai-log-close').onclick=()=>{document.getElementById('ai-log-panel').style.display='none';};
+if(document.getElementById('bt-ai-log-export'))document.getElementById('bt-ai-log-export').onclick=exportAiDecisionLogs;
+if(document.getElementById('bt-ai-log-close'))document.getElementById('bt-ai-log-close').onclick=()=>{document.getElementById('ai-log-panel').style.display='none';};
 // toggle AI hands
 let btnEye=document.getElementById('bt-eye');
 btnEye.addEventListener('click',function(){
@@ -3385,7 +3538,8 @@ function recommendationBaseContext(extra){
     responseEvent:null,
     previousRound:GS._recommendation&&GS._recommendation.lastRoundReview?GS._recommendation.lastRoundReview:null,
     records:recommendationRecords(),
-    summary:GS._recommendation&&GS._recommendation.summary?GS._recommendation.summary:null
+    summary:GS._recommendation&&GS._recommendation.summary?GS._recommendation.summary:null,
+    mctsSummary:GS._recommendation&&GS._recommendation.lastAiInterpretation?GS._recommendation.lastAiInterpretation.mctsSummary:null
   },extra||{});
 }
 
@@ -3492,7 +3646,17 @@ function updateSuggestion(){
     if(GS.canK){const ha=simAfterPongKong(GS.players[0].hand,t,3);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'杠 '+lbl(t),totalScore:curS-ps+8,shantenAfter:ps,route:'response',speedScore:curS-ps,kongZhichanScore:1,defenseScore:0});}
     if(GS.canP){const ha=simAfterPongKong(GS.players[0].hand,t,2);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'碰 '+lbl(t),totalScore:curS-ps+5,shantenAfter:ps,route:'response',speedScore:curS-ps,defenseScore:0});}
     humanCandidates.push({tile:tkey(t),tileLabel:'过',totalScore:GS.canW?-20:1,shantenAfter:curS,route:'response',defenseScore:1});
-    renderRecommendationPanel(Object.assign(base,{candidates:humanCandidates,systemRecommendation:humanCandidates[0]||null}));
+    let responseMctsSummary=null;
+    try{
+      const mctsCandidates=[];
+      if(GS.canW)mctsCandidates.push({id:'win:0',action:'win',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:30,scoreImpact:6,isStrongRuleChoice:true});
+      if(GS.canK)mctsCandidates.push({id:'kong:0',action:'kong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:8,kongRisk:(t.t==='honor'?0.55:0.25)+(t.t==='num'&&t.v>=5?0.2:0),scoreImpact:2});
+      if(GS.canP)mctsCandidates.push({id:'pong:0',action:'pong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:5,scoreImpact:1});
+      mctsCandidates.push({id:'pass:0',action:'pass',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:GS.canW?-20:1});
+      const strong=mctsCandidates.find(function(c){return c.isStrongRuleChoice;})||mctsCandidates[0];
+      responseMctsSummary=MCTS_ENHANCEMENT.decideWithMcts(mctsDecisionContext(0,'recommendation',mctsCandidates,mctsActionText(strong),(GS.players[0].hand||[]).map(tkey)));
+    }catch(error){console.warn('[mcts-enhancement] response recommendation fallback',error);}
+    renderRecommendationPanel(Object.assign(base,{candidates:humanCandidates,systemRecommendation:humanCandidates[0]||null,mctsSummary:responseMctsSummary}));
     return;
   }
   const realHand=GS.players[0].hand;
@@ -3656,6 +3820,12 @@ function updateSuggestion(){
   const candidateViews=candDetails.map(function(detail){return candidateViewFromDetail(detail,hand,candScores);});
   const bestKey=tkey(hand[bestIdx]);
   const systemRecommendation=candidateViews.find(function(item){return item.tile===bestKey;})||candidateViews[0]||null;
+  let mctsSummary=null;
+  try{
+    const strongAction=systemRecommendation?'打'+systemRecommendation.tileLabel:null;
+    const mctsCandidates=candDetails.map(function(detail){return mctsCandidateFromDiscardDetail(detail,hand,0,strongAction,candScores);});
+    if(mctsCandidates.length)mctsSummary=MCTS_ENHANCEMENT.decideWithMcts(mctsDecisionContext(0,'recommendation',mctsCandidates,strongAction,hand.map(tkey)));
+  }catch(error){console.warn('[mcts-enhancement] discard recommendation fallback',error);}
   if(GS._recommendation){
     GS._recommendation.selectedTileKey=selectedTile?tkey(selectedTile):null;
   }
@@ -3663,7 +3833,8 @@ function updateSuggestion(){
     handKeys:hand.map(tkey),
     selectedTile:selectedTile?tkey(selectedTile):null,
     candidates:candidateViews,
-    systemRecommendation:systemRecommendation
+    systemRecommendation:systemRecommendation,
+    mctsSummary:mctsSummary
   });
   renderRecommendationPanel(context);
 }

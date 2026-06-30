@@ -103,6 +103,23 @@ function sortedCandidates(context) {
 function systemCandidate(context) {
     return context.systemRecommendation || sortedCandidates(context)[0] || null;
 }
+function mctsReviewLine(context) {
+    const summary = context.mctsSummary;
+    if (!summary)
+        return null;
+    const reason = summary.overridden
+        ? (summary.overrideReason || '后续收益复核认为另一项更稳。')
+        : (summary.notOverrideReason || '后续收益复核后保留当前选择。');
+    return `已通过后续收益复核：${esc(summary.finalAction)}。${esc(reason)}`;
+}
+function mctsCandidateNote(context, actionLabel) {
+    var _a;
+    const summary = context.mctsSummary;
+    const candidate = (_a = summary === null || summary === void 0 ? void 0 : summary.candidates) === null || _a === void 0 ? void 0 : _a.find((item) => item.action === actionLabel);
+    if (!candidate)
+        return null;
+    return `后续均值 ${esc(candidate.averageValue)}，主要风险：${esc(candidate.mainRisk)}`;
+}
 function topicFor(candidate) {
     if ((candidate.defenseScore || 0) > Math.max(candidate.speedScore || 0, candidate.handValueScore || 0))
         return '防守安全';
@@ -125,6 +142,7 @@ function buildDiscardRecommendation(context) {
     const body = [
         line('推荐打出', `<span class="rec-tile">${esc(best.tileLabel)}</span>`),
         line('推荐目标', '长期期望收益最高'),
+        mctsReviewLine(context) ? line('收益复核', esc(mctsReviewLine(context))) : '',
         line('置信度', esc(confidence)),
         line('综合评分', `${score} 分`),
         line('第二候选', second ? `${esc(second.tileLabel)}，${toDisplayScore(second.totalScore, -8, 18)} 分` : '暂无'),
@@ -149,6 +167,7 @@ function buildDetailedReasons(context) {
         line('听牌质量', `${scoreWord(wait)}，${best.waitRemaining ? `剩余有效进张约 ${best.waitRemaining} 枚。` : '当前还未形成明确待牌。'}`),
         line('结构影响', `${esc(structure)}。${best.breaksPair ? '会拆对子，需要权衡。' : ''}${best.breaksTaatsu ? '会拆搭子，需要权衡。' : ''}`),
         line('防守风险', `${scoreWord(defense)}，只基于公开牌河、副露和已见牌判断。`),
+        mctsReviewLine(context) ? line('后续复核', esc(mctsReviewLine(context))) : '',
         line('杠/直铲机会', (best.kongZhichanScore || 0) > 0.5 ? '存在潜在收益，推荐保留相关结构。' : '暂无明显机会。'),
         line('分数位置', '已纳入当前分数位置，不单独评价玩家能力。'),
     ].join('');
@@ -166,6 +185,9 @@ function buildCandidateRanking(context) {
             reasons.push('公开信息下安全性较好');
         if ((candidate.defenseScore || 0) < -0.6)
             reasons.push('防守风险偏高');
+        const review = mctsCandidateNote(context, `打${candidate.tileLabel}`);
+        if (review)
+            reasons.push(review);
         return `<div class="rec-candidate"><b>${index + 1}. ${esc(candidate.tileLabel)} - ${toDisplayScore(candidate.totalScore, -8, 18)} 分｜${esc(candidateTag(candidate, index))}</b><ul>${reasons.map((item) => `<li>${esc(item)}</li>`).join('')}</ul></div>`;
     }).join('');
     return section('三、候选牌排序原因', rows || '<p>暂无候选排序。</p>');
@@ -185,6 +207,7 @@ function buildClickAnalysis(context) {
         `<ul><li>如果打${esc(label)}：进入 ${esc(candidate.shantenAfter)} 向听。</li>`,
         `<li>${candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? '会影响已有结构，需要谨慎。' : '不明显拆完整面子或对子。'}</li>`,
         `<li>与系统推荐${best ? esc(best.tileLabel) : '暂无'}相比，综合评分${diff > 0 ? `低约 ${diff} 分` : '接近'}。</li></ul>`,
+        mctsCandidateNote(context, `打${label}`) ? `<p>${esc(mctsCandidateNote(context, `打${label}`))}</p>` : '',
         `<p class="rec-conclusion">结论：${diff >= 15 ? '策略差异明显，建议优先参考系统推荐。' : '属于可理解选择，但系统推荐的长期期望更高。'}</p>`,
     ].join('');
     return section('四、点击分析', body);
@@ -224,6 +247,7 @@ function buildAiDiscardInterpretation(context) {
     const counts = countVisible(ai.tile, context);
     const body = [
         `<p>${esc(ai.playerName)}打出：<b>${esc(ai.tileLabel)}</b></p>`,
+        mctsReviewLine(context) ? `<p>${esc(mctsReviewLine(context))}</p>` : '',
         '<p>可能原因：</p>',
         `<ul><li>${esc(ai.tileLabel)}公开已见 ${counts.publicSeen} 张，剩余价值发生变化。</li><li>从公开信息看，该出牌可能是在整理边张、孤张或进行防守。</li><li>如果该玩家已有副露，则可能继续向副露花色或字牌方向收缩。</li></ul>`,
         `<p>对你的影响：${counts.unknown === 0 ? '这张牌已经接近或完全见光，进张价值下降。' : '这张牌后续仍需结合对手路线判断风险。'}</p>`,
@@ -231,6 +255,7 @@ function buildAiDiscardInterpretation(context) {
     return section('七、AI 玩家出牌解读', body);
 }
 function buildResponseRecommendation(context) {
+    var _a;
     const event = context.responseEvent;
     if (!event)
         return section('八、响应阶段推荐', '<p>当前无响应动作。胡、碰、杠、直铲、过会在可响应时展示。</p>');
@@ -240,7 +265,8 @@ function buildResponseRecommendation(context) {
     const body = [
         line('当前事件', `${esc(event.fromName)}打出 ${esc(event.tileLabel)}`),
         line('可选动作', event.actions.map(esc).join('、') || '无'),
-        line('系统建议', esc(recommended)),
+        line('系统建议', esc(((_a = context.mctsSummary) === null || _a === void 0 ? void 0 : _a.finalAction) || recommended)),
+        mctsReviewLine(context) ? line('收益复核', esc(mctsReviewLine(context))) : '',
         line('推荐置信度', confidence),
         '<p>详细分析：</p>',
         `<ul><li>${recommended === '胡' ? '当前可胡时优先避免过水。' : '当前动作需要比较收益、向听和结构损失。'}</li><li>选择过可能影响本圈同牌胡牌机会。</li><li>涉及杠/直铲时，会同时考虑宝牌、没走色和连杠潜力。</li></ul>`,

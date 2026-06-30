@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/next-with-port.mjs dev",
-    "predev": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs",
-    "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/clean-next-cache.mjs",
+    "predev": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs",
+    "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/clean-next-cache.mjs",
     "build": "next build",
     "start": "node scripts/next-with-port.mjs start",
     "test:rules": "node scripts/benchmark-runner.mjs",
@@ -15,7 +15,11 @@
     "verify:strong-ai": "node scripts/build-browser-strong-rule-ai.mjs && node scripts/verify-browser-strong-rule-ai.mjs",
     "verify:recommendation": "node scripts/build-browser-recommendation-engine.mjs && node scripts/verify-browser-recommendation-engine.mjs",
     "generate:recommendation": "node scripts/generate-stage4-recommendation-cases.mjs",
-    "test:recommendation": "node scripts/stage4-recommendation-regression.mjs"
+    "test:recommendation": "node scripts/stage4-recommendation-regression.mjs",
+    "verify:mcts": "node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/verify-browser-mcts-enhancement-engine.mjs",
+    "generate:l3-mcts": "node scripts/generate-l3-mcts-cases.mjs",
+    "test:mcts": "node scripts/l3-mcts-regression.mjs",
+    "compare:mcts-selfplay": "node scripts/mcts-selfplay-comparison.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",

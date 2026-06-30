@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "stage5-mcts-selfplay-comparison-v1",
+  "generatedAt": "2026-06-30T05:12:33.326Z",
+  "sourceCases": "docs/l3-mcts-standard-cases.json",
+  "totalCases": 150,
+  "baseline": "strong-rule candidate",
+  "enhanced": "stage5 mcts final action",
+  "overrides": 123,
+  "kept": 27,
+  "averageValueDeltaWhenComparable": 5.8,
+  "defenseInfluenced": 150,
+  "kongReviewed": 150,
+  "timeoutFallbacks": 5,
+  "byCategory": {
+    "ordinary-discard-override": {
+      "total": 20,
+      "overrides": 20,
+      "kept": 0,
+      "averageDelta": 8
+    },
+    "dalan-vs-normal": {
+      "total": 20,
+      "overrides": 20,
+      "kept": 0,
+      "averageDelta": 6
+    },
+    "kong-or-no-kong": {
+      "total": 25,
+      "overrides": 13,
+      "kept": 12,
+      "averageDelta": 1.72
+    },
+    "high-number-honor-kong-risk": {
+      "total": 15,
+      "overrides": 15,
+      "kept": 0,
+      "averageDelta": 2.84
+    },
+    "response-actions": {
+      "total": 15,
+      "overrides": 0,
+      "kept": 15,
+      "averageDelta": 0
+    },
+    "late-defense": {
+      "total": 15,
+      "overrides": 15,
+      "kept": 0,
+      "averageDelta": 13.89
+    },
+    "hidden-inference": {
+      "total": 15,
+      "overrides": 15,
+      "kept": 0,
+      "averageDelta": 9
+    },
+    "score-situation": {
+      "total": 10,
+      "overrides": 10,
+      "kept": 0,
+      "averageDelta": 8.66
+    },
+    "recommendation-panel": {
+      "total": 10,
+      "overrides": 10,
+      "kept": 0,
+      "averageDelta": 6
+    },
+    "timeout-fallback": {
+      "total": 5,
+      "overrides": 5,
+      "kept": 0,
+      "averageDelta": 3
+    }
+  },
+  "conclusion": "Stage 5 MCTS is active as the default review layer and produces exportable comparison evidence against the strong-rule baseline."
+}
