@@ -33,6 +33,15 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #suggest .suggest-pong{background:rgba(212,160,23,0.2);color:#e8b830;border:1px solid #d4a017}
 #suggest .suggest-kong{background:rgba(46,125,50,0.2);color:#66bb6a;border:1px solid #2e7d32}
 #suggest .action-label{display:inline-block;background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:4px;margin-right:4px}
+#suggest .rec-section{border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);border-radius:8px;padding:8px 10px;margin:8px 0}
+#suggest .rec-section h4{color:#e8b830;font-size:14px;margin:0 0 6px}
+#suggest .rec-line{margin:4px 0;color:#ddd}
+#suggest .rec-line b{color:#aaa}
+#suggest .rec-tile{display:inline-block;color:#fff;background:rgba(232,184,48,0.18);border:1px solid rgba(232,184,48,0.45);border-radius:4px;padding:1px 6px;font-weight:bold}
+#suggest .rec-candidate{border-top:1px solid rgba(255,255,255,0.08);padding:6px 0}
+#suggest .rec-candidate:first-child{border-top:none}
+#suggest .rec-candidate ul{padding-left:18px;margin:4px 0;color:#aaa}
+#suggest .rec-conclusion{color:#ffdf70;margin-top:6px}
 #rules-panel,#ai-log-panel,#ai-settings-panel{position:fixed;top:90px;left:50%;transform:translateX(-50%);width:520px;max-width:calc(100vw - 32px);background:rgba(0,0,0,0.9);color:#ddd;border:1px solid #d4a017;border-radius:10px;padding:16px 18px;z-index:300;display:none;line-height:1.7;font-size:13px;pointer-events:auto}
 #rules-panel h3{color:#e8b830;text-align:center;margin-bottom:8px}
 #rules-panel ul{padding-left:18px;margin:8px 0}
@@ -113,16 +122,19 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <script src="ai/rule_core.js"></script>
 <script src="rule_engine.js"></script>
 <script src="strong_rule_ai.js"></script>
+<script src="recommendation_engine.js"></script>
 <script>
 const W=1360,H=900,TW=52,TH=72,GAP=2;
 const GAME_SESSION=window.GameSessionSnapshot;
 const AI_RULE_CORE=window.AIRuleCore;
 const RULE_ENGINE=window.WannianRuleEngine;
 const STRONG_RULE_AI=window.WannianStrongRuleAI;
+const RECOMMENDATION_ENGINE=window.WannianRecommendationEngine;
 if(!GAME_SESSION)throw new Error('Game session snapshot core failed to load');
 if(!AI_RULE_CORE)throw new Error('AI rule core failed to load');
 if(!RULE_ENGINE)throw new Error('Wannian rule engine failed to load');
 if(!STRONG_RULE_AI)throw new Error('Wannian strong rule AI failed to load');
+if(!RECOMMENDATION_ENGINE)throw new Error('Wannian recommendation engine failed to load');
 const AI_ENGINE_INFO={id:'strong-rule-ai',version:'2026-06-27-stage2',source:'strong-rule',mode:'ordinary',ruleCoreId:AI_RULE_CORE.id,ruleCoreVersion:AI_RULE_CORE.version};
 const STRONG_AI_DIMENSIONS=[
   ['speed','速度'],['handValue','打点'],['waitQuality','听牌'],['kongZhichan','杠铲'],
@@ -322,12 +334,12 @@ let GS={wall:[],players:[],discards:[],lastDiscard:null,lastDiscardP:-1,cur:0,ph
   selectedTile:null,dealer:0,canP:false,canK:false,canW:false,canWS:false,
   diff:'hard',_resp:null,_respP:-1,_responseKind:null,_hot:[],_kc:{},_hasWild:{},showAI:false,
   newDrawnTile:null,newDrawnIdx:-1,
-  playerDiscards:[[],[],[],[]],passRecords:[],turn:0,_lastResult:null};
+  playerDiscards:[[],[],[],[]],passRecords:[],turn:0,_lastResult:null,
+  _recommendation:{current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null}};
 
 function clearSelectedTile(){
   GS.selectedTile=null;
-  const suggestion=document.getElementById('suggest');
-  if(suggestion)suggestion.style.display='none';
+  if(GS._recommendation)GS._recommendation.selectedTileKey=null;
 }
 
 function getSelectedTile(){
@@ -417,7 +429,8 @@ function enterIdleState(reason){
     canP:false,canK:false,canW:false,canWS:false,
     _resp:null,_respP:-1,_responseKind:null,_hot:[],_kc:{},_hasWild:{},
     newDrawnTile:null,newDrawnIdx:-1,playerDiscards:[[],[],[],[]],passRecords:[],
-    _gameLog:null,_lastResult:null
+    _gameLog:null,_lastResult:null,
+    _recommendation:{current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null}
   });
   document.getElementById('suggest').style.display='none';
   document.getElementById('msg').style.display='none';
@@ -531,8 +544,14 @@ async function initializeGameSession(){
   _spInitScore();
 }
 
-// === 游戏日志系统（localStorage，保留最近3局） ===
+// === 游戏日志系统（localStorage，保留最近1局） ===
 const LOG_KEY='mahjong_gamelogs';
+function ensureRecommendationLog(){
+  if(!GS._gameLog)return null;
+  if(!Array.isArray(GS._gameLog.recommendationRecords))GS._gameLog.recommendationRecords=[];
+  if(!GS._gameLog.recommendationSummary)GS._gameLog.recommendationSummary=null;
+  return GS._gameLog;
+}
 function logEvent(p,action,tile){
   if(!GS._gameLog)return;
   GS._gameLog.events.push({
@@ -552,7 +571,7 @@ function saveGameLog(result){
   try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before save',e);}
   logs=logs.filter(function(log){return !log||log.gameId!==GS._gameLog.gameId;});
   logs.unshift(GS._gameLog);
-  if(logs.length>3)logs=logs.slice(0,3);
+  if(logs.length>1)logs=logs.slice(0,1);
   try{localStorage.setItem(LOG_KEY,JSON.stringify(logs));}catch(e){console.warn('[game log] save failed',e);}
   GS._gameLog=null;
 }
@@ -583,7 +602,7 @@ const HC={dong:'東',nan:'南',xi:'西',bei:'北',zhong:'中',fa:'發',bai:'白'
 
 // draw tile - 中至麻将拟物化风格 (白底+顶部绿色窄边框圆角矩形，轻微立体厚度)
 function drawTile(x,y,tile,opts={}){
-  const {sel=false,face=true,small=false,alpha=1,hl=false,disc=false}=opts;
+  const {sel=false,face=true,small=false,alpha=1,hl=false,disc=false,match=false}=opts;
   const tw=small?33:TW,th=small?45:TH;
   ctx.save();ctx.globalAlpha=alpha;
 
@@ -647,6 +666,14 @@ function drawTile(x,y,tile,opts={}){
     ctx.strokeStyle='#ff1744';
     ctx.lineWidth=3;
     roundRect(ctx,x+2,y+2,tw-4,th-4,5);
+    ctx.stroke();
+  }
+
+  // Same-tile public highlight.
+  if(match){
+    ctx.strokeStyle='#ffd54f';
+    ctx.lineWidth=4;
+    roundRect(ctx,x,y,tw,th-2,6);
     ctx.stroke();
   }
 
@@ -960,6 +987,7 @@ function render(){
 
   if(GS.phase==='idle')return;
   GS._hot=[];
+  const selectedKey=GS._recommendation&&GS._recommendation.selectedTileKey;
 
   // player hand (bottom)
   // 构建手牌副本，排除新摸的牌（已在手牌中，单独显示）
@@ -1007,7 +1035,7 @@ function render(){
     let mx=sx,my=H-TH-45-5-45;
     for(let mi=0;mi<m0.length;mi++){
       const meld=m0[mi];
-      for(let j=0;j<meld.count;j++)drawTile(mx+j*34,my,meld.tile,{face:true,small:true});
+      for(let j=0;j<meld.count;j++)drawTile(mx+j*34,my,meld.tile,{face:true,small:true,match:!!(selectedKey&&tkey(meld.tile)===selectedKey)});
       mx+=meld.count*34+5;
     }
   }
@@ -1028,7 +1056,7 @@ function render(){
     let mx=sx2,my=45+TH+5;
     for(let mi=0;mi<m2.length;mi++){
       const meld=m2[mi];
-      for(let j=0;j<meld.count;j++)drawTile(mx+j*34,my,meld.tile,{face:true,small:true});
+      for(let j=0;j<meld.count;j++)drawTile(mx+j*34,my,meld.tile,{face:true,small:true,match:!!(selectedKey&&tkey(meld.tile)===selectedKey)});
       mx+=meld.count*34+5;
     }
   }
@@ -1057,7 +1085,7 @@ function render(){
         ctx.save();
         ctx.translate(35+TH+5,ty);
         ctx.rotate(Math.PI/2);
-        drawTile(0,-45,meld.tile,{face:true,small:true});
+        drawTile(0,-45,meld.tile,{face:true,small:true,match:!!(selectedKey&&tkey(meld.tile)===selectedKey)});
         ctx.restore();
       }
       my+=meld.count*34+5;
@@ -1088,7 +1116,7 @@ function render(){
         ctx.save();
         ctx.translate(W-45-TH-5,ty);
         ctx.rotate(Math.PI/2);
-        drawTile(0,0,meld.tile,{face:true,small:true});
+        drawTile(0,0,meld.tile,{face:true,small:true,match:!!(selectedKey&&tkey(meld.tile)===selectedKey)});
         ctx.restore();
       }
       my+=meld.count*34+5;
@@ -1113,7 +1141,7 @@ function render(){
       const row=Math.floor(i/perRow);
       const tx=ox+col*(stw+sgap);
       const ty=oy+row*(sth+vgap);
-      drawTile(tx,ty,discards[i],{small:true});
+      drawTile(tx,ty,discards[i],{small:true,match:!!(selectedKey&&tkey(discards[i])===selectedKey)});
     }
     ctx.restore();
   };
@@ -1187,6 +1215,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   GS.playerDiscards=[[],[],[],[]];GS.passRecords=[];GS.turn=0;GS._lastResult=null;
+  GS._recommendation={current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null};
   GS.dealer=Math.floor(Math.random()*4);GS.cur=GS.dealer;
 
   for(let i=0;i<4;i++){
@@ -1203,7 +1232,9 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
     dealer:GS.dealer,
     aiEngine:{id:AI_ENGINE_INFO.id,version:AI_ENGINE_INFO.version,mode:AI_ENGINE_INFO.mode,source:AI_ENGINE_INFO.source,ruleCore:{id:AI_RULE_CORE.id,version:AI_RULE_CORE.version},mcts:window.MCTS?!!window.MCTS.useMCTS:false,rl:window.RL?!!window.RL.useRL:false,entryAudit:AI_ENGINE_INFO.entryAudit||auditAiEntrypoints()},
     events:[],
-    suggestLogs:[]
+    suggestLogs:[],
+    recommendationRecords:[],
+    recommendationSummary:null
   };
   for(let i=0;i<4;i++)logEvent(i,'初始手牌');
 
@@ -1358,6 +1389,7 @@ function doDiscard(selectedTile){
     clearSelectedTile();render();updateSuggestion();return;
   }
   const tile = p.hand.splice(idx,1)[0];
+  recordRecommendationChoice('discard','打'+lbl(tile));
   // The draw marker only applies before the current discard completes.
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   
@@ -1482,7 +1514,9 @@ function persistSettledScores(){
 function drawGame(){
   clearSelectedTile();
   GS.phase='ended';GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  finalizeRecommendationSummary();
   saveGameLog({winner:null,type:'流局',scores:GS.players.map(p=>({name:p.name,score:p.score}))});
+  renderFinalRecommendationPanel();
   totalGamesPlayed++;
   const bankrupt=persistSettledScores();
   // 随对局增加MCTS模拟次数
@@ -1627,7 +1661,7 @@ function applyWin(winner,wt){
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
   clearSelectedTile();
   GS.phase='ended';GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
-  document.getElementById('suggest').style.display='none';
+  document.getElementById('suggest').style.display='block';
   GS._preWinScores=GS.players.map(function(p){return p.score;});
   const eh=effectiveHand(winner);
   const pts=calcScore(eh,wt);
@@ -1640,10 +1674,12 @@ function applyWin(winner,wt){
     for(let i=0;i<4;i++)if(i!==winner)GS.players[i].score-=pts;
   }
   logEvent(winner,'胡牌['+wt+']',null);
+  finalizeRecommendationSummary();
   saveGameLog({winner:winner,winnerName:GS.players[winner].name,type:wt,
     hand:effectiveHand(winner).map(t=>tkey(t)).join(','),
     huType:classifyWin(eh),pts:pts,
     scores:GS.players.map(p=>({name:p.name,score:p.score}))});
+  renderFinalRecommendationPanel();
   // RL 学习
   if(window.RL&&RL.useRL){
     RL.endGame(winner);
@@ -1824,6 +1860,9 @@ async function aiDiscard(p){
     GS._aiDiscardAnim=null;
   _spOnDiscard(p,t);
     logEvent(p,'弃牌',t);
+    if(GS._recommendation){
+      GS._recommendation.lastAiInterpretation={player:p,playerName:GS.players[p]?GS.players[p].name:'AI',tile:tkey(t),tileLabel:lbl(t)};
+    }
     // RL 奖励：向听数变化
     const oldShanten=getAiHandMeta(h,'rlOldShanten');
     if(window.RL&&RL.useRL&&oldShanten!==undefined){
@@ -3086,27 +3125,28 @@ canvas.addEventListener('click',(e)=>{
   for(let z of GS._hot){
     if(mx>=z.x&&mx<=z.x+z.w&&my>=z.y&&my<=z.y+z.h){
       if(GS.selectedTile===z.t)doDiscard(z.t);
-      else{GS.selectedTile=z.t;render();updateSuggestion();}
+      else{GS.selectedTile=z.t;if(GS._recommendation)GS._recommendation.selectedTileKey=tkey(z.t);render();updateSuggestion();}
       return;
     }
   }
   clearSelectedTile();render();updateSuggestion();
 });
 
-document.getElementById('bt-pong').onclick=()=>{if(GS._respP===0&&GS.canP)doPong(0);};
+document.getElementById('bt-pong').onclick=()=>{if(GS._respP===0&&GS.canP){recordRecommendationChoice('response','碰');doPong(0);}};
 document.getElementById('bt-kong').onclick=()=>{
-  if(GS._respP===0&&GS.canK){doKong(0);}
-  else if(GS.canK&&GS.players[GS.cur]&&GS.players[GS.cur].human){doSelfKong(GS.cur);}
+  if(GS._respP===0&&GS.canK){recordRecommendationChoice('response','杠');doKong(0);}
+  else if(GS.canK&&GS.players[GS.cur]&&GS.players[GS.cur].human){recordRecommendationChoice('response','杠');doSelfKong(GS.cur);}
 };
 document.getElementById('bt-win').onclick=()=>{
-  if(GS.canW&&GS._respP===0)applyWin(0,'点炮');
+  if(GS.canW&&GS._respP===0){recordRecommendationChoice('response','胡');applyWin(0,'点炮');}
   else if(GS.canWS&&GS.phase==='discarding'&&GS.players[GS.cur].human){
     const hand = effectiveHand(0);
-    if(canSelfWin(hand))applyWin(0,'自摸');
+    if(canSelfWin(hand)){recordRecommendationChoice('response','胡');applyWin(0,'自摸');}
   }
 };
 document.getElementById('bt-pass').onclick=()=>{
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
+  recordRecommendationChoice('response','过');
   if(GS.canW&&GS._respP>=0&&GS.lastDiscard)recordPass(GS._respP,GS.lastDiscard);
   GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;
   nextTurn();
@@ -3305,6 +3345,132 @@ function checkActionOpportunities(playerIdx,GS){
   return results;
 }
 
+function recommendationRecords(){
+  const log=ensureRecommendationLog();
+  return log?log.recommendationRecords:[];
+}
+
+function recommendationMelds(){
+  const rows=[];
+  for(let p=0;p<4;p++){
+    const melds=GS.players[p]&&GS.players[p].melds?GS.players[p].melds:[];
+    for(const meld of melds)rows.push({player:p,tile:tkey(meld.tile),count:meld.count||3,type:meld.type||''});
+  }
+  return rows;
+}
+
+function recommendationHandLabels(keys){
+  const labels={};
+  for(const k of keys||[])labels[k]=lbl(kt(k));
+  for(const row of GS.playerDiscards||[])for(const tile of row||[])labels[tkey(tile)]=lbl(tile);
+  for(const meld of recommendationMelds())labels[meld.tile]=lbl(kt(meld.tile));
+  return labels;
+}
+
+function recommendationBaseContext(extra){
+  const handKeys=(extra&&extra.handKeys)||((GS.players[0]&&GS.players[0].hand)||[]).map(tkey);
+  return Object.assign({
+    turn:GS.turn||0,
+    phaseLabel:GS.phase||'idle',
+    currentPlayer:GS.cur||0,
+    hand:handKeys,
+    handLabels:recommendationHandLabels(handKeys),
+    selectedTile:GS._recommendation?GS._recommendation.selectedTileKey:null,
+    systemRecommendation:null,
+    candidates:[],
+    discards:(GS.playerDiscards||[[],[],[],[]]).map(function(row){return (row||[]).map(tkey);}),
+    melds:recommendationMelds(),
+    scores:GS.players.map(function(p){return p.score;}),
+    aiLastDiscard:GS._recommendation&&GS._recommendation.lastAiInterpretation?GS._recommendation.lastAiInterpretation:null,
+    responseEvent:null,
+    previousRound:GS._recommendation&&GS._recommendation.lastRoundReview?GS._recommendation.lastRoundReview:null,
+    records:recommendationRecords(),
+    summary:GS._recommendation&&GS._recommendation.summary?GS._recommendation.summary:null
+  },extra||{});
+}
+
+function candidateViewFromDetail(detail,hand,candScores){
+  const tile=hand[detail.idx]||detail.tile;
+  const key=tkey(tile);
+  const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
+  const waitTiles=(detail.waits||[]).map(function(k){return {tile:k,label:lbl(kt(k)),remaining:aiRemainingCountForWait(k,0,detail.sub||[],tile)};});
+  const waitRemaining=waitTiles.reduce(function(sum,item){return sum+Math.max(0,item.remaining||0);},0);
+  return {
+    tile:key,
+    tileLabel:lbl(tile),
+    totalScore:scoreInfo?scoreInfo.sc:-(detail.s||0),
+    shantenAfter:detail.s,
+    route:detail.path||'norm',
+    speedScore:-(detail.s||0),
+    handValueScore:scoreInfo?scoreInfo.qBase:handPotential(detail.sub||[]),
+    waitQualityScore:waitTiles.length,
+    kongZhichanScore:detail.path==='quanzheng'||detail.path==='banzheng'?0.6:0,
+    dalanRouteScore:detail.path==='dalan'?1:0,
+    defenseScore:defenseScore(tile,0),
+    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0),
+    waitCount:waitTiles.length,
+    waitRemaining:waitRemaining,
+    waitTiles:waitTiles,
+    breaksMeld:!!detail.breaksMeld,
+    breaksPair:!!detail.breaksPair,
+    breaksTaatsu:!!detail.breaksTaatsu
+  };
+}
+
+function renderRecommendationPanel(context){
+  if(!GS._recommendation)GS._recommendation={};
+  const panel=RECOMMENDATION_ENGINE.buildPanel(context);
+  GS._recommendation.current=panel;
+  GS._recommendation.currentContext=context;
+  const body=document.getElementById('suggest-body');
+  const el=document.getElementById('suggest');
+  if(body)body.innerHTML=RECOMMENDATION_ENGINE.buildPanelHtml(context);
+  if(el){el.style.right='10px';el.style.display='block';}
+  return panel;
+}
+
+function recordRecommendationChoice(type,actualAction){
+  const log=ensureRecommendationLog();
+  const ctx=GS._recommendation&&GS._recommendation.currentContext;
+  const panel=GS._recommendation&&GS._recommendation.current;
+  if(!log||!ctx||!panel)return null;
+  const record=RECOMMENDATION_ENGINE.createRecommendationRecord(type,ctx,panel.sections,actualAction);
+  log.recommendationRecords.push(record);
+  GS._recommendation.lastRoundReview=record;
+  log.recommendationSummary=RECOMMENDATION_ENGINE.summarizeRecords(log.recommendationRecords);
+  GS._recommendation.summary=log.recommendationSummary;
+  return record;
+}
+
+function finalizeRecommendationSummary(){
+  const log=ensureRecommendationLog();
+  if(!log)return null;
+  log.recommendationSummary=RECOMMENDATION_ENGINE.summarizeRecords(log.recommendationRecords||[]);
+  GS._recommendation.summary=log.recommendationSummary;
+  GS._recommendation.finalRecords=(log.recommendationRecords||[]).slice();
+  return log.recommendationSummary;
+}
+
+function renderFinalRecommendationPanel(){
+  if(!GS._recommendation)return;
+  const records=GS._recommendation.finalRecords||[];
+  const summary=GS._recommendation.summary||RECOMMENDATION_ENGINE.summarizeRecords(records);
+  renderRecommendationPanel(recommendationBaseContext({records:records,summary:summary,selectedTile:null,candidates:[],systemRecommendation:null}));
+}
+
+function responseRecommendationContext(){
+  const actions=[];
+  if(GS.canW)actions.push('胡');
+  if(GS.canP)actions.push('碰');
+  if(GS.canK)actions.push('杠');
+  actions.push('直铲');
+  actions.push('过');
+  const tile=GS.lastDiscard;
+  return recommendationBaseContext({
+    responseEvent:tile?{fromPlayer:GS.lastDiscardP,fromName:GS.players[GS.lastDiscardP]?GS.players[GS.lastDiscardP].name:'对手',tile:tkey(tile),tileLabel:lbl(tile),actions:actions}:null
+  });
+}
+
 function updateSuggestion(){
   const el=document.getElementById('suggest');
   const body=document.getElementById('suggest-body');
@@ -3318,29 +3484,15 @@ function updateSuggestion(){
   }
   if(GS.phase==='responding'){
     const resp=GS._resp||[];
-    if(!resp||resp.length===0||!resp.some(r=>r.p===0&&(r.cp||r.ck))){body.innerHTML='<div style="color:#888;text-align:center;padding:10px">等待其他玩家行动...</div>';el.style.display='block';const _cvs=document.querySelector('canvas');const _gap=(window.innerWidth-_cvs.offsetWidth)/2;el.style.right=(_gap/2-240)+'px';return;}
+    if(!GS.canW&&!GS.canP&&!GS.canK&&!resp.some(r=>r.p===0&&(r.cw||r.cp||r.ck))){body.innerHTML='<div style="color:#888;text-align:center;padding:10px">等待其他玩家行动...</div>';el.style.display='block';const _cvs=document.querySelector('canvas');const _gap=(window.innerWidth-_cvs.offsetWidth)/2;el.style.right=(_gap/2-240)+'px';return;}
     const _bs=function(h){return Math.min(calcShanten(h),typeof calcShanten7Pairs==='function'?calcShanten7Pairs(h):99,typeof calcShantenDalan==='function'?calcShantenDalan(h):99,typeof calcShantenZhengzong==='function'?calcShantenZhengzong(h):99,typeof calcShantenBanzhengzong==='function'?calcShantenBanzhengzong(h):99);};const t=GS.lastDiscard;const curS=_bs(effectiveHand(0));
-    let respHtml='<div class="rec">对方打出：<span>'+lbl(t)+'</span></div>';
-    const respReasons=[];
-    for(let r of resp){
-      if(r.cw)respReasons.push('<div class="suggest-action" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid #c0392b"><b>胡！</b> &mdash; 立即赢牌</div>');
-      if(r.ck){
-        const ha=simAfterPongKong(GS.players[0].hand,t,3);
-        const ps=Math.max(0,_bs(ha)-2);
-        const d=curS-ps;
-        respReasons.push('<div class="suggest-action suggest-kong"><span class="action-label">杠</span> 向听'+(d>0?'改善'+d+'步':d===0?'不变':'恶化'+(-d)+'步')+(d>=0?' \u2705':' \u274c')+'</div>');
-      }
-      if(r.cp){
-        const ha=simAfterPongKong(GS.players[0].hand,t,2);
-        const ps=Math.max(0,_bs(ha)-2);
-        const d=curS-ps;
-        respReasons.push('<div class="suggest-action suggest-pong"><span class="action-label">碰</span> 向听'+(d>0?'改善'+d+'步':d===0?'不变':'恶化'+(-d)+'步')+(d>=0?' \u2705':' \u274c')+'</div>');
-      }
-    }
-    if(respReasons.length>0)respHtml+='<div class="reason">'+respReasons.join('<br>')+'</div>';
-    body.innerHTML=respHtml;
-    el.style.right='10px';
-    el.style.display='block';
+    const base=responseRecommendationContext();
+    const humanCandidates=[];
+    if(GS.canW)humanCandidates.push({tile:tkey(t),tileLabel:lbl(t),totalScore:30,shantenAfter:-1,route:'response',speedScore:3,handValueScore:3,waitQualityScore:2,defenseScore:1});
+    if(GS.canK){const ha=simAfterPongKong(GS.players[0].hand,t,3);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'杠 '+lbl(t),totalScore:curS-ps+8,shantenAfter:ps,route:'response',speedScore:curS-ps,kongZhichanScore:1,defenseScore:0});}
+    if(GS.canP){const ha=simAfterPongKong(GS.players[0].hand,t,2);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'碰 '+lbl(t),totalScore:curS-ps+5,shantenAfter:ps,route:'response',speedScore:curS-ps,defenseScore:0});}
+    humanCandidates.push({tile:tkey(t),tileLabel:'过',totalScore:GS.canW?-20:1,shantenAfter:curS,route:'response',defenseScore:1});
+    renderRecommendationPanel(Object.assign(base,{candidates:humanCandidates,systemRecommendation:humanCandidates[0]||null}));
     return;
   }
   const realHand=GS.players[0].hand;
@@ -3500,32 +3652,20 @@ function updateSuggestion(){
   if(actions.kong.length>0){
     actionHtml+='<div class="suggest-action suggest-kong"><span class="action-label">杠</span> '+actions.kong.map(function(a){return a.tile+'（'+a.type+'）';}).join('、')+'</div>';
   }
-  body.innerHTML=actionHtml+'<div class="rec">系统推荐：打出 <span>'+lbl(hand[bestIdx])+'</span> → <span style="color:#ffcc00">'+bestShanten+'向听</span></div><div class="reason">'+reasons.join('<br>')+'</div>';
-  el.style.right='10px';
-  // clicked tile analysis
   const selectedTile=getSelectedTile();
-  if(selectedTile&&GS.phase==='discarding'&&GS.cur===0){
-    var _h0=effectiveHand(0);
-    var _selectedIdx=_h0.indexOf(selectedTile);
-    if(_selectedIdx>=0){
-      var _sl=selectedTile;var _sb=_h0.filter(function(_,_j){return _j!==_selectedIdx;});
-      var _bs=calcShanten(_sb);
-      var _ex='<hr><div class=rec style=font-size:14px>';
-      _ex+='<b>点击分析：</b>弃 '+lbl(_sl)+' → '+_bs+'向听';
-      if(_bs===0)_ex+=' 听牌！';
-      if(_bs>0){
-        var _im=[];
-        for(var _ki=0;_ki<ALL_KEYS.length;_ki++){
-          var _tk=ALL_KEYS[_ki];
-          if(calcShanten([..._sb,kt(_tk)])<_bs)_im.push(lbl(kt(_tk)));
-        }
-        if(_im.length>0)_ex+='<br>进张：'+_im.join(' ');
-      }
-      _ex+='</div>';
-      body.innerHTML+=_ex;
-    }
+  const candidateViews=candDetails.map(function(detail){return candidateViewFromDetail(detail,hand,candScores);});
+  const bestKey=tkey(hand[bestIdx]);
+  const systemRecommendation=candidateViews.find(function(item){return item.tile===bestKey;})||candidateViews[0]||null;
+  if(GS._recommendation){
+    GS._recommendation.selectedTileKey=selectedTile?tkey(selectedTile):null;
   }
-  el.style.display='block';
+  const context=recommendationBaseContext({
+    handKeys:hand.map(tkey),
+    selectedTile:selectedTile?tkey(selectedTile):null,
+    candidates:candidateViews,
+    systemRecommendation:systemRecommendation
+  });
+  renderRecommendationPanel(context);
 }
 
 // fit canvas to screen
