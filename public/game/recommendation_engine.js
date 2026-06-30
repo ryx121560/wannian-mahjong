@@ -352,6 +352,7 @@ function createRecommendationRecord(type, context, sectionList, actualAction) {
 }
 function buildPanel(context) {
     var _a;
+    const summarySection = buildGameSummary(context);
     const sections = [
         buildDiscardRecommendation(context),
         buildDetailedReasons(context),
@@ -362,8 +363,12 @@ function buildPanel(context) {
         buildAiDiscardInterpretation(context),
         buildResponseRecommendation(context),
         buildRoundReview(context),
-        buildGameSummary(context),
+        summarySection,
     ];
+    if (context.phaseLabel === 'ended' || ((context.records || []).length > 0 && !(context.candidates || []).length && !context.responseEvent)) {
+        sections.pop();
+        sections.unshift(summarySection);
+    }
     return {
         sections,
         records: context.records || [],

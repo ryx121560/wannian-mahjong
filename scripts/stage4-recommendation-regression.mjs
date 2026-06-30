@@ -23,6 +23,7 @@ const engine = require(tempPath);
 const raw = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
 const forbidden = ['speedScore', 'handValueScore', 'waitQualityScore', 'defenseScore', 'totalScore', 'structurePenalty'];
 const failures = [];
+const runtimeHtml = fs.readFileSync(path.join(root, 'public/game/wannian-mahjong.html'), 'utf8');
 
 for (const item of raw.cases) {
   const panel = engine.buildPanel(item.context);
@@ -42,6 +43,32 @@ for (const item of raw.cases) {
     const changedPanel = engine.buildPanel(changed);
     if (panel.systemTile !== changedPanel.systemTile) failures.push(`${item.id}: system recommendation changed after click`);
   }
+}
+
+if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: response countdown still exists');
+}
+if (!runtimeHtml.includes('导出失败：生成或下载 JSON 文件失败') || !runtimeHtml.includes('[game log] export failed')) {
+  failures.push('stage4-runtime: export failure lacks locatable message');
+}
+if (!runtimeHtml.includes('recordAiDiscardInterpretation') || !runtimeHtml.includes("createRecommendationRecord('ai-discard'")) {
+  failures.push('stage4-runtime: ai discard interpretation is not recorded');
+}
+
+const summaryContext = {
+  ...raw.cases[0].context,
+  phaseLabel: 'ended',
+  candidates: [],
+  systemRecommendation: null,
+  responseEvent: null,
+  records: [
+    { id: 'summary-check', type: 'discard', turn: 1, confidence: '高', recommendedAction: '打三万', actualAction: '打三万', adopted: true, strategyGap: '选择一致', reasons: ['防守安全'], sections: [] },
+  ],
+  summary: { total: 1, discardRecommendations: 1, responseRecommendations: 0, highConfidenceMissed: 0, obviousStrategyGaps: 0, topics: { 防守安全: 1 }, reviewTurns: [] },
+};
+const summaryPanel = engine.buildPanel(summaryContext);
+if (!summaryPanel.sections[0] || summaryPanel.sections[0].title !== '十、本局推荐总结') {
+  failures.push('stage4-summary: game summary is not pinned after game end');
 }
 
 try { fs.unlinkSync(tempPath); } catch {}

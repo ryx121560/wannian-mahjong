@@ -457,8 +457,8 @@ function restoredPhaseMessage(){
   if(GS.phase==='drawing')setMsg(player.name+'的回合');
   else if(GS.phase==='discarding')setMsg(player.human?'选择要打出的牌'+(GS.newDrawnTile?'（新摸的牌在最右边）':''):player.name+'准备出牌');
   else if(GS.phase==='responding'){
-    if(GS.canW)setMsg('可以胡！（30秒后自动跳过）');
-    else if(GS.canP||GS.canK)setMsg('可以'+(GS.canP?'碰/杠':'杠')+'（30秒后自动跳过）');
+    if(GS.canW)setMsg('可以胡，请仔细阅读推荐后选择');
+    else if(GS.canP||GS.canK)setMsg('可以'+(GS.canP?'碰/杠':'杠')+'，请仔细阅读推荐后选择');
     else setMsg('等待响应');
   }
 }
@@ -489,12 +489,7 @@ function resumeRestoredGame(){
     const responder=GS._respP;
     const responsePlayer=responder>=0?GS.players[responder]:null;
     if(responsePlayer&&responsePlayer.human){
-      GS._respTimer=gameSetTimeout(function(){
-        if(GS.phase==='responding'&&GS._respP===responder){
-          GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
-          nextTurn();
-        }
-      },30000);
+      updateBtns();updateSuggestion();
     }else if(responsePlayer&&GS._responseKind==='win'){
       GS._aiActionTimer=gameSetTimeout(function(){if(GS.phase==='responding'&&GS._respP===responder)applyWin(responder,'点炮');},500);
     }else{
@@ -578,17 +573,28 @@ function saveGameLog(result){
 }
 function exportGameLogs(){
   let logs=[];
-  try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before export',e);}
+  try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before export',e);alert('导出失败：读取本地游戏记录失败，请检查浏览器 localStorage 是否可用。');return;}
   // 如果当前正在对局中，把当前局也纳入导出
   if(GS._gameLog && GS._gameLog.events && GS._gameLog.events.length>0){
     logs=logs.filter(function(log){return !log||log.gameId!==GS._gameLog.gameId;});
     logs.unshift(GS._gameLog);
   }
   if(!logs.length){alert('暂无游戏记录');return;}
-  const blob=new Blob([JSON.stringify(logs,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='万年麻将_游戏记录_'+(new Date().toISOString().slice(0,10))+'.json';
-  a.click();
+  try{
+    const text=JSON.stringify(logs,null,2);
+    const blob=new Blob([text],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='万年麻将_游戏记录_'+(new Date().toISOString().slice(0,10))+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    gameSetTimeout(function(){URL.revokeObjectURL(url);},1000);
+  }catch(e){
+    console.error('[game log] export failed',e);
+    alert('导出失败：生成或下载 JSON 文件失败，请查看浏览器控制台的 [game log] export failed 日志定位原因。');
+  }
 }
 
 const canvas=document.getElementById('c');
@@ -1441,16 +1447,8 @@ function checkResponses(){
     if(pk===null)pk=wr[0].p;
     GS.phase='responding';GS._respP=pk;GS._resp=null;GS._responseKind='win';
     GS.canP=false;GS.canK=false;GS.canW=true;
-    if(GS.players[pk].human){setMsg('可以胡！（30秒后自动跳过）');render();updateBtns();updateSuggestion();
+    if(GS.players[pk].human){setMsg('可以胡，请仔细阅读推荐后选择');render();updateBtns();updateSuggestion();
       saveGameSnapshot('human-win-response');
-      if(GS._respTimer)clearTimeout(GS._respTimer);
-      GS._respTimer=gameSetTimeout(()=>{
-      if(GS.phase==='responding'){
-          if(GS.canW&&GS._respP>=0&&GS.lastDiscard)recordPass(GS._respP,GS.lastDiscard);
-          GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
-          nextTurn();
-        }
-      },30000);
     }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){aiRespond([{p:pk,cw:true,cp:false,ck:false}]);}},500);}
     return;
   }
@@ -1458,15 +1456,8 @@ function checkResponses(){
   const hr=resp.find(r=>GS.players[r.p].human);
   if(hr&&(hr.cp||hr.ck)){
     GS.canP=hr.cp;GS.canK=hr.ck;GS.canW=false;GS._respP=hr.p;
-    setMsg(`可以${hr.cp?'碰/杠':'杠'}（30秒后自动跳过）`);render();updateBtns();
+    setMsg(`可以${hr.cp?'碰/杠':'杠'}，请仔细阅读推荐后选择`);render();updateBtns();
     updateSuggestion();saveGameSnapshot('human-call-response');
-    if(GS._respTimer)clearTimeout(GS._respTimer);
-    GS._respTimer=gameSetTimeout(()=>{
-      if(GS.phase==='responding'){
-        GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
-        nextTurn();
-      }
-    },30000);
   }else{updateBtns();saveGameSnapshot('ai-call-response');aiRespond(resp);}
 }
 
@@ -1865,6 +1856,7 @@ async function aiDiscard(p){
     logEvent(p,'弃牌',t);
     if(GS._recommendation){
       GS._recommendation.lastAiInterpretation={player:p,playerName:GS.players[p]?GS.players[p].name:'AI',tile:tkey(t),tileLabel:lbl(t),mctsSummary:aiDecisionLog&&aiDecisionLog.mctsSummary?aiDecisionLog.mctsSummary:null};
+      recordAiDiscardInterpretation(p,t);
     }
     // RL 奖励：向听数变化
     const oldShanten=getAiHandMeta(h,'rlOldShanten');
@@ -3596,6 +3588,20 @@ function recordRecommendationChoice(type,actualAction){
   return record;
 }
 
+function recordAiDiscardInterpretation(playerIdx,tile){
+  const log=ensureRecommendationLog();
+  if(!log||!RECOMMENDATION_ENGINE)return null;
+  const context=recommendationBaseContext({
+    aiLastDiscard:{player:playerIdx,playerName:GS.players[playerIdx]?GS.players[playerIdx].name:'AI',tile:tkey(tile),tileLabel:lbl(tile)}
+  });
+  const sections=[RECOMMENDATION_ENGINE.buildAiDiscardInterpretation(context)];
+  const record=RECOMMENDATION_ENGINE.createRecommendationRecord('ai-discard',context,sections,'打'+lbl(tile));
+  log.recommendationRecords.push(record);
+  log.recommendationSummary=RECOMMENDATION_ENGINE.summarizeRecords(log.recommendationRecords);
+  GS._recommendation.summary=log.recommendationSummary;
+  return record;
+}
+
 function finalizeRecommendationSummary(){
   const log=ensureRecommendationLog();
   if(!log)return null;
@@ -3609,7 +3615,7 @@ function renderFinalRecommendationPanel(){
   if(!GS._recommendation)return;
   const records=GS._recommendation.finalRecords||[];
   const summary=GS._recommendation.summary||RECOMMENDATION_ENGINE.summarizeRecords(records);
-  renderRecommendationPanel(recommendationBaseContext({records:records,summary:summary,selectedTile:null,candidates:[],systemRecommendation:null}));
+  renderRecommendationPanel(recommendationBaseContext({phaseLabel:'ended',records:records,summary:summary,selectedTile:null,candidates:[],systemRecommendation:null}));
 }
 
 function responseRecommendationContext(){
