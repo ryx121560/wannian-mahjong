@@ -45,6 +45,27 @@ for (const item of raw.cases) {
   }
 }
 
+const responseChineseContext = {
+  ...raw.cases[0].context,
+  phaseLabel: 'responding',
+  candidates: [
+    { tile: 'wan6', tileLabel: '碰6万', totalScore: 10, shantenAfter: 0, route: 'response', speedScore: 2, handValueScore: 0, waitQualityScore: 0, defenseScore: 0, followUpDiscardLabel: '南', followUpShanten: 0, followUpReason: '碰后打南能保持0向听，且南风后续进张价值较低。' },
+    { tile: 'wan6', tileLabel: '杠 6万', totalScore: 8, shantenAfter: 0, route: 'response', speedScore: 1, kongZhichanScore: 1, defenseScore: 0, followUpPending: '杠后会先摸一张牌；如果这张牌不能杠开，系统会在下一步出牌建议里重新推荐应打哪张。' },
+  ],
+  systemRecommendation: { tile: 'wan6', tileLabel: '碰6万', totalScore: 10, shantenAfter: 0, route: 'response', speedScore: 2, handValueScore: 0, waitQualityScore: 0, defenseScore: 0, followUpDiscardLabel: '南', followUpShanten: 0, followUpReason: '碰后打南能保持0向听，且南风后续进张价值较低。' },
+  responseEvent: { fromPlayer: 1, fromName: 'AI下家', tile: 'wan6', tileLabel: '6万', actions: ['杠', '碰', '过'] },
+};
+const responseChineseText = engine.buildPanel(responseChineseContext).sections.map((item) => item.text).join('\n');
+if (/\bresponse\b/.test(responseChineseText)) {
+  failures.push('stage4-copy: response recommendation leaks internal route name');
+}
+if (!responseChineseText.includes('碰牌后建议') || !responseChineseText.includes('打南')) {
+  failures.push('stage4-response: pong recommendation lacks follow-up discard advice');
+}
+if (!responseChineseText.includes('杠牌后说明') || !responseChineseText.includes('下一步出牌建议')) {
+  failures.push('stage4-response: kong recommendation lacks next-discard guidance');
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }

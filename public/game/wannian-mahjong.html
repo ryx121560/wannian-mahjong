@@ -3644,6 +3644,32 @@ function responseRecommendationContext(){
   });
 }
 
+function responseFollowUpDiscardAdvice(handAfterCall,playerIdx){
+  try{
+    if(!Array.isArray(handAfterCall)||handAfterCall.length===0)return null;
+    const candidateIndices=handAfterCall.map(function(_,idx){return idx;});
+    const evaluated=evaluateDiscardCandidates(handAfterCall,playerIdx,{candidateIndices:candidateIndices});
+    const bestIdx=evaluated&&evaluated.bestCands&&evaluated.bestCands.length?evaluated.bestCands[0]:-1;
+    if(bestIdx<0||!handAfterCall[bestIdx])return null;
+    const tile=handAfterCall[bestIdx];
+    const detail=evaluated.candDetails&&evaluated.candDetails.find(function(item){return item.idx===bestIdx;});
+    const shanten=detail&&Number.isFinite(detail.s)?detail.s:evaluated.bestShanten;
+    const route=detail&&detail.path?detail.path:null;
+    const keepsStructure=!(detail&&(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu));
+    const safety=defenseScore(tile,playerIdx);
+    let reason='打'+lbl(tile)+'后为'+shanten+'向听';
+    if(keepsStructure)reason+='，不明显破坏面子、对子或搭子';
+    else reason+='，虽然会动到局部结构，但综合向听和后续进张更合适';
+    if(tile.t==='honor')reason+='，字牌单张的后续进张价值较低';
+    else if(safety>=2)reason+='，公开信息下安全性相对更好';
+    reason+='。';
+    return {followUpDiscard:tkey(tile),followUpDiscardLabel:lbl(tile),followUpShanten:shanten,followUpRoute:route,followUpReason:reason};
+  }catch(error){
+    console.warn('[recommendation] response follow-up discard failed',error);
+    return null;
+  }
+}
+
 function updateSuggestion(){
   const el=document.getElementById('suggest');
   const body=document.getElementById('suggest-body');
@@ -3662,8 +3688,8 @@ function updateSuggestion(){
     const base=responseRecommendationContext();
     const humanCandidates=[];
     if(GS.canW)humanCandidates.push({tile:tkey(t),tileLabel:lbl(t),totalScore:30,shantenAfter:-1,route:'response',speedScore:3,handValueScore:3,waitQualityScore:2,defenseScore:1});
-    if(GS.canK){const ha=simAfterPongKong(GS.players[0].hand,t,3);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'杠 '+lbl(t),totalScore:curS-ps+8,shantenAfter:ps,route:'response',speedScore:curS-ps,kongZhichanScore:1,defenseScore:0});}
-    if(GS.canP){const ha=simAfterPongKong(GS.players[0].hand,t,2);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'碰 '+lbl(t),totalScore:curS-ps+5,shantenAfter:ps,route:'response',speedScore:curS-ps,defenseScore:0});}
+    if(GS.canK){const ha=simAfterPongKong(GS.players[0].hand,t,3);const ps=Math.max(0,_bs(ha)-2);humanCandidates.push({tile:tkey(t),tileLabel:'杠 '+lbl(t),totalScore:curS-ps+8,shantenAfter:ps,route:'response',speedScore:curS-ps,kongZhichanScore:1,defenseScore:0,followUpPending:'杠后会先摸一张牌；如果这张牌不能杠开，系统会在下一步出牌建议里重新推荐应打哪张。'});}
+    if(GS.canP){const ha=simAfterPongKong(GS.players[0].hand,t,2);const ps=Math.max(0,_bs(ha)-2);const followUp=responseFollowUpDiscardAdvice(ha,0)||{};humanCandidates.push(Object.assign({tile:tkey(t),tileLabel:'碰 '+lbl(t),totalScore:curS-ps+5,shantenAfter:ps,route:'response',speedScore:curS-ps,defenseScore:0},followUp));}
     humanCandidates.push({tile:tkey(t),tileLabel:'过',totalScore:GS.canW?-20:1,shantenAfter:curS,route:'response',defenseScore:1});
     let responseMctsSummary=null;
     try{

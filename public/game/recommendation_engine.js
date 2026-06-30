@@ -31,6 +31,7 @@ const ROUTE_LABELS = {
     banzheng: '半正宗',
     clear: '清一色',
     mixed: '混一色',
+    response: '响应选择',
 };
 function esc(value) {
     return String(value !== null && value !== void 0 ? value : '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
@@ -254,6 +255,23 @@ function buildAiDiscardInterpretation(context) {
     ].join('');
     return section('七、AI 玩家出牌解读', body);
 }
+function responseFollowUpItems(context) {
+    const items = (context.candidates || [])
+        .filter((candidate) => candidate.followUpDiscardLabel || candidate.followUpPending)
+        .map((candidate) => {
+        const isPong = candidate.tileLabel.includes('碰');
+        const isKong = candidate.tileLabel.includes('杠');
+        const prefix = isPong ? '碰牌后建议' : isKong ? '杠牌后说明' : '后续建议';
+        if (candidate.followUpDiscardLabel) {
+            const shanten = Number.isFinite(candidate.followUpShanten) ? `，打出后为 ${candidate.followUpShanten} 向听` : '';
+            const route = candidate.followUpRoute ? `，路线为${esc(ROUTE_LABELS[candidate.followUpRoute] || candidate.followUpRoute)}` : '';
+            const reason = candidate.followUpReason ? `。${esc(candidate.followUpReason)}` : '。这样处理能兼顾向听、结构和后续进张。';
+            return `<li><b>${prefix}</b>：如果选择${esc(candidate.tileLabel)}，下一手优先打${esc(candidate.followUpDiscardLabel)}${shanten}${route}${reason}</li>`;
+        }
+        return `<li><b>${prefix}</b>：${esc(candidate.followUpPending)}</li>`;
+    });
+    return items.length ? `<ul>${items.join('')}</ul>` : '';
+}
 function buildResponseRecommendation(context) {
     var _a;
     const event = context.responseEvent;
@@ -270,6 +288,7 @@ function buildResponseRecommendation(context) {
         line('推荐置信度', confidence),
         '<p>详细分析：</p>',
         `<ul><li>${recommended === '胡' ? '当前可胡时优先避免过水。' : '当前动作需要比较收益、向听和结构损失。'}</li><li>选择过可能影响本圈同牌胡牌机会。</li><li>涉及杠/直铲时，会同时考虑宝牌、没走色和连杠潜力。</li></ul>`,
+        responseFollowUpItems(context),
     ].join('');
     return section('八、响应阶段推荐', body);
 }
