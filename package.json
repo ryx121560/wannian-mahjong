@@ -19,7 +19,10 @@
     "verify:mcts": "node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/verify-browser-mcts-enhancement-engine.mjs",
     "generate:l3-mcts": "node scripts/generate-l3-mcts-cases.mjs",
     "test:mcts": "node scripts/l3-mcts-regression.mjs",
-    "compare:mcts-selfplay": "node scripts/mcts-selfplay-comparison.mjs"
+    "compare:mcts-selfplay": "node scripts/mcts-selfplay-comparison.mjs",
+    "generate:stage6-model": "node scripts/generate-stage6-data-model-cases.mjs",
+    "test:stage6-model": "node scripts/stage6-data-model-regression.mjs",
+    "verify:stage6-data-gates": "node scripts/verify-stage6-data-gates.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",

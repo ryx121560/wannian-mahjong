@@ -93,7 +93,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <li>当前版本不吃牌，保留碰、明杠、暗杠、加杠、胡和自摸。</li>
 <li>支持普通面子手、七对子、打烂、半正宗、全正宗路线。</li>
 <li>东南西北和中发白包含万年麻将字牌特殊组合判定。</li>
-<li>普通对局默认启用阶段五 MCTS 增强决策；AI 设置仅保留训练相关开关。</li>
+<li>普通对局默认启用阶段六数据驱动策略复核，且不会覆盖规则合法性和明确 MCTS 结论。</li>
 </ul>
 <button class="close" id="bt-rules-close">关闭</button>
 </div>
@@ -102,8 +102,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <div class="mode" id="ai-mode-label"></div>
 <div class="hint" id="ai-core-label"></div>
 <label class="option"><input type="checkbox" id="ai-use-rl"><span><b>普通对局启用 RL</b><br><span class="hint">默认关闭；开启后 RL 只有在不劣于规则结果时才会覆盖。</span></span></label>
-<div class="hint">强规则 AI 八维参数</div>
-<div id="strong-ai-dimensions"></div>
 <button class="close" id="bt-ai-settings-close">关闭</button>
 </div>
 <div id="ai-log-panel">
@@ -137,6 +135,7 @@ if(!STRONG_RULE_AI)throw new Error('Wannian strong rule AI failed to load');
 if(!RECOMMENDATION_ENGINE)throw new Error('Wannian recommendation engine failed to load');
 if(!MCTS_ENHANCEMENT)throw new Error('Wannian MCTS enhancement engine failed to load');
 const AI_ENGINE_INFO={id:'strong-rule-ai',version:'2026-06-27-stage2',source:'strong-rule',mode:'ordinary',ruleCoreId:AI_RULE_CORE.id,ruleCoreVersion:AI_RULE_CORE.version};
+const STAGE6_MODEL_INFO={modelVersion:'stage6-lightweight-strategy-v1',trainingDataVersion:'stage6-mcts-selfplay-50000-v1',modelDecisionSchemaVersion:'stage6-model-decision-v1',ruleEngineVersion:'wannian-rule-engine-stage1-gated',mctsVersion:'stage5-mcts-enhancement-v1',strongRuleVersion:'strong-rule-ai-stage3-v1'};
 const STRONG_AI_DIMENSIONS=[
   ['speed','速度'],['handValue','打点'],['waitQuality','听牌'],['kongZhichan','杠铲'],
   ['dalanRoute','打烂'],['defense','防守'],['position','位置'],['structure','结构']
@@ -185,14 +184,10 @@ function setStrongAiEnabled(key,value){
 }
 
 function renderAiSettingsPanel(){
-  const r=document.getElementById('ai-use-rl'),label=document.getElementById('ai-mode-label'),coreLabel=document.getElementById('ai-core-label'),dims=document.getElementById('strong-ai-dimensions');
+  const r=document.getElementById('ai-use-rl'),label=document.getElementById('ai-mode-label'),coreLabel=document.getElementById('ai-core-label');
   if(r)r.checked=!!AI_RUNTIME_CONFIG.ordinaryRL;
   if(label)label.textContent='当前普通对局来源：'+AI_ENGINE_INFO.source;
-  if(coreLabel)coreLabel.textContent='规则核心：'+AI_RULE_CORE.id+' @ '+AI_RULE_CORE.version+'；阶段五 MCTS 增强默认启用。';
-  if(dims)dims.innerHTML=STRONG_AI_DIMENSIONS.map(function(item){
-    const key=item[0],name=item[1],value=AI_RUNTIME_CONFIG.strongWeights[key],checked=AI_RUNTIME_CONFIG.strongEnabled[key]?'checked':'';
-    return '<div class="dimension"><span>'+name+'</span><input type="range" min="0" max="2" step="0.1" value="'+value+'" data-ai-weight="'+key+'"><span class="value">'+value.toFixed(1)+'</span><input type="checkbox" data-ai-enabled="'+key+'" '+checked+'></div>';
-  }).join('');
+  if(coreLabel)coreLabel.textContent='规则核心：'+AI_RULE_CORE.id+' @ '+AI_RULE_CORE.version+'；阶段六策略复核默认启用。';
 }
 
 function scorePosition(playerIdx){
@@ -1250,7 +1245,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
     startTime:new Date().toLocaleString(),
     players:GS.players.map(p=>p.name),
     dealer:GS.dealer,
-    aiEngine:{id:AI_ENGINE_INFO.id,version:AI_ENGINE_INFO.version,mode:AI_ENGINE_INFO.mode,source:AI_ENGINE_INFO.source,ruleCore:{id:AI_RULE_CORE.id,version:AI_RULE_CORE.version},mcts:window.MCTS?!!window.MCTS.useMCTS:false,rl:window.RL?!!window.RL.useRL:false,entryAudit:AI_ENGINE_INFO.entryAudit||auditAiEntrypoints()},
+    aiEngine:{id:AI_ENGINE_INFO.id,version:AI_ENGINE_INFO.version,mode:AI_ENGINE_INFO.mode,source:AI_ENGINE_INFO.source,ruleCore:{id:AI_RULE_CORE.id,version:AI_RULE_CORE.version},stage6Model:Object.assign({},STAGE6_MODEL_INFO),mcts:window.MCTS?!!window.MCTS.useMCTS:false,rl:window.RL?!!window.RL.useRL:false,entryAudit:AI_ENGINE_INFO.entryAudit||auditAiEntrypoints()},
     events:[],
     suggestLogs:[],
     mctsDecisionLogs:[],
@@ -1368,17 +1363,6 @@ function completeHumanDraw(playerIdx,reason){
   if(GS.phase!=='drawing'||GS.cur!==playerIdx||!GS.players[playerIdx]||!GS.players[playerIdx].human)return false;
   if(GS.wall.length===0){drawGame();return false;}
   GS.newDrawnTile=GS.wall.pop();
-  if(GS._debugKong){
-    let kongTile=null;
-    const player=GS.players[playerIdx];
-    if(player.melds)for(const meld of player.melds)if(meld.count===3){kongTile=meld.tile;break;}
-    if(!kongTile){
-      const hand=effectiveHand(playerIdx);
-      for(const tile of hand)if(hand.filter(function(other){return teq(other,tile);}).length>=3){kongTile=tile;break;}
-    }
-    if(kongTile){GS.wall.push(GS.newDrawnTile);GS.newDrawnTile=kongTile;}
-    GS._debugKong=null;
-  }
   GS.players[playerIdx].hand.push(GS.newDrawnTile);
   logEvent(playerIdx,'摸牌',GS.newDrawnTile);
   GS.newDrawnIdx=GS.players[playerIdx].hand.length-1;
@@ -3387,8 +3371,6 @@ document.getElementById('bt-rules-close').onclick=()=>{document.getElementById('
 document.getElementById('bt-ai-settings').onclick=()=>{renderAiSettingsPanel();document.getElementById('ai-settings-panel').style.display='block';};
 document.getElementById('bt-ai-settings-close').onclick=()=>{document.getElementById('ai-settings-panel').style.display='none';};
 document.getElementById('ai-use-rl').onchange=function(){setOrdinaryAiConfig(true,this.checked);};
-document.getElementById('strong-ai-dimensions').oninput=function(e){if(e.target&&e.target.dataset&&e.target.dataset.aiWeight)setStrongAiWeight(e.target.dataset.aiWeight,e.target.value);};
-document.getElementById('strong-ai-dimensions').onchange=function(e){if(e.target&&e.target.dataset&&e.target.dataset.aiEnabled)setStrongAiEnabled(e.target.dataset.aiEnabled,e.target.checked);};
 if(document.getElementById('bt-ai-log-export'))document.getElementById('bt-ai-log-export').onclick=exportAiDecisionLogs;
 if(document.getElementById('bt-ai-log-close'))document.getElementById('bt-ai-log-close').onclick=()=>{document.getElementById('ai-log-panel').style.display='none';};
 // toggle AI hands

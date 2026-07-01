@@ -113,6 +113,27 @@ function mctsReviewLine(context) {
         : (summary.notOverrideReason || '后续收益复核后保留当前选择。');
     return `已通过后续收益复核：${esc(summary.finalAction)}。${esc(reason)}`;
 }
+function displayStrength(value) {
+    if (value === 'strong')
+        return '强';
+    if (value === 'medium')
+        return '中';
+    return '弱';
+}
+function modelReviewLine(context) {
+    var _a, _b;
+    const summary = context.mctsSummary;
+    if (!summary || !summary.modelAction)
+        return null;
+    const affected = summary.modelAffectedFinalChoice ? '已影响本次最终选择' : '仅作为复核参考';
+    const agreement = ((_a = summary.modelAgreement) === null || _a === void 0 ? void 0 : _a.withMcts)
+        ? '与搜索结论一致'
+        : ((_b = summary.modelAgreement) === null || _b === void 0 ? void 0 : _b.withStrongRule)
+            ? '与强规则选择一致'
+            : '与其他候选存在分歧';
+    const routeText = summary.routeTransitionJudgment || '本次没有明确路线转换信号。';
+    return `阶段六模型建议${esc(summary.modelAction)}，倾向强度${displayStrength(summary.modelTendencyStrength)}，${agreement}，${affected}。${esc(routeText)}`;
+}
 function mctsCandidateNote(context, actionLabel) {
     var _a;
     const summary = context.mctsSummary;
@@ -144,6 +165,7 @@ function buildDiscardRecommendation(context) {
         line('推荐打出', `<span class="rec-tile">${esc(best.tileLabel)}</span>`),
         line('推荐目标', '长期期望收益最高'),
         mctsReviewLine(context) ? line('收益复核', esc(mctsReviewLine(context))) : '',
+        modelReviewLine(context) ? line('策略模型复核', esc(modelReviewLine(context))) : '',
         line('置信度', esc(confidence)),
         line('综合评分', `${score} 分`),
         line('第二候选', second ? `${esc(second.tileLabel)}，${toDisplayScore(second.totalScore, -8, 18)} 分` : '暂无'),
@@ -169,6 +191,7 @@ function buildDetailedReasons(context) {
         line('结构影响', `${esc(structure)}。${best.breaksPair ? '会拆对子，需要权衡。' : ''}${best.breaksTaatsu ? '会拆搭子，需要权衡。' : ''}`),
         line('防守风险', `${scoreWord(defense)}，只基于公开牌河、副露和已见牌判断。`),
         mctsReviewLine(context) ? line('后续复核', esc(mctsReviewLine(context))) : '',
+        modelReviewLine(context) ? line('阶段六复核', esc(modelReviewLine(context))) : '',
         line('杠/直铲机会', (best.kongZhichanScore || 0) > 0.5 ? '存在潜在收益，推荐保留相关结构。' : '暂无明显机会。'),
         line('分数位置', '已纳入当前分数位置，不单独评价玩家能力。'),
     ].join('');

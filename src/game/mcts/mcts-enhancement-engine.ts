@@ -19,6 +19,11 @@ export interface MctsCandidate {
   isStrongRuleChoice?: boolean;
   dragonComboBreak?: boolean;
   isolatedDiscardPriority?: number;
+  modelFeatures?: {
+    routeTransition?: boolean;
+    complexRanking?: boolean;
+    scorePosition?: 'leading' | 'behind' | 'neutral';
+  };
 }
 
 export interface MctsDecisionContext {
@@ -39,12 +44,31 @@ export interface MctsDecisionContext {
 
 export interface MctsDecisionSummary {
   schemaVersion: 'mcts-decision-v1';
+  modelDecisionSchemaVersion: 'stage6-model-decision-v1';
+  modelVersion: string;
+  trainingDataVersion: string;
+  ruleEngineVersion: string;
+  mctsVersion: string;
+  strongRuleVersion: string;
   turn: number;
   player: number;
   phase: string;
   finalAction: string;
   strongRuleAction: string | null;
   mctsAction: string;
+  modelAction: string | null;
+  modelRoute: string | null;
+  modelConfidence: 'weak' | 'medium' | 'strong';
+  modelTendencyStrength: 'weak' | 'medium' | 'strong';
+  modelAgreement: {
+    withMcts: boolean;
+    withStrongRule: boolean;
+  };
+  modelAffectedFinalChoice: boolean;
+  modelAdoptionReason: string | null;
+  modelRejectionReason: string | null;
+  routeTransitionJudgment: string;
+  ruleConstraintBlocks: string[];
   overridden: boolean;
   overrideReason: string | null;
   notOverrideReason: string | null;
@@ -73,6 +97,22 @@ interface ScoredCandidate extends MctsCandidate {
 }
 
 const WEAK_GAP = 1.5;
+const STAGE6_MODEL_VERSION = 'stage6-lightweight-strategy-v1';
+const STAGE6_TRAINING_DATA_VERSION = 'stage6-mcts-selfplay-50000-v1';
+const RULE_ENGINE_VERSION = 'wannian-rule-engine-stage1-gated';
+const MCTS_VERSION = 'stage5-mcts-enhancement-v1';
+const STRONG_RULE_VERSION = 'strong-rule-ai-stage3-v1';
+
+interface ModelAdvice {
+  action: string | null;
+  route: string | null;
+  confidence: 'weak' | 'medium' | 'strong';
+  tendencyStrength: 'weak' | 'medium' | 'strong';
+  candidate: ScoredCandidate | null;
+  score: number;
+  routeTransitionJudgment: string;
+  ruleConstraintBlocks: string[];
+}
 
 function actionText(candidate: Pick<MctsCandidate, 'action' | 'tileLabel' | 'tile'>): string {
   if (candidate.action === 'discard') return `打${candidate.tileLabel || candidate.tile || ''}`;
@@ -219,26 +259,97 @@ function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext):
   return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
 }
 
+function modelScore(candidate: ScoredCandidate, context: MctsDecisionContext): number {
+  if (!candidate.legal) return -Infinity;
+  let score = candidate.value;
+  const pos = scorePosition(context);
+  const route = candidate.route || 'norm';
+  const routeTransition = !!candidate.modelFeatures?.routeTransition
+    || (candidate.action === 'discard' && ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(route) && (candidate.shantenAfter ?? 9) <= 1);
+  if (routeTransition) score += 1.2;
+  if ((candidate.waitRemaining || 0) >= 4) score += 0.8;
+  if ((candidate.waitCount || 0) >= 2) score += 0.5;
+  if ((candidate.isolatedDiscardPriority || 0) > 0) score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
+  if (candidate.dragonComboBreak) score -= 2.2;
+  if (candidate.breaksRoute) score -= 1.4;
+  if (pos === 'leading') score -= clampRisk(candidate.dealInRisk) * 2.2 + clampRisk(candidate.kongRisk) * 1.4;
+  if (pos === 'behind' && (candidate.scoreImpact || 0) >= 2) score += 0.9;
+  return score;
+}
+
+function confidenceFromGap(gap: number): 'weak' | 'medium' | 'strong' {
+  if (gap >= 3) return 'strong';
+  if (gap >= 1.2) return 'medium';
+  return 'weak';
+}
+
+function buildModelAdvice(scored: ScoredCandidate[], context: MctsDecisionContext): ModelAdvice {
+  const legal = scored.filter((item) => item.legal);
+  const ranked = legal
+    .map((candidate) => ({ candidate, score: modelScore(candidate, context) }))
+    .sort((a, b) => b.score - a.score);
+  const top = ranked[0] || null;
+  const second = ranked[1] || null;
+  const gap = top && second ? top.score - second.score : top ? 3 : 0;
+  const ruleConstraintBlocks = scored
+    .filter((candidate) => !candidate.legal || hasInvalidReadyWait(candidate))
+    .map((candidate) => `${actionText(candidate)}:${candidate.legal ? 'ready-wait-blocked' : 'illegal-blocked'}`);
+  const routeTransitionCandidate = ranked.find((item) => !!item.candidate.modelFeatures?.routeTransition
+    || ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(item.candidate.route || ''));
+  const routeTransitionJudgment = routeTransitionCandidate
+    ? `模型识别到${actionText(routeTransitionCandidate.candidate)}存在路线转换价值，已作为弱增强信号参与复核。`
+    : '模型未识别到明确路线转换机会，仅按稳定候选排序辅助复核。';
+  return {
+    action: top ? actionText(top.candidate) : null,
+    route: top?.candidate.route || null,
+    confidence: confidenceFromGap(gap),
+    tendencyStrength: confidenceFromGap(Math.abs(top?.score || 0)),
+    candidate: top?.candidate || null,
+    score: top?.score || 0,
+    routeTransitionJudgment,
+    ruleConstraintBlocks,
+  };
+}
+
 function findStrongRule(scored: ScoredCandidate[], context: MctsDecisionContext): ScoredCandidate | null {
   return scored.find((item) => item.isStrongRuleChoice)
     || scored.find((item) => actionText(item) === context.strongRuleAction)
     || null;
 }
 
-function chooseFinal(scored: ScoredCandidate[], context: MctsDecisionContext): { best: ScoredCandidate; mctsBest: ScoredCandidate; strong: ScoredCandidate | null; reason: string | null; notReason: string | null } {
+function chooseFinal(scored: ScoredCandidate[], context: MctsDecisionContext): { best: ScoredCandidate; mctsBest: ScoredCandidate; strong: ScoredCandidate | null; model: ModelAdvice; reason: string | null; notReason: string | null; modelReason: string | null; modelRejectReason: string | null; modelAffected: boolean } {
   const legal = scored.filter((item) => item.legal).sort((a, b) => b.value - a.value);
   const fallback = legal[0] || scored[0];
   const strong = findStrongRule(scored, context);
+  const model = buildModelAdvice(scored, context);
   if (!fallback) throw new Error('MCTS requires at least one candidate');
-  if (!strong || !strong.legal) return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选不可用，采用搜索收益最高的合法动作', notReason: null };
+  if (!strong || !strong.legal) return { best: fallback, mctsBest: fallback, strong, model, reason: '强规则候选不可用，采用搜索收益最高的合法动作', notReason: null, modelReason: null, modelRejectReason: '强规则候选不可用，模型只记录建议不参与覆盖', modelAffected: false };
   if (hasInvalidReadyWait(strong)) {
-    return { best: fallback, mctsBest: fallback, strong, reason: '强规则候选形成的听牌没有合法待牌，采用可实际胡牌的候选', notReason: null };
+    return { best: fallback, mctsBest: fallback, strong, model, reason: '强规则候选形成的听牌没有合法待牌，采用可实际胡牌的候选', notReason: null, modelReason: null, modelRejectReason: '规则约束阻断候选，模型不得覆盖', modelAffected: false };
   }
   const gap = fallback.value - strong.value;
-  if (gap < WEAK_GAP) {
-    return { best: strong, mctsBest: fallback, strong, reason: null, notReason: '搜索收益差距较小，保留强规则 AI 的稳定选择' };
+  if (gap < WEAK_GAP && model.candidate && model.confidence !== 'weak') {
+    const closeToMcts = fallback.value - model.candidate.value < WEAK_GAP;
+    const closeToStrong = model.candidate.value - strong.value > -WEAK_GAP;
+    if (closeToMcts && closeToStrong && !hasInvalidReadyWait(model.candidate)) {
+      const affected = actionText(model.candidate) !== actionText(strong);
+      return {
+        best: model.candidate,
+        mctsBest: fallback,
+        strong,
+        model,
+        reason: affected ? '搜索收益差距较小，阶段六模型给出更稳定的路线排序' : null,
+        notReason: affected ? null : '阶段六模型与强规则选择一致',
+        modelReason: affected ? '模型仅在 MCTS 差距不明确时参与排序，未覆盖明确搜索结论' : '模型建议与最终选择一致',
+        modelRejectReason: null,
+        modelAffected: affected,
+      };
+    }
   }
-  return { best: fallback, mctsBest: fallback, strong, reason: mainRisk(fallback, context) === '风险可控' ? '后续平均收益明显更高且风险可控' : '后续收益优势覆盖主要风险', notReason: null };
+  if (gap < WEAK_GAP) {
+    return { best: strong, mctsBest: fallback, strong, model, reason: null, notReason: '搜索收益差距较小，保留强规则 AI 的稳定选择', modelReason: null, modelRejectReason: '模型信心不足或候选未通过收益接近条件', modelAffected: false };
+  }
+  return { best: fallback, mctsBest: fallback, strong, model, reason: mainRisk(fallback, context) === '风险可控' ? '后续平均收益明显更高且风险可控' : '后续收益优势覆盖主要风险', notReason: null, modelReason: null, modelRejectReason: 'MCTS 收益差距明确，模型不得覆盖', modelAffected: false };
 }
 
 function defenseInfluence(context: MctsDecisionContext): string {
@@ -279,6 +390,7 @@ export function decideWithMcts(context: MctsDecisionContext, now = () => Date.no
   const finalAction = actionText(decision.best);
   const mctsAction = actionText(decision.mctsBest);
   const strongRuleAction = context.strongRuleAction || (decision.strong ? actionText(decision.strong) : null);
+  const modelAction = decision.model.action;
   const overridden = !!strongRuleAction && finalAction !== strongRuleAction;
   const base = {
     overridden,
@@ -287,12 +399,31 @@ export function decideWithMcts(context: MctsDecisionContext, now = () => Date.no
   };
   return {
     schemaVersion: 'mcts-decision-v1',
+    modelDecisionSchemaVersion: 'stage6-model-decision-v1',
+    modelVersion: STAGE6_MODEL_VERSION,
+    trainingDataVersion: STAGE6_TRAINING_DATA_VERSION,
+    ruleEngineVersion: RULE_ENGINE_VERSION,
+    mctsVersion: MCTS_VERSION,
+    strongRuleVersion: STRONG_RULE_VERSION,
     turn: context.turn,
     player: context.player,
     phase: context.phase,
     finalAction,
     strongRuleAction,
     mctsAction,
+    modelAction,
+    modelRoute: decision.model.route,
+    modelConfidence: decision.model.confidence,
+    modelTendencyStrength: decision.model.tendencyStrength,
+    modelAgreement: {
+      withMcts: !!modelAction && modelAction === mctsAction,
+      withStrongRule: !!modelAction && !!strongRuleAction && modelAction === strongRuleAction,
+    },
+    modelAffectedFinalChoice: decision.modelAffected,
+    modelAdoptionReason: decision.modelReason,
+    modelRejectionReason: decision.modelRejectReason,
+    routeTransitionJudgment: decision.model.routeTransitionJudgment,
+    ruleConstraintBlocks: decision.model.ruleConstraintBlocks,
     overridden,
     overrideReason: base.overrideReason,
     notOverrideReason: base.notOverrideReason,

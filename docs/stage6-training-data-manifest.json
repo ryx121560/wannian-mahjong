@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "stage6-training-data-manifest-v1",
+  "trainingDataVersion": "stage6-mcts-selfplay-50000-v1",
+  "generatedAt": "2026-07-01T00:00:00.000Z",
+  "source": "stage5-mcts-selfplay",
+  "selfPlayGames": 50000,
+  "standardCaseSource": "docs/stage6-data-model-cases.json",
+  "personalExportRecordsIncluded": false,
+  "onlinePlayerDataIncluded": false,
+  "ruleGateRequiredBeforeGeneration": true,
+  "boundVersions": {
+    "modelVersion": "stage6-lightweight-strategy-v1",
+    "ruleEngineVersion": "wannian-rule-engine-stage1-gated",
+    "mctsVersion": "stage5-mcts-enhancement-v1",
+    "strongRuleVersion": "strong-rule-ai-stage3-v1",
+    "modelDecisionSchemaVersion": "stage6-model-decision-v1"
+  },
+  "ruleGateReports": [
+    "npm.cmd run test:rules -- --level L1 --report json",
+    "npm.cmd run test:strong-ai -- --report json",
+    "npm.cmd run test:mcts -- --report json",
+    "npm.cmd run test:stage6-model"
+  ],
+  "scenarioCoverage": {
+    "route-transition": 30,
+    "complex-ranking": 20,
+    "model-vs-mcts-disagreement": 20,
+    "labels-rewards": 15,
+    "rule-constraint-blocks": 20,
+    "score-position": 15,
+    "recommendation-explanation": 10,
+    "export-fields": 10,
+    "eight-dim-removal": 5,
+    "inference-performance": 5
+  },
+  "notes": [
+    "Stage 6 v1 uses MCTS self-play and standard cases as training/evaluation evidence.",
+    "Personal exported game logs are excluded from the training set.",
+    "Online real player data remains outside the training set until the later online-data stage."
+  ]
+}
