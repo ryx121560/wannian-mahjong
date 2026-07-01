@@ -179,11 +179,19 @@ function scoreWord(score: number, positive = true): string {
 }
 
 function sortedCandidates(context: RecommendationContext): CandidateView[] {
-  return (context.candidates || []).slice().sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
+  const byTile = new Map<string, CandidateView>();
+  for (const candidate of (context.candidates || []).slice().sort((a, b) => b.totalScore - a.totalScore)) {
+    if (!byTile.has(candidate.tile)) byTile.set(candidate.tile, candidate);
+  }
+  return Array.from(byTile.values()).slice(0, 5);
 }
 
 function systemCandidate(context: RecommendationContext): CandidateView | null {
   return context.systemRecommendation || sortedCandidates(context)[0] || null;
+}
+
+function secondCandidate(context: RecommendationContext, best: CandidateView): CandidateView | null {
+  return sortedCandidates(context).find((candidate) => candidate.tile !== best.tile) || null;
 }
 
 function mctsReviewLine(context: RecommendationContext): string | null {
@@ -193,6 +201,22 @@ function mctsReviewLine(context: RecommendationContext): string | null {
     ? (summary.overrideReason || '后续收益复核认为另一项更稳。')
     : (summary.notOverrideReason || '后续收益复核后保留当前选择。');
   return `已通过后续收益复核：${esc(summary.finalAction)}。${esc(reason)}`;
+}
+
+function reviewDecisionLines(context: RecommendationContext): string[] {
+  const summary = context.mctsSummary;
+  if (!summary) return [];
+  const reviewAction = summary.modelAction || summary.mctsAction || null;
+  const rows = [
+    line('当前规则推荐', esc(summary.strongRuleAction || '暂无')),
+    line('MCTS/模型复核建议', esc(reviewAction || '暂无')),
+    line('最终推荐', esc(summary.finalAction || reviewAction || summary.strongRuleAction || '暂无')),
+  ];
+  const reason = summary.overridden
+    ? (summary.overrideReason || '复核收益更高，最终采用复核建议。')
+    : (summary.notOverrideReason || '复核后保留当前规则推荐。');
+  rows.push(line('采用说明', esc(reason)));
+  return rows;
 }
 
 function displayStrength(value?: string | null): string {
@@ -233,12 +257,13 @@ export function buildDiscardRecommendation(context: RecommendationContext): Reco
   const best = systemCandidate(context);
   if (!best) return section('一、系统推荐', '<p>当前没有可用的出牌推荐。</p>');
   const candidates = sortedCandidates(context);
-  const second = candidates[1];
+  const second = secondCandidate(context, best);
   const confidence = confidenceFor(candidates);
   const score = toDisplayScore(best.totalScore, -8, 18);
   const body = [
     line('推荐打出', `<span class="rec-tile">${esc(best.tileLabel)}</span>`),
     line('推荐目标', '长期期望收益最高'),
+    ...reviewDecisionLines(context),
     mctsReviewLine(context) ? line('收益复核', esc(mctsReviewLine(context))) : '',
     modelReviewLine(context) ? line('策略模型复核', esc(modelReviewLine(context))) : '',
     line('置信度', esc(confidence)),
@@ -294,6 +319,16 @@ export function buildClickAnalysis(context: RecommendationContext): Recommendati
   const best = systemCandidate(context);
   const label = labelFor(context, selected);
   if (!candidate) return section('四、点击分析', `<p>你当前选中：<b>${esc(label)}</b>。这张牌当前不在候选弃牌中。</p>`);
+  if (best && selected === best.tile) {
+    const body = [
+      `<p>你当前选中：<b>${esc(label)}</b></p>`,
+      `<ul><li>与系统推荐一致。</li><li>如果打${esc(label)}：进入 ${esc(candidate.shantenAfter)} 向听。</li>`,
+      `<li>${candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? '会影响已有结构，需要谨慎。' : '不明显拆完整面子或对子。'}</li></ul>`,
+      mctsCandidateNote(context, `打${label}`) ? `<p>${esc(mctsCandidateNote(context, `打${label}`))}</p>` : '',
+      '<p class="rec-conclusion">结论：当前选择与系统推荐一致，可以按系统推荐执行。</p>',
+    ].join('');
+    return section('四、点击分析', body);
+  }
   const diff = best ? toDisplayScore(best.totalScore, -8, 18) - toDisplayScore(candidate.totalScore, -8, 18) : 0;
   const body = [
     `<p>你当前选中：<b>${esc(label)}</b></p>`,

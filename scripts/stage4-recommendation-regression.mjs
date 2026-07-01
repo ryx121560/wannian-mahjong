@@ -66,6 +66,55 @@ if (!responseChineseText.includes('杠牌后说明') || !responseChineseText.inc
   failures.push('stage4-response: kong recommendation lacks next-discard guidance');
 }
 
+const duplicateTileContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'xi',
+  systemRecommendation: { tile: 'xi', tileLabel: '西', totalScore: 12, shantenAfter: 1, route: 'norm', speedScore: 1, handValueScore: 0.3, waitQualityScore: 0.2, defenseScore: 0.4 },
+  candidates: [
+    { tile: 'xi', tileLabel: '西', totalScore: 12, shantenAfter: 1, route: 'norm', speedScore: 1, handValueScore: 0.3, waitQualityScore: 0.2, defenseScore: 0.4 },
+    { tile: 'xi', tileLabel: '西', totalScore: 11, shantenAfter: 1, route: 'norm', speedScore: 0.8, handValueScore: 0.2, waitQualityScore: 0.2, defenseScore: 0.3 },
+    { tile: 'tong8', tileLabel: '8筒', totalScore: 10, shantenAfter: 1, route: 'dalan', speedScore: 0.7, handValueScore: 0.8, waitQualityScore: 0.4, defenseScore: 0.2 },
+    { tile: 'wan1', tileLabel: '1万', totalScore: 6, shantenAfter: 2, route: 'norm', speedScore: 0.1, handValueScore: 0.1, waitQualityScore: 0.1, defenseScore: 0.5 },
+  ],
+  mctsSummary: {
+    finalAction: '打西',
+    strongRuleAction: '打西',
+    mctsAction: '打8筒',
+    modelAction: '打8筒',
+    modelTendencyStrength: 'medium',
+    modelAffectedFinalChoice: false,
+    modelAgreement: { withMcts: true, withStrongRule: false },
+    overridden: false,
+    notOverrideReason: '搜索收益差距较小，保留强规则 AI 的稳定选择',
+    playerExplanation: '打西 保留为当前建议',
+    candidates: [
+      { action: '打西', averageValue: 12, mainRisk: '风险可控' },
+      { action: '打8筒', averageValue: 10, mainRisk: '风险可控' },
+    ],
+  },
+};
+const duplicatePanel = engine.buildPanel(duplicateTileContext);
+const duplicateText = duplicatePanel.sections.map((item) => item.text).join('\n');
+if (!duplicateText.includes('第二候选') || !duplicateText.includes('8筒')) {
+  failures.push('stage4-duplicate: second candidate should exclude same tile as main recommendation');
+}
+if (/第二候选：\s*西/.test(duplicateText)) {
+  failures.push('stage4-duplicate: second candidate repeats main tile');
+}
+const rankingText = duplicatePanel.sections.find((item) => item.title.includes('候选'))?.text || '';
+if ((rankingText.match(/西/g) || []).length > 1) {
+  failures.push('stage4-duplicate: candidate ranking repeats the same tile face');
+}
+if (!duplicateText.includes('与系统推荐一致')) {
+  failures.push('stage4-click: selected main recommendation should show consistency wording');
+}
+if (duplicateText.includes('系统推荐的长期期望更高')) {
+  failures.push('stage4-click: selected main recommendation still claims system recommendation is higher');
+}
+for (const keyword of ['当前规则推荐', 'MCTS/模型复核建议', '最终推荐']) {
+  if (!duplicateText.includes(keyword)) failures.push(`stage4-review: missing explicit review distinction ${keyword}`);
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }
