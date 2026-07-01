@@ -22,7 +22,10 @@
     "compare:mcts-selfplay": "node scripts/mcts-selfplay-comparison.mjs",
     "generate:stage6-model": "node scripts/generate-stage6-data-model-cases.mjs",
     "test:stage6-model": "node scripts/stage6-data-model-regression.mjs",
-    "verify:stage6-data-gates": "node scripts/verify-stage6-data-gates.mjs"
+    "verify:stage6-data-gates": "node scripts/verify-stage6-data-gates.mjs",
+    "verify:stage6-random-invariants": "node scripts/verify-stage6-random-invariants.mjs",
+    "verify:stage6-replay": "node scripts/verify-stage6-replay.mjs",
+    "compare:stage6-selfplay-metrics": "node scripts/compare-stage6-selfplay-metrics.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",

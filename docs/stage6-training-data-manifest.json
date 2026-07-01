@@ -19,8 +19,18 @@
     "npm.cmd run test:rules -- --level L1 --report json",
     "npm.cmd run test:strong-ai -- --report json",
     "npm.cmd run test:mcts -- --report json",
-    "npm.cmd run test:stage6-model"
+    "npm.cmd run test:stage6-model",
+    "npm.cmd run verify:stage6-random-invariants",
+    "npm.cmd run verify:stage6-replay",
+    "npm.cmd run compare:stage6-selfplay-metrics"
   ],
+  "evidenceFiles": {
+    "randomInvariantScript": "scripts/verify-stage6-random-invariants.mjs",
+    "replayFixture": "docs/stage6-replay-fixtures.json",
+    "replayScript": "scripts/verify-stage6-replay.mjs",
+    "selfplayMetricsScript": "scripts/compare-stage6-selfplay-metrics.mjs",
+    "selfplayMetricsReport": "docs/stage6-selfplay-metrics-comparison.json"
+  },
   "scenarioCoverage": {
     "route-transition": 30,
     "complex-ranking": 20,

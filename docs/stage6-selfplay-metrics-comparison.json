@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "stage6-selfplay-metrics-comparison-v1",
+  "generatedAt": "2026-07-01T11:07:10.079Z",
+  "sourceCases": "docs/stage6-data-model-cases.json",
+  "totalCases": 150,
+  "baseline": "stage5 mcts action",
+  "enhanced": "stage6 final action",
+  "averageStage6Value": 9.79,
+  "averageStage5Value": 9.6973,
+  "averageValueDelta": 0.0927,
+  "stage6DealInRisk": 0.195,
+  "stage5DealInRisk": 0.1903,
+  "dealInRiskDelta": 0.0047,
+  "stage6WinRateProxy": 0.2611,
+  "stage5WinRateProxy": 0.2611,
+  "winRateProxyDelta": 0,
+  "modelAffectedCases": 30,
+  "illegalBlockedCases": 20,
+  "acceptance": {
+    "averageScoreNotLower": true,
+    "dealInNotSignificantlyHigher": true,
+    "illegalRecommendationBlocked": true
+  },
+  "pass": true
+}

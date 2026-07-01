@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "stage6-replay-fixtures-v1",
+  "fixtures": [
+    {
+      "gameId": "stage6-replay-basic-001",
+      "players": ["你", "AI下家", "AI对家", "AI上家"],
+      "initialHands": [
+        ["wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "tiao1", "tiao2", "tiao3", "dong", "nan", "xi", "bei", "zhong"],
+        ["wan1", "wan1", "wan4", "wan5", "wan6", "tong4", "tong5", "tong6", "tiao4", "tiao5", "tiao6", "fa", "bai"],
+        ["wan2", "wan2", "wan7", "wan8", "wan9", "tong7", "tong8", "tong9", "tiao7", "tiao8", "tiao9", "dong", "nan"],
+        ["wan3", "wan3", "wan4", "tong1", "tong2", "tong3", "tiao1", "tiao2", "tiao3", "xi", "bei", "zhong", "fa"]
+      ],
+      "wall": ["bai", "wan5", "tong4", "tiao4", "dong", "nan", "xi", "bei", "zhong", "fa"],
+      "events": [
+        { "turn": 1, "player": 0, "action": "discard", "tile": "bei" },
+        { "turn": 2, "player": 1, "action": "draw", "tile": "bai" },
+        { "turn": 3, "player": 1, "action": "discard", "tile": "bai" },
+        { "turn": 4, "player": 2, "action": "draw", "tile": "wan5" },
+        { "turn": 5, "player": 2, "action": "discard", "tile": "nan" },
+        { "turn": 6, "player": 3, "action": "draw", "tile": "tong4" },
+        { "turn": 7, "player": 3, "action": "discard", "tile": "fa" }
+      ],
+      "expected": {
+        "finalDiscards": [["bei"], ["bai"], ["nan"], ["fa"]],
+        "wallRemaining": 7
+      }
+    },
+    {
+      "gameId": "stage6-replay-pong-002",
+      "players": ["你", "AI下家", "AI对家", "AI上家"],
+      "initialHands": [
+        ["wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "tiao1", "tiao2", "tiao3", "dong", "nan", "xi", "bei", "zhong"],
+        ["wan1", "wan1", "wan4", "wan5", "wan6", "tong4", "tong5", "tong6", "tiao4", "tiao5", "tiao6", "fa", "bai"],
+        ["wan2", "wan2", "wan7", "wan8", "wan9", "tong7", "tong8", "tong9", "tiao7", "tiao8", "tiao9", "dong", "nan"],
+        ["wan3", "wan3", "wan4", "tong1", "tong2", "tong3", "tiao1", "tiao2", "tiao3", "xi", "bei", "zhong", "fa"]
+      ],
+      "wall": ["bai", "wan5", "tong4", "tiao4", "dong", "nan", "xi", "bei", "zhong", "fa"],
+      "events": [
+        { "turn": 1, "player": 0, "action": "discard", "tile": "wan1" },
+        { "turn": 2, "player": 1, "action": "pong", "tile": "wan1", "fromPlayer": 0 },
+        { "turn": 3, "player": 1, "action": "discard", "tile": "bai" },
+        { "turn": 4, "player": 2, "action": "draw", "tile": "bai" },
+        { "turn": 5, "player": 2, "action": "discard", "tile": "nan" }
+      ],
+      "expected": {
+        "finalDiscards": [[], ["bai"], ["nan"], []],
+        "melds": [{ "player": 1, "type": "pong", "tile": "wan1", "count": 3 }],
+        "wallRemaining": 9
+      }
+    }
+  ]
+}
