@@ -17369,6 +17369,166 @@
           "打点"
         ]
       }
+    },
+    {
+      "id": "L2-strategy-bugfix-dragon-full-001",
+      "level": "L2",
+      "category": "strategy-bugfix",
+      "description": "dragon full combo should not be split by seven-pairs pressure",
+      "melds": [],
+      "discards": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "scores": [
+        100,
+        100,
+        100,
+        100
+      ],
+      "turn": 12,
+      "currentPlayer": 0,
+      "dealer": 0,
+      "wallRemaining": 70,
+      "hand": [
+        "wan2",
+        "wan2",
+        "wan6",
+        "wan6",
+        "tiao3",
+        "tiao3",
+        "tong4",
+        "tong4",
+        "dong",
+        "nan",
+        "zhong",
+        "fa",
+        "bai",
+        "bei"
+      ],
+      "expected": {
+        "bestDiscard": [
+          "dong",
+          "nan",
+          "bei",
+          "wan2",
+          "wan6",
+          "tiao3",
+          "tong4"
+        ],
+        "unacceptableDiscards": [
+          "zhong",
+          "fa",
+          "bai"
+        ],
+        "reasoningKeywords": [
+          "defense-score"
+        ]
+      }
+    },
+    {
+      "id": "L2-strategy-bugfix-dragon-taatsu-001",
+      "level": "L2",
+      "category": "strategy-bugfix",
+      "description": "two distinct dragon tiles should keep taatsu value",
+      "melds": [],
+      "discards": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "scores": [
+        100,
+        100,
+        100,
+        100
+      ],
+      "turn": 10,
+      "currentPlayer": 0,
+      "dealer": 0,
+      "wallRemaining": 72,
+      "hand": [
+        "wan2",
+        "wan3",
+        "wan4",
+        "wan7",
+        "wan8",
+        "tiao2",
+        "tiao2",
+        "tong3",
+        "tong4",
+        "tong5",
+        "dong",
+        "zhong",
+        "fa",
+        "bei"
+      ],
+      "expected": {
+        "bestDiscard": [
+          "dong",
+          "bei"
+        ],
+        "unacceptableDiscards": [
+          "zhong",
+          "fa"
+        ],
+        "reasoningKeywords": [
+          "defense-score"
+        ]
+      }
+    },
+    {
+      "id": "L2-strategy-bugfix-isolated-terminal-001",
+      "level": "L2",
+      "category": "strategy-bugfix",
+      "description": "same-rank isolated discard should prefer terminal over middle tile",
+      "melds": [],
+      "discards": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "scores": [
+        99,
+        101,
+        100,
+        100
+      ],
+      "turn": 18,
+      "currentPlayer": 2,
+      "dealer": 0,
+      "wallRemaining": 55,
+      "hand": [
+        "tiao2",
+        "tiao2",
+        "tiao1",
+        "tiao6",
+        "bei",
+        "wan6",
+        "wan2",
+        "tiao9",
+        "dong",
+        "tiao9",
+        "wan4",
+        "tong1",
+        "wan8",
+        "wan3"
+      ],
+      "expected": {
+        "bestDiscard": [
+          "tong1"
+        ],
+        "unacceptableDiscards": [
+          "tiao6"
+        ],
+        "reasoningKeywords": [
+          "defense-score"
+        ]
+      }
     }
   ]
 }

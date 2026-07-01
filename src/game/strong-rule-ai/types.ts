@@ -23,6 +23,8 @@ export interface CandidateScore {
     effectiveCount: number;
     isDalanRoute: boolean;
     kongOpportunity: boolean;
+    dragonComboBreak?: boolean;
+    isolatedDiscardPriority?: number;
     defense?: DefenseResult;
   };
 }

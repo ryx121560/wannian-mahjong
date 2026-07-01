@@ -1,12 +1,12 @@
 import { checkTenpai, classifyHand, getShanten } from '../rules';
 import { evaluateDalanImpact, evaluateDalanRoute } from './dalan-router';
-import { evaluateDefense } from './defense-engine';
+import { createDefenseEvaluator } from './defense-engine';
 import { analyzeKongZhichan } from './kong-zhichan-analyzer';
 import { evaluateHandValue } from './hand-value-evaluator';
 import { detectPhase, getPhaseWeights } from './phase-detector';
 import { analyzePosition } from './position-adjuster';
 import { evaluateSpeed } from './speed-evaluator';
-import { evaluateStructurePenalty } from './structure-penalty';
+import { breaksDragonCombo, evaluateStructurePenalty, isolatedDiscardPriority } from './structure-penalty';
 import type { AIDecision, CandidateScore, DecisionConfig, DimensionKey, StrongAIGameState, Tile } from './types';
 import { DEFAULT_DIMENSIONS, getPlayerHand, getPlayerMelds, removeOne, roundScore, tileLabel, uniqueDiscards } from './utils';
 import { evaluateWaitQuality } from './wait-quality-evaluator';
@@ -29,6 +29,18 @@ function enabled(config: DecisionConfig, key: DimensionKey, value: number): numb
 
 function positionScore(positionOffense: number, positionDefense: number, attackScore: number, defenseScore: number): number {
   return (positionOffense - 1) * attackScore + (positionDefense - 1) * positionDefense * defenseScore;
+}
+
+function canUseIsolatedDiscardTieBreak(a: CandidateScore, b: CandidateScore): boolean {
+  const aState = a.metadata.defense?.state;
+  const bState = b.metadata.defense?.state;
+  const aPosition = aState?.factors.scorePosition;
+  const bPosition = bState?.factors.scorePosition;
+  const sameShanten = a.metadata.shantenAfter === b.metadata.shantenAfter;
+  const sameDefenseBand = Math.abs(a.breakdown.defenseScore - b.breakdown.defenseScore) < 0.05;
+  const attackOnly = aState?.state === 'attack' && bState?.state === 'attack';
+  const notProtectingLead = aPosition !== 'bigLead' && aPosition !== 'smallLead' && bPosition !== 'bigLead' && bPosition !== 'smallLead';
+  return sameShanten && sameDefenseBand && attackOnly && notProtectingLead && !a.metadata.isDalanRoute && !b.metadata.isDalanRoute;
 }
 
 function reasoningFor(candidate: CandidateScore, phase: string): string {
@@ -64,14 +76,17 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
   const dalanRoute = evaluateDalanRoute(hand, melds, state.turn || 1);
   const speedContext = { shantenBefore: shanten.shanten };
   const legalDiscards = uniqueDiscards(state.newDrawnTile ? hand.filter((tile) => tile !== state.newDrawnTile) : hand);
+  const evaluateDefense = createDefenseEvaluator(state, currentPlayer);
   const candidates = legalDiscards.map((tile): CandidateScore => {
     const afterHand = removeOne(hand, tile);
     const speed = evaluateSpeed(hand, melds, tile, speedContext);
     const handValue = evaluateHandValue(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
     const waitQuality = tenpai.isTenpai ? evaluateWaitQuality(afterHand, melds, checkTenpai(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
     const dalanImpact = evaluateDalanImpact(hand, melds, tile, dalanRoute);
-    const defense = evaluateDefense(state, tile, currentPlayer);
+    const defense = evaluateDefense(tile);
     const structure = evaluateStructurePenalty(hand, melds, tile);
+    const dragonComboBreak = breaksDragonCombo(hand, tile);
+    const isolatedPriority = isolatedDiscardPriority(hand, tile);
     const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
     const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
     const breakdown = {
@@ -105,10 +120,18 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
         effectiveCount: speed.effectiveCount,
         isDalanRoute: dalanRoute.shouldConsiderDalan,
         kongOpportunity: kongZhichan.kongZhichanScore > 0,
+        dragonComboBreak,
+        isolatedDiscardPriority: isolatedPriority,
         defense,
       },
     };
-  }).sort((a, b) => b.totalScore - a.totalScore || a.tile.localeCompare(b.tile));
+  }).sort((a, b) => {
+    const scoreDiff = b.totalScore - a.totalScore;
+    if (Math.abs(scoreDiff) > 0.25) return scoreDiff;
+    const usePriority = canUseIsolatedDiscardTieBreak(a, b);
+    const priorityDiff = usePriority ? (b.metadata.isolatedDiscardPriority || 0) - (a.metadata.isolatedDiscardPriority || 0) : 0;
+    return priorityDiff || scoreDiff || a.tile.localeCompare(b.tile);
+  });
   if (!candidates.length) throw new Error('no legal discard candidates');
   const selected = candidates[0];
   return {

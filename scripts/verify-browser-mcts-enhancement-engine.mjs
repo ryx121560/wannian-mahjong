@@ -56,4 +56,28 @@ if (invalidWait.finalAction !== '打2筒' || !invalidWait.overridden) {
   throw new Error(`invalid low-wait strong rule should be overridden: ${invalidWait.finalAction}`);
 }
 
+const isolatedTie = engine.decideWithMcts({ ...base([
+  { id: 'discard-tiao6', action: 'discard', tile: 'tiao6', legal: true, baseScore: 8, shantenAfter: 2, isolatedDiscardPriority: 1, isStrongRuleChoice: true },
+  { id: 'discard-tong1', action: 'discard', tile: 'tong1', legal: true, baseScore: 8, shantenAfter: 2, isolatedDiscardPriority: 4 },
+]), strongRuleAction: 'discard:tiao6' });
+if (!isolatedTie.finalAction.includes('tong1') || !isolatedTie.overridden) {
+  throw new Error(`isolated terminal tie-break should override middle singleton: ${isolatedTie.finalAction}`);
+}
+
+const dragonCombo = engine.decideWithMcts({ ...base([
+  { id: 'discard-zhong', action: 'discard', tile: 'zhong', legal: true, baseScore: 8.2, shantenAfter: 2, dragonComboBreak: true, isStrongRuleChoice: true },
+  { id: 'discard-bei', action: 'discard', tile: 'bei', legal: true, baseScore: 7.8, shantenAfter: 2, isolatedDiscardPriority: 5 },
+]), strongRuleAction: 'discard:zhong' });
+if (!dragonCombo.finalAction.includes('bei') || !dragonCombo.overridden) {
+  throw new Error(`dragon combo break should be overridden when no clear defense need exists: ${dragonCombo.finalAction}`);
+}
+
+const defensiveTie = engine.decideWithMcts({ ...base([
+  { id: 'discard-tiao4', action: 'discard', tile: 'tiao4', legal: true, baseScore: 8, shantenAfter: 3, defenseRisk: 0.1, isStrongRuleChoice: true },
+  { id: 'discard-tong9', action: 'discard', tile: 'tong9', legal: true, baseScore: 8, shantenAfter: 3, defenseRisk: 0.1, isolatedDiscardPriority: 4 },
+]), opponentThreats: [{ player: 1, tenpaiRisk: 0.8, dalanRisk: 0.2, honorRisk: 0.2 }] });
+if (!defensiveTie.finalAction.includes('tiao4') || defensiveTie.overridden) {
+  throw new Error(`isolated tie-break should not override defensive stable choice: ${defensiveTie.finalAction}`);
+}
+
 console.log('Browser MCTS enhancement engine verified');

@@ -45,21 +45,8 @@ function includesKeyword(text, keywords) {
   return keywords.some((keyword) => text.includes(keyword));
 }
 
-const ai = loadStrongAI();
-const dataFiles = [
-  path.join(root, 'docs/strong-rule-ai-l2-cases.json'),
-  path.join(root, 'docs/strong-rule-ai-l2-defense-cases.json'),
-].filter((file) => fs.existsSync(file));
-const datasets = dataFiles.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
-const targetConsistency = Math.max(...datasets.map((data) => data.targetConsistency || 0.85), 0.85);
-const cases = datasets.flatMap((data) => data.cases || []).filter((item) => !options.category || item.category.includes(options.category));
-const failedCases = [];
-let matched = 0;
-const byCategory = {};
-const start = Date.now();
-
-for (const testCase of cases) {
-  const state = {
+function stateFromCase(testCase) {
+  return {
     hand: testCase.hand,
     melds: testCase.allMelds || [testCase.melds || [], [], [], []],
     discards: testCase.discards || [[], [], [], []],
@@ -70,6 +57,34 @@ for (const testCase of cases) {
     wallRemaining: testCase.wallRemaining,
     passRecords: testCase.passRecords || [],
   };
+}
+
+const ai = loadStrongAI();
+ai.makeDecision({
+  hand: ['wan1', 'wan2', 'wan3', 'tong1', 'tong2', 'tong3', 'tiao1', 'tiao2', 'tiao3', 'dong', 'nan', 'xi', 'bei', 'bai'],
+  melds: [[], [], [], []],
+  discards: [[], [], [], []],
+  scores: [100, 100, 100, 100],
+  turn: 1,
+  currentPlayer: 0,
+  dealer: 0,
+  wallRemaining: 80,
+});
+const dataFiles = [
+  path.join(root, 'docs/strong-rule-ai-l2-cases.json'),
+  path.join(root, 'docs/strong-rule-ai-l2-defense-cases.json'),
+].filter((file) => fs.existsSync(file));
+const datasets = dataFiles.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+const targetConsistency = Math.max(...datasets.map((data) => data.targetConsistency || 0.85), 0.85);
+const cases = datasets.flatMap((data) => data.cases || []).filter((item) => !options.category || item.category.includes(options.category));
+for (const testCase of cases) ai.makeDecision(stateFromCase(testCase));
+const failedCases = [];
+let matched = 0;
+const byCategory = {};
+const start = Date.now();
+
+for (const testCase of cases) {
+  const state = stateFromCase(testCase);
   byCategory[testCase.category] = byCategory[testCase.category] || { total: 0, matched: 0 };
   byCategory[testCase.category].total += 1;
   const before = Date.now();

@@ -17,6 +17,8 @@ export interface MctsCandidate {
   waitCount?: number;
   waitRemaining?: number;
   isStrongRuleChoice?: boolean;
+  dragonComboBreak?: boolean;
+  isolatedDiscardPriority?: number;
 }
 
 export interface MctsDecisionContext {
@@ -157,6 +159,20 @@ function routeProtectionAdjustment(candidate: MctsCandidate): number {
   return protectedRoute ? -4.5 : -2;
 }
 
+function dragonComboAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  if (!candidate.dragonComboBreak) return 0;
+  const threat = strongestThreat(context);
+  return threat >= 0.75 ? -2.2 : -5.2;
+}
+
+function isolatedDiscardAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  if (candidate.action !== 'discard') return 0;
+  if (strongestThreat(context) >= 0.65 || scorePosition(context) === 'leading') return 0;
+  const priority = Number(candidate.isolatedDiscardPriority || 0);
+  if (!Number.isFinite(priority) || priority <= 0) return 0;
+  return Math.min(5, priority) * 0.6;
+}
+
 function actionPriorityAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
   const hasWin = context.candidates.some((item) => item.legal && item.action === 'win');
   if (candidate.action === 'win') return 12 + (candidate.scoreImpact || 0);
@@ -195,6 +211,8 @@ function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext):
       + defenseAdjustment(candidate, context)
       + kongAdjustment(candidate, context)
       + routeProtectionAdjustment(candidate)
+      + dragonComboAdjustment(candidate, context)
+      + isolatedDiscardAdjustment(candidate, context)
       + invalidReadyAdjustment(candidate)
       + actionPriorityAdjustment(candidate, context)
     : -Infinity;

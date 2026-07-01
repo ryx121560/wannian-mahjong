@@ -835,6 +835,18 @@ function enabled(config, key, value) {
 function positionScore(positionOffense, positionDefense, attackScore, defenseScore) {
     return (positionOffense - 1) * attackScore + (positionDefense - 1) * positionDefense * defenseScore;
 }
+function canUseIsolatedDiscardTieBreak(a, b) {
+    var _a, _b;
+    const aState = (_a = a.metadata.defense) === null || _a === void 0 ? void 0 : _a.state;
+    const bState = (_b = b.metadata.defense) === null || _b === void 0 ? void 0 : _b.state;
+    const aPosition = aState === null || aState === void 0 ? void 0 : aState.factors.scorePosition;
+    const bPosition = bState === null || bState === void 0 ? void 0 : bState.factors.scorePosition;
+    const sameShanten = a.metadata.shantenAfter === b.metadata.shantenAfter;
+    const sameDefenseBand = Math.abs(a.breakdown.defenseScore - b.breakdown.defenseScore) < 0.05;
+    const attackOnly = (aState === null || aState === void 0 ? void 0 : aState.state) === 'attack' && (bState === null || bState === void 0 ? void 0 : bState.state) === 'attack';
+    const notProtectingLead = aPosition !== 'bigLead' && aPosition !== 'smallLead' && bPosition !== 'bigLead' && bPosition !== 'smallLead';
+    return sameShanten && sameDefenseBand && attackOnly && notProtectingLead && !a.metadata.isDalanRoute && !b.metadata.isDalanRoute;
+}
 function reasoningFor(candidate, phase) {
     const b = candidate.breakdown;
     const ranked = [
@@ -869,14 +881,17 @@ function makeDecision(state, config) {
     const dalanRoute = (0, dalan_router_1.evaluateDalanRoute)(hand, melds, state.turn || 1);
     const speedContext = { shantenBefore: shanten.shanten };
     const legalDiscards = (0, utils_1.uniqueDiscards)(state.newDrawnTile ? hand.filter((tile) => tile !== state.newDrawnTile) : hand);
+    const evaluateDefense = (0, defense_engine_1.createDefenseEvaluator)(state, currentPlayer);
     const candidates = legalDiscards.map((tile) => {
         const afterHand = (0, utils_1.removeOne)(hand, tile);
         const speed = (0, speed_evaluator_1.evaluateSpeed)(hand, melds, tile, speedContext);
         const handValue = (0, hand_value_evaluator_1.evaluateHandValue)(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
         const waitQuality = tenpai.isTenpai ? (0, wait_quality_evaluator_1.evaluateWaitQuality)(afterHand, melds, (0, rules_1.checkTenpai)(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
         const dalanImpact = (0, dalan_router_1.evaluateDalanImpact)(hand, melds, tile, dalanRoute);
-        const defense = (0, defense_engine_1.evaluateDefense)(state, tile, currentPlayer);
+        const defense = evaluateDefense(tile);
         const structure = (0, structure_penalty_1.evaluateStructurePenalty)(hand, melds, tile);
+        const dragonComboBreak = (0, structure_penalty_1.breaksDragonCombo)(hand, tile);
+        const isolatedPriority = (0, structure_penalty_1.isolatedDiscardPriority)(hand, tile);
         const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
         const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
         const breakdown = {
@@ -908,10 +923,19 @@ function makeDecision(state, config) {
                 effectiveCount: speed.effectiveCount,
                 isDalanRoute: dalanRoute.shouldConsiderDalan,
                 kongOpportunity: kongZhichan.kongZhichanScore > 0,
+                dragonComboBreak,
+                isolatedDiscardPriority: isolatedPriority,
                 defense,
             },
         };
-    }).sort((a, b) => b.totalScore - a.totalScore || a.tile.localeCompare(b.tile));
+    }).sort((a, b) => {
+        const scoreDiff = b.totalScore - a.totalScore;
+        if (Math.abs(scoreDiff) > 0.25)
+            return scoreDiff;
+        const usePriority = canUseIsolatedDiscardTieBreak(a, b);
+        const priorityDiff = usePriority ? (b.metadata.isolatedDiscardPriority || 0) - (a.metadata.isolatedDiscardPriority || 0) : 0;
+        return priorityDiff || scoreDiff || a.tile.localeCompare(b.tile);
+    });
     if (!candidates.length)
         throw new Error('no legal discard candidates');
     const selected = candidates[0];
@@ -1127,6 +1151,7 @@ function evaluateDefenseBasic(state, candidateTile, currentPlayer) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.evaluateDefense = evaluateDefense;
+exports.createDefenseEvaluator = createDefenseEvaluator;
 const rules_1 = require("../rules");
 const attack_defense_fsm_1 = require("./attack-defense-fsm");
 const opponent_modeler_1 = require("./opponent-modeler");
@@ -1142,13 +1167,16 @@ function formatDefenseReasoning(result) {
 }
 function evaluateDefense(state, candidateTile, currentPlayer = state.currentPlayer) {
     const opponentModels = (0, opponent_modeler_1.buildOpponentModels)(state, currentPlayer);
-    const baseSafety = (0, safety_evaluator_1.evaluateSafety)(candidateTile, state, opponentModels);
-    const special = (0, defense_signal_processor_1.processSpecialSignals)(candidateTile, state, opponentModels, baseSafety);
     const hand = (0, utils_1.getPlayerHand)(state);
     const melds = (0, utils_1.getPlayerMelds)(state);
     const shanten = (0, rules_1.getShanten)(hand, { melds });
     const tenpai = (0, rules_1.checkTenpai)(hand, melds);
     const fsmState = (0, attack_defense_fsm_1.determineState)(hand, melds, shanten.shanten, tenpai.isTenpai, opponentModels, state.scores || [0, 0, 0, 0], currentPlayer, state.turn || 1);
+    return evaluateDefenseWithContext(state, candidateTile, currentPlayer, opponentModels, fsmState);
+}
+function evaluateDefenseWithContext(state, candidateTile, currentPlayer, opponentModels, fsmState) {
+    const baseSafety = (0, safety_evaluator_1.evaluateSafety)(candidateTile, state, opponentModels);
+    const special = (0, defense_signal_processor_1.processSpecialSignals)(candidateTile, state, opponentModels, baseSafety);
     let defenseScore = (special.modifiedSafety - 1.0) * fsmState.defenseWeight;
     if (fsmState.state === 'attack')
         defenseScore *= 0.3;
@@ -1170,6 +1198,15 @@ function evaluateDefense(state, candidateTile, currentPlayer = state.currentPlay
         defenseScore,
         reasoning,
     };
+}
+function createDefenseEvaluator(state, currentPlayer = state.currentPlayer) {
+    const opponentModels = (0, opponent_modeler_1.buildOpponentModels)(state, currentPlayer);
+    const hand = (0, utils_1.getPlayerHand)(state);
+    const melds = (0, utils_1.getPlayerMelds)(state);
+    const shanten = (0, rules_1.getShanten)(hand, { melds });
+    const tenpai = (0, rules_1.checkTenpai)(hand, melds);
+    const fsmState = (0, attack_defense_fsm_1.determineState)(hand, melds, shanten.shanten, tenpai.isTenpai, opponentModels, state.scores || [0, 0, 0, 0], currentPlayer, state.turn || 1);
+    return (candidateTile) => evaluateDefenseWithContext(state, candidateTile, currentPlayer, opponentModels, fsmState);
 }
 
 },
@@ -1758,27 +1795,85 @@ function evaluateSpeed(hand, melds, discardTile, context) {
 "./structure-penalty": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.breaksDragonCombo = breaksDragonCombo;
+exports.isolatedDiscardPriority = isolatedDiscardPriority;
 exports.evaluateStructurePenalty = evaluateStructurePenalty;
 const rules_1 = require("../rules");
+const DRAGON_TILES = new Set(['zhong', 'fa', 'bai']);
+function isDragon(tile) {
+    return DRAGON_TILES.has(tile);
+}
+function dragonKinds(hand) {
+    const counts = (0, rules_1.countTiles)(hand);
+    let kinds = 0;
+    for (const tile of DRAGON_TILES)
+        if ((counts.get(tile) || 0) > 0)
+            kinds += 1;
+    return kinds;
+}
+function shouldProtectDragonCombo(hand) {
+    const counts = (0, rules_1.countTiles)(hand);
+    const kinds = dragonKinds(hand);
+    if (kinds >= 3)
+        return true;
+    if (kinds < 2)
+        return false;
+    return (counts.get('zhong') || 0) > 0;
+}
+function breaksDragonCombo(hand, discardTile) {
+    if (!isDragon(discardTile))
+        return false;
+    const counts = (0, rules_1.countTiles)(hand);
+    if ((counts.get(discardTile) || 0) !== 1)
+        return false;
+    if (!shouldProtectDragonCombo(hand))
+        return false;
+    const before = dragonKinds(hand);
+    return dragonKinds(hand.filter((tile) => tile !== discardTile)) < before;
+}
+function isolatedDiscardPriority(hand, discardTile) {
+    const counts = (0, rules_1.countTiles)(hand);
+    const count = counts.get(discardTile) || 0;
+    if (count !== 1)
+        return 0;
+    if (breaksDragonCombo(hand, discardTile))
+        return 0;
+    if (!(0, rules_1.isNumberTile)(discardTile))
+        return 0;
+    const suit = (0, rules_1.tileSuit)(discardTile);
+    const value = (0, rules_1.tileValue)(discardTile);
+    const has = (offset) => counts.get(`${suit}${value + offset}`) || 0;
+    if (has(-2) || has(-1) || has(1) || has(2))
+        return 0;
+    if (value === 1 || value === 9)
+        return 4;
+    if (value === 2 || value === 8)
+        return 3;
+    if (value === 3 || value === 7)
+        return 2;
+    return 1;
+}
 function evaluateStructurePenalty(hand, _melds, discardTile) {
     const counts = (0, rules_1.countTiles)(hand);
     const count = counts.get(discardTile) || 0;
+    if (breaksDragonCombo(hand, discardTile))
+        return { penalty: -1.2, destroyedStructure: { type: 'dazi', description: 'breaks dragon combo' } };
     if (count >= 3)
-        return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: '拆刻子' } };
+        return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: 'breaks triplet' } };
     if ((0, rules_1.isNumberTile)(discardTile)) {
         const suit = (0, rules_1.tileSuit)(discardTile);
         const value = (0, rules_1.tileValue)(discardTile);
         const has = (offset) => counts.get(`${suit}${value + offset}`) || 0;
         if ((has(-2) && has(-1)) || (has(-1) && has(1)) || (has(1) && has(2)))
-            return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: '拆顺子' } };
+            return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: 'breaks sequence' } };
         if (has(-1) || has(1))
-            return { penalty: -0.5, destroyedStructure: { type: 'dazi', description: '拆两面搭子' } };
+            return { penalty: -0.5, destroyedStructure: { type: 'dazi', description: 'breaks adjacent taatsu' } };
         if (has(-2) || has(2))
-            return { penalty: -0.3, destroyedStructure: { type: 'dazi', description: '拆嵌张搭子' } };
+            return { penalty: -0.3, destroyedStructure: { type: 'dazi', description: 'breaks kanchan taatsu' } };
     }
     if (count === 2)
-        return { penalty: -0.4, destroyedStructure: { type: 'duizi', description: '拆对子' } };
-    return { penalty: 0, destroyedStructure: { type: 'none', description: '弃孤张' } };
+        return { penalty: -0.4, destroyedStructure: { type: 'duizi', description: 'breaks pair' } };
+    return { penalty: 0, destroyedStructure: { type: 'none', description: 'isolated tile' } };
 }
 
 },

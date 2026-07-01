@@ -231,6 +231,11 @@ function aiDefenseWeight(danger,phase,playerIdx,shanten){
   return aiDefenseProfile(playerIdx,danger,phase,shanten).weight;
 }
 
+function aiCanUseIsolatedTieBreak(playerIdx,danger,phase,shanten,defenseDiff){
+  const profile=aiDefenseProfile(playerIdx,danger,phase,shanten);
+  return profile.mode==='none'&&profile.scorePosition!=='leading'&&(defenseDiff==null||defenseDiff<0.05);
+}
+
 function opponentThreatLevel(oppIdx){
   if(!GS.players[oppIdx])return 0;
   const phase=aiPhase();
@@ -2177,7 +2182,7 @@ function evaluateDiscardCandidates(hand,playerIdx,options){
     ];
     routes.sort(compareAiRoutes);
     const top=routes[0];
-    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:top.v,path:top.p,routes:routes});
+    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:top.v,path:top.p,routes:routes,breaksMeld:aiBreaksMeld(hand,i),breaksPair:aiBreaksPair(hand,i),breaksTaatsu:aiBreaksTaatsu(hand,i),dragonComboBreak:aiBreaksDragonCombo(hand,i),isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,i)});
     if(top.v<bestShanten){bestShanten=top.v;bestCands=[i];bestPaths=[top.p];}
     else if(top.v===bestShanten){bestCands.push(i);bestPaths.push(top.p);}
   }
@@ -2214,6 +2219,46 @@ function aiBreaksTaatsu(h,idx){
     return !!group&&sub.some(function(x){return x.t==='honor'&&group.includes(x.s)&&x.s!==t.s;});
   }
   return false;
+}
+
+function aiDragonKinds(h){
+  const dragons=['zhong','fa','bai'];
+  let n=0;
+  for(const d of dragons)if(h.some(function(x){return x.t==='honor'&&x.s===d;}))n++;
+  return n;
+}
+
+function aiShouldProtectDragonCombo(h){
+  const kinds=aiDragonKinds(h);
+  if(kinds>=3)return true;
+  if(kinds<2)return false;
+  return h.some(function(x){return x.t==='honor'&&x.s==='zhong';});
+}
+
+function aiBreaksDragonCombo(h,idx){
+  const t=h[idx];
+  if(!t||t.t!=='honor'||!['zhong','fa','bai'].includes(t.s))return false;
+  if(h.filter(function(x){return teq(x,t);}).length!==1)return false;
+  if(!aiShouldProtectDragonCombo(h))return false;
+  const before=aiDragonKinds(h);
+  const sub=h.filter(function(_,j){return j!==idx;});
+  return aiDragonKinds(sub)<before;
+}
+
+function aiIsolatedDiscardPriority(h,idx){
+  const t=h[idx];
+  if(!t)return 0;
+  if(h.filter(function(x){return teq(x,t);}).length!==1)return 0;
+  if(aiBreaksDragonCombo(h,idx))return 0;
+  if(t.t!=='num')return 0;
+  const has=function(offset){
+    return h.some(function(x){return x.t==='num'&&x.s===t.s&&x.v===t.v+offset;});
+  };
+  if(has(-2)||has(-1)||has(1)||has(2))return 0;
+  if(t.v===1||t.v===9)return 4;
+  if(t.v===2||t.v===8)return 3;
+  if(t.v===3||t.v===7)return 2;
+  return 1;
 }
 
 function aiRemainingCountForWait(tileKey,playerIdx,handAfterDiscard,discardTile){
@@ -2306,7 +2351,7 @@ function mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongActionText,c
   const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
   const waitInfo=aiWaitInfoAfterDiscard(detail.sub||hand.filter(function(_,j){return j!==detail.idx;}),playerIdx,route,tile);
   const base=(scoreInfo?scoreInfo.sc:0)-(detail.s||0)*2+(waitInfo.remaining||0)*0.25;
-  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
+  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak),dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
   action.isStrongRuleChoice=mctsActionText(action)===strongActionText;
   return action;
 }
@@ -2326,11 +2371,13 @@ function buildAiDecisionLog(hand,playerIdx,discardIdx,source,reason,extra){
     const breaksM=aiBreaksMeld(hand,i);
     const breaksP=aiBreaksPair(hand,i);
     const breaksT=aiBreaksTaatsu(hand,i);
+    const dragonComboBreak=aiBreaksDragonCombo(hand,i);
+    const isolatedPriority=aiIsolatedDiscardPriority(hand,i);
     const waitInfo=aiWaitInfoAfterDiscard(sub,playerIdx,route.p,hand[i]);
     const waitCount=waitInfo.count;
     const defense=defenseScore(hand[i],playerIdx);
-    const structurePenalty=(breaksM?6:0)+(breaksP?4:0)+(breaksT?2:0);
-    const finalScore=Number((-route.v*100+waitCount*4+waitInfo.remaining+defense-structurePenalty).toFixed(2));
+    const structurePenalty=(breaksM?6:0)+(breaksP?4:0)+(breaksT?2:0)+(dragonComboBreak?6:0);
+    const finalScore=Number((-route.v*100+waitCount*4+waitInfo.remaining+defense-structurePenalty+isolatedPriority*2).toFixed(2));
     if(i===discardIdx)selectedRoute=route;
     candidates.push({
       tile:tkey(hand[i]),
@@ -2340,6 +2387,8 @@ function buildAiDecisionLog(hand,playerIdx,discardIdx,source,reason,extra){
       breaksMeld:breaksM,
       breaksPair:breaksP,
       breaksTaatsu:breaksT,
+      dragonComboBreak:dragonComboBreak,
+      isolatedDiscardPriority:isolatedPriority,
       waitCount:waitCount,
       waitRemaining:waitInfo.remaining,
       waitTiles:waitInfo.tiles,
@@ -2438,7 +2487,8 @@ async function aiChooseDiscard(hand,playerIdx){
         const sub=hand.filter(function(_,j){return j!==strongChoice.idx;});
         const route=aiRouteSummaryForPlayer(sub,playerIdx);
         const tile=hand[strongChoice.idx];
-        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
+        const dragonComboBreak=aiBreaksDragonCombo(hand,strongChoice.idx);
+        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx)||dragonComboBreak,dragonComboBreak:dragonComboBreak,isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,strongChoice.idx),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
         mctsCandidates.push(action);
       }
       const context=mctsDecisionContext(playerIdx,'discarding',mctsCandidates,strongAction,hand.map(tkey));
@@ -2760,6 +2810,23 @@ async function aiChooseDiscard(hand,playerIdx){
         subHands=bestIso.map(i=>subHands[orig.indexOf(i)]);
         bestPaths=bestIso.map(i=>bestPaths[orig.indexOf(i)]);
       }
+      if(bestCands.length>1){
+        const tieDanger=dangerLevel(playerIdx);
+        const tiePhase=GS.turn<=24?'early':GS.turn<=48?'mid':'late';
+        const tieDefenseScores=bestCands.map(i=>defenseScore(hand[i],playerIdx));
+        const tieDefenseDiff=Math.max(...tieDefenseScores)-Math.min(...tieDefenseScores);
+        const priorities=bestCands.map(i=>aiIsolatedDiscardPriority(hand,i));
+        const maxPriority=Math.max(...priorities);
+        if(maxPriority>0&&aiCanUseIsolatedTieBreak(playerIdx,tieDanger,tiePhase,bestShanten,tieDefenseDiff)){
+          const priorityCands=bestCands.filter((_,ci)=>priorities[ci]===maxPriority);
+          if(priorityCands.length>0&&priorityCands.length<bestCands.length){
+            const orig=bestCands;
+            bestCands=priorityCands;
+            subHands=priorityCands.map(i=>subHands[orig.indexOf(i)]);
+            bestPaths=priorityCands.map(i=>bestPaths[orig.indexOf(i)]);
+          }
+        }
+      }
     }
     // ==== 假搭子检测：需要的关键牌在牌墙中不足2张时降低优先级 ====
     if(bestCands.length>1){
@@ -2832,6 +2899,9 @@ async function aiChooseDiscard(hand,playerIdx){
         if(origCnt===1)q+=4;
         if(hand[i].t==='honor'&&origCnt===1)q+=2;
       }
+      if(aiBreaksDragonCombo(hand,i))q-=8;
+      const isoDefenseDiff=Math.max(...bestCands.map(k=>defenseScore(hand[k],playerIdx)))-Math.min(...bestCands.map(k=>defenseScore(hand[k],playerIdx)));
+      if(aiCanUseIsolatedTieBreak(playerIdx,danger,phase,bestShanten,isoDefenseDiff))q+=aiIsolatedDiscardPriority(hand,i)*0.25;
       // 染手偏向：保留主色牌（仅面子手路径）
       if(p==='norm'){
         if(bias.type==='clear' && hand[i].t==='num' && hand[i].s===bias.suit)q-=6;
@@ -3378,7 +3448,7 @@ function renderAiLogPanel(){
       return (b.finalScore||0)-(a.finalScore||0);
     }).slice(0,6);
     const rows=cands.map(function(c){
-      const flags=[c.breaksMeld?'面子':'',c.breaksPair?'对子':'',c.breaksTaatsu?'搭子':''].filter(Boolean).join('/')||'-';
+      const flags=[c.breaksMeld?'面子':'',c.breaksPair?'对子':'',c.breaksTaatsu?'搭子':'',c.dragonComboBreak?'三元':'',c.isolatedDiscardPriority?('孤张'+c.isolatedDiscardPriority):''].filter(Boolean).join('/')||'-';
       const mark=c.tile===log.discardTile?' ✓':'';
       return '<tr><td>'+htmlSafe(c.tileLabel||c.tile)+mark+'</td><td>'+htmlSafe(c.shantenAfter)+'</td><td>'+htmlSafe(c.route)+'</td><td>'+htmlSafe(c.waitCount)+'</td><td>'+htmlSafe(c.waitRemaining==null?'-':c.waitRemaining)+'</td><td>'+htmlSafe(c.defenseScore)+'</td><td>'+htmlSafe(flags)+'</td><td>'+htmlSafe(c.finalScore)+'</td></tr>';
     }).join('');
@@ -3566,13 +3636,15 @@ function candidateViewFromDetail(detail,hand,candScores){
     kongZhichanScore:detail.path==='quanzheng'||detail.path==='banzheng'?0.6:0,
     dalanRouteScore:detail.path==='dalan'?1:0,
     defenseScore:defenseScore(tile,0),
-    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0),
+    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0)+(detail.dragonComboBreak?-6:0)+(detail.isolatedDiscardPriority||0)*0.25,
     waitCount:waitTiles.length,
     waitRemaining:waitRemaining,
     waitTiles:waitTiles,
     breaksMeld:!!detail.breaksMeld,
     breaksPair:!!detail.breaksPair,
-    breaksTaatsu:!!detail.breaksTaatsu
+    breaksTaatsu:!!detail.breaksTaatsu,
+    dragonComboBreak:!!detail.dragonComboBreak,
+    isolatedDiscardPriority:detail.isolatedDiscardPriority||0
   };
 }
 
@@ -3655,11 +3727,12 @@ function responseFollowUpDiscardAdvice(handAfterCall,playerIdx){
     const detail=evaluated.candDetails&&evaluated.candDetails.find(function(item){return item.idx===bestIdx;});
     const shanten=detail&&Number.isFinite(detail.s)?detail.s:evaluated.bestShanten;
     const route=detail&&detail.path?detail.path:null;
-    const keepsStructure=!(detail&&(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu));
+    const keepsStructure=!(detail&&(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak));
     const safety=defenseScore(tile,playerIdx);
     let reason='打'+lbl(tile)+'后为'+shanten+'向听';
     if(keepsStructure)reason+='，不明显破坏面子、对子或搭子';
     else reason+='，虽然会动到局部结构，但综合向听和后续进张更合适';
+    if(detail&&detail.dragonComboBreak)reason+='，此牌会拆三元组合，只有收益更高时才考虑';
     if(tile.t==='honor')reason+='，字牌单张的后续进张价值较低';
     else if(safety>=2)reason+='，公开信息下安全性相对更好';
     reason+='。';
@@ -3740,6 +3813,11 @@ function updateSuggestion(){
         // 搭子保护：弃单张数牌若有相邻牌（搭子关系）则扣分，保留面子手灵活性
         if(oc===1&&hand[ci].t==='num'){const t=hand[ci];const hasBuddy=hand.some(function(h,j){return j!==ci&&h.t==='num'&&h.s===t.s&&Math.abs(h.v-t.v)===1;});if(hasBuddy)q-=2;}
       }
+      const dragonAdj=aiBreaksDragonCombo(hand,ci)?-8:0;
+      const recommendationDefenseScores=bestCands.map(function(k){return defenseScore(hand[k],0);});
+      const recommendationDefenseDiff=Math.max(...recommendationDefenseScores)-Math.min(...recommendationDefenseScores);
+      const isolatedAdj=aiCanUseIsolatedTieBreak(0,danger,phase,bestShanten,recommendationDefenseDiff)?aiIsolatedDiscardPriority(hand,ci)*0.25:0;
+      q+=dragonAdj+isolatedAdj;
       let suitAdj=0;
       if(p==='norm'){
         if(bias.type==='clear'&&hand[ci].t==='num'&&hand[ci].s===bias.suit)suitAdj=-6;
@@ -3771,7 +3849,7 @@ function updateSuggestion(){
       if(phase==='early'){phaseAdj=0.3;q+=phaseAdj;}
       const defRaw=defenseScore(hand[ci],0);
       var _pc=hand.filter(function(h){return teq(h,hand[ci]);}).length;const sc=q+safeW*defRaw+(_pc>=2&&_pc<=3?-2.5:0);
-      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,defRaw:defRaw,safeW:safeW,sc:sc};
+      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,defRaw:defRaw,safeW:safeW,sc:sc};
       if(sc>bestScore){bestScore=sc;bestIdx=ci;bestPath=p;}
     });
   }
