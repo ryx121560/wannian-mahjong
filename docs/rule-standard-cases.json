@@ -4709,11 +4709,11 @@
         "payer": 2
       },
       "expected": {
-        "winnerGain": 1,
+        "winnerGain": 2,
         "scorePerPlayer": [
           0,
           0,
-          1,
+          2,
           0
         ]
       }

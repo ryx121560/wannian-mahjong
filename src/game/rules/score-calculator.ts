@@ -54,7 +54,7 @@ export function calculateScore(params: {
   } else if (params.winMethod === '点炮' || params.winMethod === '抢杠') {
     scorePerPlayer.fill(0);
     const payer = params.payer ?? (params.currentPlayer + 1) % 4;
-    scorePerPlayer[payer] = cappedScore;
+    scorePerPlayer[payer] = params.winMethod === '点炮' ? Math.min(score * 2, DEFAULT_RULES.capAmount) : cappedScore;
   } else {
     for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer) scorePerPlayer[i] = cappedScore;
   }

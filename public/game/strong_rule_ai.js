@@ -533,7 +533,7 @@ function calculateScore(params) {
     else if (params.winMethod === '点炮' || params.winMethod === '抢杠') {
         scorePerPlayer.fill(0);
         const payer = (_e = params.payer) !== null && _e !== void 0 ? _e : (params.currentPlayer + 1) % 4;
-        scorePerPlayer[payer] = cappedScore;
+        scorePerPlayer[payer] = params.winMethod === '点炮' ? Math.min(score * 2, rule_config_1.DEFAULT_RULES.capAmount) : cappedScore;
     }
     else {
         for (let i = 0; i < 4; i += 1)
