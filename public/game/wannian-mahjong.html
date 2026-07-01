@@ -2345,6 +2345,23 @@ function mctsSummaryFinalCandidate(summary,candidates){
   return (candidates||[]).find(function(candidate){return mctsActionText(candidate)===summary.finalAction;})||null;
 }
 
+function responseActionText(candidate){
+  if(!candidate)return '';
+  return mctsActionText(candidate)+'@'+String(candidate.id||'').split(':')[1];
+}
+
+function mctsSummaryFinalResponseCandidate(summary,candidates,strong){
+  if(!summary)return strong||null;
+  const action=summary.finalAction;
+  const matches=(candidates||[]).filter(function(candidate){return candidate.legal&&mctsActionText(candidate)===action;});
+  if(action==='过')return null;
+  if(matches.length){
+    matches.sort(function(a,b){return (b.baseScore||0)-(a.baseScore||0);});
+    return matches[0];
+  }
+  return mctsSummaryFinalCandidate(summary,candidates)||strong||null;
+}
+
 function buildAiDecisionLog(hand,playerIdx,discardIdx,source,reason,extra){
   const before=aiRouteSummaryForPlayer(hand,playerIdx);
   const candidates=[];
@@ -2982,6 +2999,32 @@ function logAiResponseDecision(playerIdx,action,tile,beforeShanten,afterShanten,
   console.info('[AI response]',entry);
 }
 
+function responseHonorTreasureValue(tile,hand,action){
+  const key=tkey(tile);
+  if(!['zhong','fa','bai'].includes(key))return {bonus:0,riskDiscount:0,note:null};
+  const count=(hand||[]).filter(function(item){return tkey(item)===key;}).length;
+  if(count<2)return {bonus:0,riskDiscount:0,note:null};
+  const isWhite=key==='bai';
+  const actionBonus=action==='kong'?7:5;
+  const pairBonus=count>=3?3:1;
+  const bonus=actionBonus+pairBonus+(isWhite?2:0);
+  return {bonus:bonus,riskDiscount:isWhite?0.35:0.25,note:(isWhite?'白板宝牌价值':'三元牌宝牌价值')+'已纳入'+(action==='kong'?'杠':'碰')+'牌收益评估'};
+}
+
+function logSkippedAiResponses(resp,t,summary,chosenPlayer){
+  if(!Array.isArray(resp))return;
+  for(const r of resp){
+    if(r.p===chosenPlayer)continue;
+    if(!r.cw&&!r.cp&&!r.ck)continue;
+    const before=aiBestShantenForPlayer(GS.players[r.p].hand,r.p);
+    const actions=[];
+    if(r.cw)actions.push('胡');
+    if(r.ck)actions.push('杠');
+    if(r.cp)actions.push('碰');
+    logAiResponseDecision(r.p,'pass',t,before,before,'本轮可响应候选已评估：'+actions.join('/')+'；最终采用'+(summary&&summary.finalAction?summary.finalAction:'过')+'，该玩家未执行响应',{mctsSummary:summary||null,availableActions:actions});
+  }
+}
+
 function aiRespond(resp){
   if(GS.phase!=='responding')return;
   const t=GS.lastDiscard;
@@ -3001,14 +3044,16 @@ function aiRespond(resp){
           const kongEval=calledMeldShanten(hand,r.p,t);
           const postShanten=kongEval.adjusted;
           const num=t.t==='num'?t.v:0;
-          const c={id:'kong:'+r.p,action:'kong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:(curShanten-postShanten)*4+4,shantenAfter:postShanten,route:kongEval.route||'response',defenseRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/5)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/5)),kongRisk:Math.max(0,Math.min(1,(t.t==='honor'?0.55:0.2)+(num>=5?0.2:0)+(dangerLevel(r.p)*0.08))),scoreImpact:2,isStrongRuleChoice:false};
+          const treasure=responseHonorTreasureValue(t,GS.players[r.p].hand,'kong');
+          const c={id:'kong:'+r.p,action:'kong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:(curShanten-postShanten)*4+4+treasure.bonus,shantenAfter:postShanten,route:kongEval.route||'response',defenseRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/5-treasure.riskDiscount)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/5-treasure.riskDiscount)),kongRisk:Math.max(0,Math.min(1,(t.t==='honor'?0.55:0.2)+(num>=5?0.2:0)+(dangerLevel(r.p)*0.08)-treasure.riskDiscount)),scoreImpact:2+Math.round(treasure.bonus/3),isStrongRuleChoice:false,treasureNote:treasure.note};
           candidates.push(c);byId[c.id]={resp:r,before:curShanten,after:postShanten};
         }
         if(r.cp){
           const hand=simAfterPongKong(GS.players[r.p].hand,t,2);
           const pongEval=calledMeldShanten(hand,r.p,t,true);
           const postShanten=pongEval.adjusted;
-          const c={id:'pong:'+r.p,action:'pong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:(curShanten-postShanten)*4+2,shantenAfter:postShanten,route:pongEval.route||'response',defenseRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/6)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/6)),kongRisk:0,scoreImpact:1,isStrongRuleChoice:false};
+          const treasure=responseHonorTreasureValue(t,GS.players[r.p].hand,'pong');
+          const c={id:'pong:'+r.p,action:'pong',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:(curShanten-postShanten)*4+2+treasure.bonus,shantenAfter:postShanten,route:pongEval.route||'response',defenseRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/6-treasure.riskDiscount)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(r.p)/6-treasure.riskDiscount)),kongRisk:0,scoreImpact:1+Math.round(treasure.bonus/4),isStrongRuleChoice:false,treasureNote:treasure.note};
           candidates.push(c);byId[c.id]={resp:r,before:curShanten,after:postShanten};
         }
         const pass={id:'pass:'+r.p,action:'pass',tile:tkey(t),tileLabel:lbl(t),legal:true,baseScore:r.cw?-20:1,shantenAfter:curShanten,route:'response',defenseRisk:0,dealInRisk:0,kongRisk:0,scoreImpact:0,isStrongRuleChoice:!r.cw&&!r.cp&&!r.ck};
@@ -3018,13 +3063,17 @@ function aiRespond(resp){
         const strong=candidates.find(function(c){return c.isStrongRuleChoice;})||candidates.find(function(c){return c.action==='win';})||candidates[0];
         const summary=MCTS_ENHANCEMENT.decideWithMcts(mctsDecisionContext(strong.player||Number(strong.id.split(':')[1])||0,'responding',candidates,mctsActionText(strong),[]));
         appendMctsDecisionSummary(summary);
-        const finalCandidate=mctsSummaryFinalCandidate(summary,candidates)||strong;
+        const finalCandidate=mctsSummaryFinalResponseCandidate(summary,candidates,strong);
+        if(!finalCandidate||finalCandidate.action==='pass'){
+          logSkippedAiResponses(resp,t,summary,null);
+          nextTurn();return;
+        }
         const meta=byId[finalCandidate.id]||{};
         const r=meta.resp||resp[0];
-        if(finalCandidate.action==='win'){logAiResponseDecision(r.p,'win',t,meta.before,-1,summary.playerExplanation,{mctsSummary:summary});applyWin(r.p,'点炮');return;}
-        if(finalCandidate.action==='kong'){logAiResponseDecision(r.p,'kong',t,meta.before,meta.after,summary.playerExplanation,{mctsSummary:summary});doKong(r.p);return;}
-        if(finalCandidate.action==='pong'){logAiResponseDecision(r.p,'pong',t,meta.before,meta.after,summary.playerExplanation,{mctsSummary:summary});doPong(r.p);return;}
-        logAiResponseDecision(r.p,'pass',t,meta.before,meta.before,summary.playerExplanation,{mctsSummary:summary});
+        logSkippedAiResponses(resp,t,summary,r.p);
+        if(finalCandidate.action==='win'){logAiResponseDecision(r.p,'win',t,meta.before,-1,summary.playerExplanation,{mctsSummary:summary,responseAction:responseActionText(finalCandidate),treasureNote:finalCandidate.treasureNote||null});applyWin(r.p,'点炮');return;}
+        if(finalCandidate.action==='kong'){logAiResponseDecision(r.p,'kong',t,meta.before,meta.after,summary.playerExplanation,{mctsSummary:summary,responseAction:responseActionText(finalCandidate),treasureNote:finalCandidate.treasureNote||null});doKong(r.p);return;}
+        if(finalCandidate.action==='pong'){logAiResponseDecision(r.p,'pong',t,meta.before,meta.after,summary.playerExplanation,{mctsSummary:summary,responseAction:responseActionText(finalCandidate),treasureNote:finalCandidate.treasureNote||null});doPong(r.p);return;}
         nextTurn();return;
       }
     }

@@ -100,14 +100,16 @@ function scoreWord(score, positive = true) {
 }
 function sortedCandidates(context) {
     const byTile = new Map();
-    for (const candidate of (context.candidates || []).slice().sort((a, b) => b.totalScore - a.totalScore)) {
+    for (const candidate of (context.candidates || []).slice().sort((a, b) => adjustedCandidateScore(b) - adjustedCandidateScore(a))) {
         if (!byTile.has(candidate.tile))
             byTile.set(candidate.tile, candidate);
     }
     return Array.from(byTile.values()).slice(0, 5);
 }
 function systemCandidate(context) {
-    return context.systemRecommendation || sortedCandidates(context)[0] || null;
+    if (context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation))
+        return context.systemRecommendation;
+    return sortedCandidates(context)[0] || context.systemRecommendation || null;
 }
 function secondCandidate(context, best) {
     return sortedCandidates(context).find((candidate) => candidate.tile !== best.tile) || null;
@@ -166,6 +168,17 @@ function mctsCandidateNote(context, actionLabel) {
         return null;
     return `后续均值 ${esc(candidate.averageValue)}，主要风险：${esc(candidate.mainRisk)}`;
 }
+function hasInvalidReadyWait(candidate) {
+    return candidate.shantenAfter === 0 && (candidate.waitCount || 0) <= 0 && (candidate.waitRemaining || 0) <= 0;
+}
+function adjustedCandidateScore(candidate) {
+    return Number(candidate.totalScore || 0) - (hasInvalidReadyWait(candidate) ? 20 : 0) - (candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? 2 : 0);
+}
+function displayShantenText(candidate) {
+    if (hasInvalidReadyWait(candidate))
+        return '未形成有效听牌';
+    return `${candidate.shantenAfter} 向听`;
+}
 function topicFor(candidate) {
     if ((candidate.defenseScore || 0) > Math.max(candidate.speedScore || 0, candidate.handValueScore || 0))
         return '防守安全';
@@ -210,7 +223,7 @@ function buildDetailedReasons(context) {
     const route = ROUTE_LABELS[best.route] || best.route || '普通路线';
     const structure = best.breaksMeld || best.breaksPair || best.breaksTaatsu ? '可能破坏结构' : '不明显破坏结构';
     const body = [
-        line('速度', `${scoreWord(speed)}，弃${esc(best.tileLabel)}后为${esc(best.shantenAfter)}向听。`),
+        line('速度', `${scoreWord(speed)}，弃${esc(best.tileLabel)}后为${esc(displayShantenText(best))}。`),
         line('打点', `${scoreWord(value)}，当前路线为${esc(route)}。`),
         line('听牌质量', `${scoreWord(wait)}，${best.waitRemaining ? `剩余有效进张约 ${best.waitRemaining} 枚。` : '当前还未形成明确待牌。'}`),
         line('结构影响', `${esc(structure)}。${best.breaksPair ? '会拆对子，需要权衡。' : ''}${best.breaksTaatsu ? '会拆搭子，需要权衡。' : ''}`),
@@ -229,7 +242,9 @@ function buildCandidateRanking(context) {
             reasons.push('不明显破坏面子、搭子或对子');
         if (candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu)
             reasons.push('会影响已有结构');
-        reasons.push(`弃后为 ${candidate.shantenAfter} 向听`);
+        reasons.push(`弃后为 ${displayShantenText(candidate)}`);
+        if (hasInvalidReadyWait(candidate))
+            reasons.push('0 向听校验未发现合法待牌，按未形成有效听牌处理');
         if ((candidate.defenseScore || 0) > 0.2)
             reasons.push('公开信息下安全性较好');
         if ((candidate.defenseScore || 0) < -0.6)
@@ -253,7 +268,7 @@ function buildClickAnalysis(context) {
     if (best && selected === best.tile) {
         const body = [
             `<p>你当前选中：<b>${esc(label)}</b></p>`,
-            `<ul><li>与系统推荐一致。</li><li>如果打${esc(label)}：进入 ${esc(candidate.shantenAfter)} 向听。</li>`,
+            `<ul><li>与系统推荐一致。</li><li>如果打${esc(label)}：${esc(displayShantenText(candidate))}。</li>`,
             `<li>${candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? '会影响已有结构，需要谨慎。' : '不明显拆完整面子或对子。'}</li></ul>`,
             mctsCandidateNote(context, `打${label}`) ? `<p>${esc(mctsCandidateNote(context, `打${label}`))}</p>` : '',
             '<p class="rec-conclusion">结论：当前选择与系统推荐一致，可以按系统推荐执行。</p>',
@@ -263,7 +278,8 @@ function buildClickAnalysis(context) {
     const diff = best ? toDisplayScore(best.totalScore, -8, 18) - toDisplayScore(candidate.totalScore, -8, 18) : 0;
     const body = [
         `<p>你当前选中：<b>${esc(label)}</b></p>`,
-        `<ul><li>如果打${esc(label)}：进入 ${esc(candidate.shantenAfter)} 向听。</li>`,
+        `<ul><li>如果打${esc(label)}：${esc(displayShantenText(candidate))}。</li>`,
+        hasInvalidReadyWait(candidate) ? '<li>0 向听校验未发现合法待牌，按未形成有效听牌处理。</li>' : '',
         `<li>${candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? '会影响已有结构，需要谨慎。' : '不明显拆完整面子或对子。'}</li>`,
         `<li>与系统推荐${best ? esc(best.tileLabel) : '暂无'}相比，综合评分${diff > 0 ? `低约 ${diff} 分` : '接近'}。</li></ul>`,
         mctsCandidateNote(context, `打${label}`) ? `<p>${esc(mctsCandidateNote(context, `打${label}`))}</p>` : '',

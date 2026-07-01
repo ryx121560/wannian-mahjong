@@ -115,6 +115,23 @@ for (const keyword of ['当前规则推荐', 'MCTS/模型复核建议', '最终�
   if (!duplicateText.includes(keyword)) failures.push(`stage4-review: missing explicit review distinction ${keyword}`);
 }
 
+const invalidReadyContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'tiao7',
+  systemRecommendation: { tile: 'tiao7', tileLabel: '7条', totalScore: 100, shantenAfter: 0, route: 'norm', speedScore: 1, handValueScore: 0, waitQualityScore: 0, defenseScore: 0, waitCount: 0, waitRemaining: 0, breaksTaatsu: true },
+  candidates: [
+    { tile: 'tiao7', tileLabel: '7条', totalScore: 100, shantenAfter: 0, route: 'norm', speedScore: 1, handValueScore: 0, waitQualityScore: 0, defenseScore: 0, waitCount: 0, waitRemaining: 0, breaksTaatsu: true },
+    { tile: 'wan2', tileLabel: '2万', totalScore: 98, shantenAfter: 1, route: 'norm', speedScore: 0, handValueScore: 0, waitQualityScore: 1, defenseScore: 0.5, waitCount: 1, waitRemaining: 3 },
+  ],
+};
+const invalidReadyText = engine.buildPanel(invalidReadyContext).sections.map((item) => item.text).join('\n');
+if (invalidReadyText.includes('7条后为0向听') || invalidReadyText.includes('7条：进入 0 向听')) {
+  failures.push('stage4-invalid-ready: zero-shanten candidate without legal waits is shown as ready');
+}
+if (!invalidReadyText.includes('未形成有效听牌')) {
+  failures.push('stage4-invalid-ready: no legal wait explanation missing');
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }
@@ -123,6 +140,15 @@ if (!runtimeHtml.includes('导出失败：生成或下载 JSON 文件失败') ||
 }
 if (!runtimeHtml.includes('recordAiDiscardInterpretation') || !runtimeHtml.includes("createRecommendationRecord('ai-discard'")) {
   failures.push('stage4-runtime: ai discard interpretation is not recorded');
+}
+if (!runtimeHtml.includes('responseActionText') || !runtimeHtml.includes('mctsSummaryFinalResponseCandidate')) {
+  failures.push('stage4-runtime: response candidate matching is not action/player specific');
+}
+if (!runtimeHtml.includes('logSkippedAiResponses')) {
+  failures.push('stage4-runtime: skipped AI responders are not logged');
+}
+if (!runtimeHtml.includes('responseHonorTreasureValue') || !runtimeHtml.includes('白板宝牌价值')) {
+  failures.push('stage4-runtime: white dragon treasure value is not included in response scoring');
 }
 if (!/function canSelfWin\s*\(\s*hand\s*,\s*winTile/.test(runtimeHtml)) {
   failures.push('stage4-runtime: self draw win check does not accept winTile');
