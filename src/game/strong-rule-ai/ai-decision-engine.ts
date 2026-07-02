@@ -59,6 +59,14 @@ function reasoningFor(candidate: CandidateScore, phase: string): string {
   return `${phaseLabel}。主要考量${main}。兼顾速度、打点、听牌、杠直铲、打烂、防守、位置和结构。综合得分${candidate.totalScore}，选择弃${tileLabel(candidate.tile)}。`;
 }
 
+function shantenRegressionPenalty(shantenBefore: number, shantenAfter: number, defenseState: string | undefined): number {
+  const regression = shantenAfter - shantenBefore;
+  if (regression <= 0) return 0;
+  if (defenseState === 'full-fold') return regression * 2;
+  if (defenseState === 'half-fold') return regression * 4;
+  return regression * 8;
+}
+
 export function makeDecision(state: StrongAIGameState, config?: Partial<DecisionConfig>): AIDecision {
   const hand = getPlayerHand(state);
   const melds = getPlayerMelds(state);
@@ -99,6 +107,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
       positionAdjustment: enabled(merged, 'position', roundScore(posScore)),
       structurePenalty: enabled(merged, 'structure', structure.penalty),
     };
+    const regressionPenalty = shantenRegressionPenalty(speed.shantenBefore, speed.shantenAfter, defense.state.state);
     const totalScore = roundScore(
       breakdown.speedScore * finalWeights.speed
       + breakdown.handValueScore * finalWeights.handValue
@@ -107,7 +116,8 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
       + breakdown.dalanRouteScore * finalWeights.dalanRoute
       + breakdown.defenseScore * finalWeights.defense
       + breakdown.positionAdjustment * finalWeights.position
-      + breakdown.structurePenalty * finalWeights.structure,
+      + breakdown.structurePenalty * finalWeights.structure
+      - regressionPenalty,
     );
     return {
       tile,

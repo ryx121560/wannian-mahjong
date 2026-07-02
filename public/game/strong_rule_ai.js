@@ -862,6 +862,16 @@ function reasoningFor(candidate, phase) {
     const phaseLabel = phase === 'early' ? '序盘' : phase === 'middle' ? '中盘' : '终盘';
     return `${phaseLabel}。主要考量${main}。兼顾速度、打点、听牌、杠直铲、打烂、防守、位置和结构。综合得分${candidate.totalScore}，选择弃${(0, utils_1.tileLabel)(candidate.tile)}。`;
 }
+function shantenRegressionPenalty(shantenBefore, shantenAfter, defenseState) {
+    const regression = shantenAfter - shantenBefore;
+    if (regression <= 0)
+        return 0;
+    if (defenseState === 'full-fold')
+        return regression * 2;
+    if (defenseState === 'half-fold')
+        return regression * 4;
+    return regression * 8;
+}
 function makeDecision(state, config) {
     var _a, _b;
     const hand = (0, utils_1.getPlayerHand)(state);
@@ -904,6 +914,7 @@ function makeDecision(state, config) {
             positionAdjustment: enabled(merged, 'position', (0, utils_1.roundScore)(posScore)),
             structurePenalty: enabled(merged, 'structure', structure.penalty),
         };
+        const regressionPenalty = shantenRegressionPenalty(speed.shantenBefore, speed.shantenAfter, defense.state.state);
         const totalScore = (0, utils_1.roundScore)(breakdown.speedScore * finalWeights.speed
             + breakdown.handValueScore * finalWeights.handValue
             + breakdown.waitQualityScore * finalWeights.waitQuality
@@ -911,7 +922,8 @@ function makeDecision(state, config) {
             + breakdown.dalanRouteScore * finalWeights.dalanRoute
             + breakdown.defenseScore * finalWeights.defense
             + breakdown.positionAdjustment * finalWeights.position
-            + breakdown.structurePenalty * finalWeights.structure);
+            + breakdown.structurePenalty * finalWeights.structure
+            - regressionPenalty);
         return {
             tile,
             totalScore,
@@ -1838,6 +1850,8 @@ function isolatedDiscardPriority(hand, discardTile) {
         return 0;
     if (breaksDragonCombo(hand, discardTile))
         return 0;
+    if ((0, rules_1.isHonor)(discardTile))
+        return 5;
     if (!(0, rules_1.isNumberTile)(discardTile))
         return 0;
     const suit = (0, rules_1.tileSuit)(discardTile);
@@ -1858,6 +1872,8 @@ function evaluateStructurePenalty(hand, _melds, discardTile) {
     const count = counts.get(discardTile) || 0;
     if (breaksDragonCombo(hand, discardTile))
         return { penalty: -1.2, destroyedStructure: { type: 'dazi', description: 'breaks dragon combo' } };
+    if (count >= 4)
+        return { penalty: -10.0, destroyedStructure: { type: 'mianzi', description: 'breaks concealed kong' } };
     if (count >= 3)
         return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: 'breaks triplet' } };
     if ((0, rules_1.isNumberTile)(discardTile)) {

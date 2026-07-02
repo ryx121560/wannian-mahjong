@@ -175,6 +175,9 @@ if (!runtimeHtml.includes('导出失败：生成或下载 JSON 文件失败') ||
 if (!runtimeHtml.includes('recordAiDiscardInterpretation') || !runtimeHtml.includes("createRecommendationRecord('ai-discard'")) {
   failures.push('stage4-runtime: ai discard interpretation is not recorded');
 }
+if (!runtimeHtml.includes('function aiUnprotectedSingleHonor') || !runtimeHtml.includes('singleHonorAdj')) {
+  failures.push('stage4-runtime: original draw-tiao3 replay lacks single honor discard priority over isolated middle tile');
+}
 if (!runtimeHtml.includes('responseActionText') || !runtimeHtml.includes('mctsSummaryFinalResponseCandidate')) {
   failures.push('stage4-runtime: response candidate matching is not action/player specific');
 }

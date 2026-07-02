@@ -2229,11 +2229,21 @@ function aiBreaksDragonCombo(h,idx){
   return aiDragonKinds(sub)<before;
 }
 
+function aiUnprotectedSingleHonor(h,idx){
+  const t=h[idx];
+  if(!t||t.t!=='honor')return false;
+  if(h.filter(function(x){return teq(x,t);}).length!==1)return false;
+  if(aiBreaksDragonCombo(h,idx))return false;
+  if(aiBreaksTaatsu(h,idx))return false;
+  return true;
+}
+
 function aiIsolatedDiscardPriority(h,idx){
   const t=h[idx];
   if(!t)return 0;
   if(h.filter(function(x){return teq(x,t);}).length!==1)return 0;
   if(aiBreaksDragonCombo(h,idx))return 0;
+  if(aiUnprotectedSingleHonor(h,idx))return 5;
   if(t.t!=='num')return 0;
   const has=function(offset){
     return h.some(function(x){return x.t==='num'&&x.s===t.s&&x.v===t.v+offset;});
@@ -2901,6 +2911,7 @@ async function aiChooseDiscard(hand,playerIdx){
         if(hand[i].t==='honor'&&origCnt===1)q+=2;
       }
       if(aiBreaksDragonCombo(hand,i))q-=8;
+      const singleHonorDiscard=aiUnprotectedSingleHonor(hand,i);
       const isoDefenseDiff=Math.max(...bestCands.map(k=>defenseScore(hand[k],playerIdx)))-Math.min(...bestCands.map(k=>defenseScore(hand[k],playerIdx)));
       if(aiCanUseIsolatedTieBreak(playerIdx,danger,phase,bestShanten,isoDefenseDiff))q+=aiIsolatedDiscardPriority(hand,i)*0.25;
       // 染手偏向：保留主色牌（仅面子手路径）
@@ -2910,10 +2921,11 @@ async function aiChooseDiscard(hand,playerIdx){
         else if(bias.type==='mixed' && hand[i].t==='honor')q-=5;
         else if(bias.type==='semi-clear' && hand[i].t==='num' && hand[i].s===bias.suit)q-=3;
         else if(bias.type==='mixed-lean' && hand[i].t==='num' && hand[i].s===bias.suit)q-=3;
-        else if(bias.type==='mixed-lean' && hand[i].t==='honor')q-=2;
+        else if(bias.type==='mixed-lean' && hand[i].t==='honor' && !singleHonorDiscard)q-=2;
+        if(singleHonorDiscard)q+=3;
       }
       // 字牌混一色潜力：无染手倾向但主色≥4且字牌≥2时温和保留
-      if(p==='norm' && bias.type==='none' && hand[i].t==='honor'){
+      if(p==='norm' && bias.type==='none' && hand[i].t==='honor' && !singleHonorDiscard){
         const honorCnt=hand.filter(h=>h.t==='honor').length;
         if(bias.count>=4 && honorCnt>=2)q-=0.5;
       }
@@ -3845,6 +3857,8 @@ function updateSuggestion(){
         if(oc===1&&hand[ci].t==='num'){const t=hand[ci];const hasBuddy=hand.some(function(h,j){return j!==ci&&h.t==='num'&&h.s===t.s&&Math.abs(h.v-t.v)===1;});if(hasBuddy)q-=2;}
       }
       const dragonAdj=aiBreaksDragonCombo(hand,ci)?-8:0;
+      let singleHonorAdj=0;
+      const singleHonorDiscard=aiUnprotectedSingleHonor(hand,ci);
       const recommendationDefenseScores=bestCands.map(function(k){return defenseScore(hand[k],0);});
       const recommendationDefenseDiff=Math.max(...recommendationDefenseScores)-Math.min(...recommendationDefenseScores);
       const isolatedAdj=aiCanUseIsolatedTieBreak(0,danger,phase,bestShanten,recommendationDefenseDiff)?aiIsolatedDiscardPriority(hand,ci)*0.25:0;
@@ -3857,9 +3871,10 @@ function updateSuggestion(){
         else if(bias.type==='semi-clear'&&hand[ci].t==='num'&&hand[ci].s===bias.suit)suitAdj=-3;
         // 补全 mixed-lean 保护（与 aiChooseDiscard 一致），防止三元牌孤张评分偏差
         else if(bias.type==='mixed-lean'&&hand[ci].t==='num'&&hand[ci].s===bias.suit)suitAdj=-3;
-        else if(bias.type==='mixed-lean'&&hand[ci].t==='honor')suitAdj=-2;
+        else if(bias.type==='mixed-lean'&&hand[ci].t==='honor'&&!singleHonorDiscard)suitAdj=-2;
         q+=suitAdj;
       }
+      if(p==='norm'&&singleHonorDiscard){singleHonorAdj=3;q+=singleHonorAdj;}
       // 对子保留惩罚：防止AI拆对子留孤张（与 aiChooseDiscard 一致）
       let pairPenalty=0;
       if(p==='norm'){
@@ -3880,7 +3895,7 @@ function updateSuggestion(){
       if(phase==='early'){phaseAdj=0.3;q+=phaseAdj;}
       const defRaw=defenseScore(hand[ci],0);
       var _pc=hand.filter(function(h){return teq(h,hand[ci]);}).length;const sc=q+safeW*defRaw+(_pc>=2&&_pc<=3?-2.5:0);
-      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,defRaw:defRaw,safeW:safeW,sc:sc};
+      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
       if(sc>bestScore){bestScore=sc;bestIdx=ci;bestPath=p;}
     });
   }

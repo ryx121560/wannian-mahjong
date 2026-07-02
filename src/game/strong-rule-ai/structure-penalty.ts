@@ -1,4 +1,4 @@
-import { countTiles, isNumberTile, tileSuit, tileValue } from '../rules';
+import { countTiles, isHonor, isNumberTile, tileSuit, tileValue } from '../rules';
 import type { Meld, StructurePenaltyResult, Tile } from './types';
 
 const DRAGON_TILES = new Set<Tile>(['zhong', 'fa', 'bai']);
@@ -36,6 +36,7 @@ export function isolatedDiscardPriority(hand: Tile[], discardTile: Tile): number
   const count = counts.get(discardTile) || 0;
   if (count !== 1) return 0;
   if (breaksDragonCombo(hand, discardTile)) return 0;
+  if (isHonor(discardTile)) return 5;
   if (!isNumberTile(discardTile)) return 0;
 
   const suit = tileSuit(discardTile);
@@ -52,6 +53,7 @@ export function evaluateStructurePenalty(hand: Tile[], _melds: Meld[], discardTi
   const counts = countTiles(hand);
   const count = counts.get(discardTile) || 0;
   if (breaksDragonCombo(hand, discardTile)) return { penalty: -1.2, destroyedStructure: { type: 'dazi', description: 'breaks dragon combo' } };
+  if (count >= 4) return { penalty: -10.0, destroyedStructure: { type: 'mianzi', description: 'breaks concealed kong' } };
   if (count >= 3) return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: 'breaks triplet' } };
   if (isNumberTile(discardTile)) {
     const suit = tileSuit(discardTile);

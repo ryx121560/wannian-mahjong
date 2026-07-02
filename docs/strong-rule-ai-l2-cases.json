@@ -17529,6 +17529,56 @@
           "defense-score"
         ]
       }
+    },
+    {
+      "id": "L2-strategy-bugfix-honor-before-isolated-middle-001",
+      "level": "L2",
+      "category": "strategy-bugfix",
+      "description": "single honor should be discarded before isolated middle tile when middle discard worsens shanten",
+      "melds": [],
+      "discards": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "scores": [
+        100,
+        100,
+        100,
+        100
+      ],
+      "turn": 12,
+      "currentPlayer": 2,
+      "dealer": 0,
+      "wallRemaining": 70,
+      "hand": [
+        "bai",
+        "bai",
+        "wan8",
+        "wan8",
+        "tiao3",
+        "tiao3",
+        "wan3",
+        "wan4",
+        "wan5",
+        "tong5",
+        "tiao4",
+        "tiao5",
+        "nan",
+        "wan6"
+      ],
+      "expected": {
+        "bestDiscard": [
+          "nan"
+        ],
+        "unacceptableDiscards": [
+          "tong5"
+        ],
+        "reasoningKeywords": [
+          "defense-score"
+        ]
+      }
     }
   ]
 }
