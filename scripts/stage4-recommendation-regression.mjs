@@ -132,6 +132,40 @@ if (!invalidReadyText.includes('未形成有效听牌')) {
   failures.push('stage4-invalid-ready: no legal wait explanation missing');
 }
 
+const mctsTieBreakContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'tiao7',
+  systemRecommendation: { tile: 'tiao7', tileLabel: '7条', totalScore: 78, shantenAfter: 2, route: 'norm', speedScore: 1, handValueScore: 0.5, waitQualityScore: 0.3, defenseScore: -0.2 },
+  candidates: [
+    { tile: 'tiao7', tileLabel: '7条', totalScore: 78, shantenAfter: 2, route: 'norm', speedScore: 1, handValueScore: 0.5, waitQualityScore: 0.3, defenseScore: -0.2 },
+    { tile: 'tiao1', tileLabel: '1条', totalScore: 78, shantenAfter: 2, route: 'norm', speedScore: 1, handValueScore: 0.5, waitQualityScore: 0.3, defenseScore: 0.4 },
+  ],
+  mctsSummary: {
+    finalAction: '打7条',
+    strongRuleAction: '打7条',
+    mctsAction: '打1条',
+    modelAction: null,
+    overridden: false,
+    notOverrideReason: '搜索收益差距较小，保留强规则 AI 的稳定选择',
+    playerExplanation: '打7条 保留为当前建议',
+    candidates: [
+      { action: '打7条', averageValue: 1.24, mainRisk: '对手威胁较高', dealInRisk: 0.58, kongRisk: 0 },
+      { action: '打1条', averageValue: 5.1, mainRisk: '风险可控', dealInRisk: 0.12, kongRisk: 0 },
+    ],
+  },
+};
+const mctsTieBreakPanel = engine.buildPanel(mctsTieBreakContext);
+if (mctsTieBreakPanel.systemTile !== 'tiao1') {
+  failures.push(`stage4-mcts-tiebreak: expected tiao1 when scores tie and MCTS value is higher with lower risk, actual ${mctsTieBreakPanel.systemTile}`);
+}
+const mctsTieBreakText = mctsTieBreakPanel.sections.map((item) => item.text).join('\n');
+if (!mctsTieBreakText.includes('后续均值 5.1')) {
+  failures.push('stage4-mcts-tiebreak: chosen candidate should expose the higher MCTS average value');
+}
+if (!mctsTieBreakText.includes('最终采用复核排序更优的候选')) {
+  failures.push('stage4-mcts-tiebreak: panel should explain why MCTS average overrides the original recommendation');
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }

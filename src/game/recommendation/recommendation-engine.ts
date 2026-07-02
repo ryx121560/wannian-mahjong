@@ -180,40 +180,57 @@ function scoreWord(score: number, positive = true): string {
 
 function sortedCandidates(context: RecommendationContext): CandidateView[] {
   const byTile = new Map<string, CandidateView>();
-  for (const candidate of (context.candidates || []).slice().sort((a, b) => adjustedCandidateScore(b) - adjustedCandidateScore(a))) {
+  for (const candidate of (context.candidates || []).slice().sort((a, b) => compareCandidates(a, b, context))) {
     if (!byTile.has(candidate.tile)) byTile.set(candidate.tile, candidate);
   }
   return Array.from(byTile.values()).slice(0, 5);
 }
 
 function systemCandidate(context: RecommendationContext): CandidateView | null {
-  if (context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation)) return context.systemRecommendation;
-  return sortedCandidates(context)[0] || context.systemRecommendation || null;
+  const sorted = sortedCandidates(context);
+  const original = context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation) ? context.systemRecommendation : null;
+  if (!original) return sorted[0] || context.systemRecommendation || null;
+  const best = sorted[0] || original;
+  if (best.tile !== original.tile && shouldPreferCandidateOver(original, best, context)) return best;
+  return original;
 }
 
 function secondCandidate(context: RecommendationContext, best: CandidateView): CandidateView | null {
   return sortedCandidates(context).find((candidate) => candidate.tile !== best.tile) || null;
 }
 
+function effectiveFinalAction(context: RecommendationContext): string | null {
+  const candidate = systemCandidate(context);
+  return candidate ? candidateActionLabel(candidate) : null;
+}
+
 function mctsReviewLine(context: RecommendationContext): string | null {
   const summary = context.mctsSummary;
   if (!summary) return null;
-  const reason = summary.overridden
+  const action = effectiveFinalAction(context) || summary.finalAction;
+  const rankAdjusted = !!action && action !== summary.finalAction;
+  const reason = rankAdjusted
+    ? '候选综合评分接近，后续均值更高且风险不高于当前推荐，已调整为更稳定候选。'
+    : summary.overridden
     ? (summary.overrideReason || '后续收益复核认为另一项更稳。')
     : (summary.notOverrideReason || '后续收益复核后保留当前选择。');
-  return `已通过后续收益复核：${esc(summary.finalAction)}。${esc(reason)}`;
+  return `已通过后续收益复核：${esc(action)}。${esc(reason)}`;
 }
 
 function reviewDecisionLines(context: RecommendationContext): string[] {
   const summary = context.mctsSummary;
   if (!summary) return [];
   const reviewAction = summary.modelAction || summary.mctsAction || null;
+  const action = effectiveFinalAction(context) || summary.finalAction || reviewAction || summary.strongRuleAction || '暂无';
   const rows = [
     line('当前规则推荐', esc(summary.strongRuleAction || '暂无')),
     line('MCTS/模型复核建议', esc(reviewAction || '暂无')),
-    line('最终推荐', esc(summary.finalAction || reviewAction || summary.strongRuleAction || '暂无')),
+    line('最终推荐', esc(action)),
   ];
-  const reason = summary.overridden
+  const rankAdjusted = !!action && action !== summary.finalAction;
+  const reason = rankAdjusted
+    ? '候选综合评分接近，后续均值更高且风险不高于当前推荐，最终采用复核排序更优的候选。'
+    : summary.overridden
     ? (summary.overrideReason || '复核收益更高，最终采用复核建议。')
     : (summary.notOverrideReason || '复核后保留当前规则推荐。');
   rows.push(line('采用说明', esc(reason)));
@@ -252,6 +269,54 @@ function hasInvalidReadyWait(candidate: CandidateView): boolean {
 
 function adjustedCandidateScore(candidate: CandidateView): number {
   return Number(candidate.totalScore || 0) - (hasInvalidReadyWait(candidate) ? 20 : 0) - (candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? 2 : 0);
+}
+
+function candidateActionLabel(candidate: CandidateView): string {
+  return `打${candidate.tileLabel || candidate.tile}`;
+}
+
+function mctsCandidateFor(context: RecommendationContext, candidate: CandidateView): { action: string; averageValue: number; mainRisk: string; dealInRisk?: number; kongRisk?: number } | null {
+  const action = candidateActionLabel(candidate);
+  return context.mctsSummary?.candidates?.find((item) => item.action === action) || null;
+}
+
+function mctsRiskScore(item: { mainRisk?: string; dealInRisk?: number; kongRisk?: number } | null, candidate: CandidateView): number {
+  if (!item) return Math.max(0, -(candidate.defenseScore || 0));
+  const labelRisk = item.mainRisk?.includes('风险可控') ? 0
+    : item.mainRisk?.includes('威胁') ? 0.6
+      : item.mainRisk?.includes('放炮') || item.mainRisk?.includes('较高') ? 0.8
+        : 0.3;
+  return Number(item.dealInRisk || 0) + Number(item.kongRisk || 0) + labelRisk;
+}
+
+function shouldPreferCandidateOver(current: CandidateView, challenger: CandidateView, context: RecommendationContext): boolean {
+  const scoreGap = Math.abs(adjustedCandidateScore(current) - adjustedCandidateScore(challenger));
+  if (scoreGap > 2) return false;
+  const currentMcts = mctsCandidateFor(context, current);
+  const challengerMcts = mctsCandidateFor(context, challenger);
+  if (!currentMcts || !challengerMcts) return false;
+  const averageGap = Number(challengerMcts.averageValue || 0) - Number(currentMcts.averageValue || 0);
+  if (averageGap < 2) return false;
+  return mctsRiskScore(challengerMcts, challenger) <= mctsRiskScore(currentMcts, current) + 0.001;
+}
+
+function compareCandidates(a: CandidateView, b: CandidateView, context: RecommendationContext): number {
+  const scoreGap = adjustedCandidateScore(b) - adjustedCandidateScore(a);
+  if (Math.abs(scoreGap) > 2) return scoreGap;
+  const aMcts = mctsCandidateFor(context, a);
+  const bMcts = mctsCandidateFor(context, b);
+  if (aMcts && bMcts) {
+    const averageGap = Number(bMcts.averageValue || 0) - Number(aMcts.averageValue || 0);
+    const aRisk = mctsRiskScore(aMcts, a);
+    const bRisk = mctsRiskScore(bMcts, b);
+    if (Math.abs(averageGap) >= 2) {
+      if (averageGap > 0 && bRisk <= aRisk + 0.001) return averageGap;
+      if (averageGap < 0 && aRisk <= bRisk + 0.001) return averageGap;
+    }
+    if (Math.abs(aRisk - bRisk) >= 0.15) return aRisk - bRisk;
+    if (Math.abs(averageGap) >= 0.25) return averageGap;
+  }
+  return scoreGap || Number(b.defenseScore || 0) - Number(a.defenseScore || 0);
 }
 
 function displayShantenText(candidate: CandidateView): string {

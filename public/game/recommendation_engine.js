@@ -100,42 +100,59 @@ function scoreWord(score, positive = true) {
 }
 function sortedCandidates(context) {
     const byTile = new Map();
-    for (const candidate of (context.candidates || []).slice().sort((a, b) => adjustedCandidateScore(b) - adjustedCandidateScore(a))) {
+    for (const candidate of (context.candidates || []).slice().sort((a, b) => compareCandidates(a, b, context))) {
         if (!byTile.has(candidate.tile))
             byTile.set(candidate.tile, candidate);
     }
     return Array.from(byTile.values()).slice(0, 5);
 }
 function systemCandidate(context) {
-    if (context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation))
-        return context.systemRecommendation;
-    return sortedCandidates(context)[0] || context.systemRecommendation || null;
+    const sorted = sortedCandidates(context);
+    const original = context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation) ? context.systemRecommendation : null;
+    if (!original)
+        return sorted[0] || context.systemRecommendation || null;
+    const best = sorted[0] || original;
+    if (best.tile !== original.tile && shouldPreferCandidateOver(original, best, context))
+        return best;
+    return original;
 }
 function secondCandidate(context, best) {
     return sortedCandidates(context).find((candidate) => candidate.tile !== best.tile) || null;
+}
+function effectiveFinalAction(context) {
+    const candidate = systemCandidate(context);
+    return candidate ? candidateActionLabel(candidate) : null;
 }
 function mctsReviewLine(context) {
     const summary = context.mctsSummary;
     if (!summary)
         return null;
-    const reason = summary.overridden
-        ? (summary.overrideReason || '后续收益复核认为另一项更稳。')
-        : (summary.notOverrideReason || '后续收益复核后保留当前选择。');
-    return `已通过后续收益复核：${esc(summary.finalAction)}。${esc(reason)}`;
+    const action = effectiveFinalAction(context) || summary.finalAction;
+    const rankAdjusted = !!action && action !== summary.finalAction;
+    const reason = rankAdjusted
+        ? '候选综合评分接近，后续均值更高且风险不高于当前推荐，已调整为更稳定候选。'
+        : summary.overridden
+            ? (summary.overrideReason || '后续收益复核认为另一项更稳。')
+            : (summary.notOverrideReason || '后续收益复核后保留当前选择。');
+    return `已通过后续收益复核：${esc(action)}。${esc(reason)}`;
 }
 function reviewDecisionLines(context) {
     const summary = context.mctsSummary;
     if (!summary)
         return [];
     const reviewAction = summary.modelAction || summary.mctsAction || null;
+    const action = effectiveFinalAction(context) || summary.finalAction || reviewAction || summary.strongRuleAction || '暂无';
     const rows = [
         line('当前规则推荐', esc(summary.strongRuleAction || '暂无')),
         line('MCTS/模型复核建议', esc(reviewAction || '暂无')),
-        line('最终推荐', esc(summary.finalAction || reviewAction || summary.strongRuleAction || '暂无')),
+        line('最终推荐', esc(action)),
     ];
-    const reason = summary.overridden
-        ? (summary.overrideReason || '复核收益更高，最终采用复核建议。')
-        : (summary.notOverrideReason || '复核后保留当前规则推荐。');
+    const rankAdjusted = !!action && action !== summary.finalAction;
+    const reason = rankAdjusted
+        ? '候选综合评分接近，后续均值更高且风险不高于当前推荐，最终采用复核排序更优的候选。'
+        : summary.overridden
+            ? (summary.overrideReason || '复核收益更高，最终采用复核建议。')
+            : (summary.notOverrideReason || '复核后保留当前规则推荐。');
     rows.push(line('采用说明', esc(reason)));
     return rows;
 }
@@ -173,6 +190,60 @@ function hasInvalidReadyWait(candidate) {
 }
 function adjustedCandidateScore(candidate) {
     return Number(candidate.totalScore || 0) - (hasInvalidReadyWait(candidate) ? 20 : 0) - (candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu ? 2 : 0);
+}
+function candidateActionLabel(candidate) {
+    return `打${candidate.tileLabel || candidate.tile}`;
+}
+function mctsCandidateFor(context, candidate) {
+    var _a, _b;
+    const action = candidateActionLabel(candidate);
+    return ((_b = (_a = context.mctsSummary) === null || _a === void 0 ? void 0 : _a.candidates) === null || _b === void 0 ? void 0 : _b.find((item) => item.action === action)) || null;
+}
+function mctsRiskScore(item, candidate) {
+    var _a, _b, _c, _d;
+    if (!item)
+        return Math.max(0, -(candidate.defenseScore || 0));
+    const labelRisk = ((_a = item.mainRisk) === null || _a === void 0 ? void 0 : _a.includes('风险可控')) ? 0
+        : ((_b = item.mainRisk) === null || _b === void 0 ? void 0 : _b.includes('威胁')) ? 0.6
+            : ((_c = item.mainRisk) === null || _c === void 0 ? void 0 : _c.includes('放炮')) || ((_d = item.mainRisk) === null || _d === void 0 ? void 0 : _d.includes('较高')) ? 0.8
+                : 0.3;
+    return Number(item.dealInRisk || 0) + Number(item.kongRisk || 0) + labelRisk;
+}
+function shouldPreferCandidateOver(current, challenger, context) {
+    const scoreGap = Math.abs(adjustedCandidateScore(current) - adjustedCandidateScore(challenger));
+    if (scoreGap > 2)
+        return false;
+    const currentMcts = mctsCandidateFor(context, current);
+    const challengerMcts = mctsCandidateFor(context, challenger);
+    if (!currentMcts || !challengerMcts)
+        return false;
+    const averageGap = Number(challengerMcts.averageValue || 0) - Number(currentMcts.averageValue || 0);
+    if (averageGap < 2)
+        return false;
+    return mctsRiskScore(challengerMcts, challenger) <= mctsRiskScore(currentMcts, current) + 0.001;
+}
+function compareCandidates(a, b, context) {
+    const scoreGap = adjustedCandidateScore(b) - adjustedCandidateScore(a);
+    if (Math.abs(scoreGap) > 2)
+        return scoreGap;
+    const aMcts = mctsCandidateFor(context, a);
+    const bMcts = mctsCandidateFor(context, b);
+    if (aMcts && bMcts) {
+        const averageGap = Number(bMcts.averageValue || 0) - Number(aMcts.averageValue || 0);
+        const aRisk = mctsRiskScore(aMcts, a);
+        const bRisk = mctsRiskScore(bMcts, b);
+        if (Math.abs(averageGap) >= 2) {
+            if (averageGap > 0 && bRisk <= aRisk + 0.001)
+                return averageGap;
+            if (averageGap < 0 && aRisk <= bRisk + 0.001)
+                return averageGap;
+        }
+        if (Math.abs(aRisk - bRisk) >= 0.15)
+            return aRisk - bRisk;
+        if (Math.abs(averageGap) >= 0.25)
+            return averageGap;
+    }
+    return scoreGap || Number(b.defenseScore || 0) - Number(a.defenseScore || 0);
 }
 function displayShantenText(candidate) {
     if (hasInvalidReadyWait(candidate))
