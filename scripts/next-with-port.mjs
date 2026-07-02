@@ -41,9 +41,10 @@ async function findPort() {
   for (let offset = 0; offset <= maxOffset; offset += 1) {
     const port = preferredPort + offset;
     if (port > 65535) break;
+    const ipv6Free = await canListen(port, '::');
     const ipv4Free = await canListen(port, '0.0.0.0');
     const localFree = await canListen(port, '127.0.0.1');
-    if (ipv4Free && localFree) return port;
+    if (ipv6Free && ipv4Free && localFree) return port;
   }
   throw new Error(`No available port from ${preferredPort} to ${preferredPort + maxOffset}`);
 }
