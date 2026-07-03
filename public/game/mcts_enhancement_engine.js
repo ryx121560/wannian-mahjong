@@ -186,11 +186,39 @@ function hasInvalidReadyWait(candidate) {
     var _a;
     return candidate.action === 'discard' && candidate.shantenAfter === 0 && ((_a = candidate.waitCount) !== null && _a !== void 0 ? _a : 1) <= 0;
 }
+function isKeepTenpaiCandidate(candidate) {
+    return candidate.legal && candidate.action === 'discard' && candidate.shantenAfter === 0 && !hasInvalidReadyWait(candidate);
+}
+function hasKeepTenpaiCandidate(context) {
+    return (context.candidates || []).some(isKeepTenpaiCandidate);
+}
+function isExtremeFoldException(candidate, context) {
+    if (strongestThreat(context) < 0.9)
+        return false;
+    if (clampRisk(candidate.dealInRisk) > 0.05 || clampRisk(candidate.defenseRisk) > 0.08)
+        return false;
+    const keepers = (context.candidates || []).filter(isKeepTenpaiCandidate);
+    return keepers.length > 0 && keepers.every((item) => clampRisk(item.dealInRisk) >= 0.6 || clampRisk(item.defenseRisk) >= 0.65);
+}
+function breaksPairAfterTenpai(candidate, context) {
+    var _a;
+    return candidate.legal
+        && candidate.action === 'discard'
+        && !!candidate.breaksPair
+        && ((_a = candidate.shantenAfter) !== null && _a !== void 0 ? _a : 9) > 0
+        && hasKeepTenpaiCandidate(context)
+        && !isExtremeFoldException(candidate, context);
+}
+function tenpaiRegressionAdjustment(candidate, context) {
+    return breaksPairAfterTenpai(candidate, context) ? -24 : 0;
+}
 function mainRisk(candidate, context) {
     if (!candidate.legal)
         return '非法动作';
     if (hasInvalidReadyWait(candidate))
         return '没有合法待牌';
+    if (breaksPairAfterTenpai(candidate, context))
+        return '听牌后拆将退听';
     if (candidate.action === 'kong' && clampRisk(candidate.kongRisk) >= 0.55)
         return '杠后风险较高';
     if (isHonor(candidate.tile) && candidate.action === 'kong')
@@ -214,6 +242,7 @@ function scoreCandidate(candidate, context) {
             + dragonComboAdjustment(candidate, context)
             + isolatedDiscardAdjustment(candidate, context)
             + invalidReadyAdjustment(candidate)
+            + tenpaiRegressionAdjustment(candidate, context)
             + actionPriorityAdjustment(candidate, context)
         : -Infinity;
     return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
@@ -237,6 +266,8 @@ function modelScore(candidate, context) {
         score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
     if (candidate.dragonComboBreak)
         score -= 2.2;
+    if (breaksPairAfterTenpai(candidate, context))
+        score -= 24;
     if (breaksCoreSequence(candidate, context))
         score -= strongestThreat(context) >= 0.75 ? 1.2 : 3.5;
     if (candidate.breaksRoute)
@@ -263,8 +294,8 @@ function buildModelAdvice(scored, context) {
     const second = ranked[1] || null;
     const gap = top && second ? top.score - second.score : top ? 3 : 0;
     const ruleConstraintBlocks = scored
-        .filter((candidate) => !candidate.legal || hasInvalidReadyWait(candidate))
-        .map((candidate) => `${actionText(candidate)}:${candidate.legal ? 'ready-wait-blocked' : 'illegal-blocked'}`);
+        .filter((candidate) => !candidate.legal || hasInvalidReadyWait(candidate) || breaksPairAfterTenpai(candidate, context))
+        .map((candidate) => `${actionText(candidate)}:${!candidate.legal ? 'illegal-blocked' : hasInvalidReadyWait(candidate) ? 'ready-wait-blocked' : 'tenpai-pair-regression-blocked'}`);
     const routeTransitionCandidate = ranked.find((item) => {
         var _a;
         return !!((_a = item.candidate.modelFeatures) === null || _a === void 0 ? void 0 : _a.routeTransition)
@@ -301,11 +332,14 @@ function chooseFinal(scored, context) {
     if (hasInvalidReadyWait(strong)) {
         return { best: fallback, mctsBest: fallback, strong, model, reason: '强规则候选形成的听牌没有合法待牌，采用可实际胡牌的候选', notReason: null, modelReason: null, modelRejectReason: '规则约束阻断候选，模型不得覆盖', modelAffected: false };
     }
+    if (breaksPairAfterTenpai(strong, context)) {
+        return { best: fallback, mctsBest: fallback, strong, model, reason: '当前已听牌且存在保听候选，禁止拆将退听', notReason: null, modelReason: null, modelRejectReason: '规则约束阻断听牌后拆将退听候选，模型不得覆盖', modelAffected: false };
+    }
     const gap = fallback.value - strong.value;
     if (gap < WEAK_GAP && model.candidate && model.confidence !== 'weak') {
         const closeToMcts = fallback.value - model.candidate.value < WEAK_GAP;
         const closeToStrong = model.candidate.value - strong.value > -WEAK_GAP;
-        if (closeToMcts && closeToStrong && !hasInvalidReadyWait(model.candidate)) {
+        if (closeToMcts && closeToStrong && !hasInvalidReadyWait(model.candidate) && !breaksPairAfterTenpai(model.candidate, context)) {
             const affected = actionText(model.candidate) !== actionText(strong);
             return {
                 best: model.candidate,

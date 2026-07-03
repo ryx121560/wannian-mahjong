@@ -17,6 +17,7 @@ export interface MctsCandidate {
   waitCount?: number;
   waitRemaining?: number;
   coreSequenceBreak?: boolean;
+  breaksPair?: boolean;
   isStrongRuleChoice?: boolean;
   dragonComboBreak?: boolean;
   isolatedDiscardPriority?: number;
@@ -275,9 +276,38 @@ function hasInvalidReadyWait(candidate: MctsCandidate): boolean {
   return candidate.action === 'discard' && candidate.shantenAfter === 0 && (candidate.waitCount ?? 1) <= 0;
 }
 
+function isKeepTenpaiCandidate(candidate: MctsCandidate): boolean {
+  return candidate.legal && candidate.action === 'discard' && candidate.shantenAfter === 0 && !hasInvalidReadyWait(candidate);
+}
+
+function hasKeepTenpaiCandidate(context: MctsDecisionContext): boolean {
+  return (context.candidates || []).some(isKeepTenpaiCandidate);
+}
+
+function isExtremeFoldException(candidate: MctsCandidate, context: MctsDecisionContext): boolean {
+  if (strongestThreat(context) < 0.9) return false;
+  if (clampRisk(candidate.dealInRisk) > 0.05 || clampRisk(candidate.defenseRisk) > 0.08) return false;
+  const keepers = (context.candidates || []).filter(isKeepTenpaiCandidate);
+  return keepers.length > 0 && keepers.every((item) => clampRisk(item.dealInRisk) >= 0.6 || clampRisk(item.defenseRisk) >= 0.65);
+}
+
+function breaksPairAfterTenpai(candidate: MctsCandidate, context: MctsDecisionContext): boolean {
+  return candidate.legal
+    && candidate.action === 'discard'
+    && !!candidate.breaksPair
+    && (candidate.shantenAfter ?? 9) > 0
+    && hasKeepTenpaiCandidate(context)
+    && !isExtremeFoldException(candidate, context);
+}
+
+function tenpaiRegressionAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  return breaksPairAfterTenpai(candidate, context) ? -24 : 0;
+}
+
 function mainRisk(candidate: MctsCandidate, context: MctsDecisionContext): string {
   if (!candidate.legal) return '非法动作';
   if (hasInvalidReadyWait(candidate)) return '没有合法待牌';
+  if (breaksPairAfterTenpai(candidate, context)) return '听牌后拆将退听';
   if (candidate.action === 'kong' && clampRisk(candidate.kongRisk) >= 0.55) return '杠后风险较高';
   if (isHonor(candidate.tile) && candidate.action === 'kong') return '风牌/字牌杠需要谨慎';
   if (clampRisk(candidate.dealInRisk) >= 0.55) return '放炮风险较高';
@@ -297,6 +327,7 @@ function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext):
       + dragonComboAdjustment(candidate, context)
       + isolatedDiscardAdjustment(candidate, context)
       + invalidReadyAdjustment(candidate)
+      + tenpaiRegressionAdjustment(candidate, context)
       + actionPriorityAdjustment(candidate, context)
     : -Infinity;
   return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
@@ -314,6 +345,7 @@ function modelScore(candidate: ScoredCandidate, context: MctsDecisionContext): n
   if ((candidate.waitCount || 0) >= 2) score += 0.5;
   if ((candidate.isolatedDiscardPriority || 0) > 0) score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
   if (candidate.dragonComboBreak) score -= 2.2;
+  if (breaksPairAfterTenpai(candidate, context)) score -= 24;
   if (breaksCoreSequence(candidate, context)) score -= strongestThreat(context) >= 0.75 ? 1.2 : 3.5;
   if (candidate.breaksRoute) score -= 1.4;
   if (pos === 'leading') score -= clampRisk(candidate.dealInRisk) * 2.2 + clampRisk(candidate.kongRisk) * 1.4;
@@ -336,8 +368,8 @@ function buildModelAdvice(scored: ScoredCandidate[], context: MctsDecisionContex
   const second = ranked[1] || null;
   const gap = top && second ? top.score - second.score : top ? 3 : 0;
   const ruleConstraintBlocks = scored
-    .filter((candidate) => !candidate.legal || hasInvalidReadyWait(candidate))
-    .map((candidate) => `${actionText(candidate)}:${candidate.legal ? 'ready-wait-blocked' : 'illegal-blocked'}`);
+    .filter((candidate) => !candidate.legal || hasInvalidReadyWait(candidate) || breaksPairAfterTenpai(candidate, context))
+    .map((candidate) => `${actionText(candidate)}:${!candidate.legal ? 'illegal-blocked' : hasInvalidReadyWait(candidate) ? 'ready-wait-blocked' : 'tenpai-pair-regression-blocked'}`);
   const routeTransitionCandidate = ranked.find((item) => !!item.candidate.modelFeatures?.routeTransition
     || ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(item.candidate.route || ''));
   const routeTransitionJudgment = routeTransitionCandidate
@@ -371,11 +403,14 @@ function chooseFinal(scored: ScoredCandidate[], context: MctsDecisionContext): {
   if (hasInvalidReadyWait(strong)) {
     return { best: fallback, mctsBest: fallback, strong, model, reason: '强规则候选形成的听牌没有合法待牌，采用可实际胡牌的候选', notReason: null, modelReason: null, modelRejectReason: '规则约束阻断候选，模型不得覆盖', modelAffected: false };
   }
+  if (breaksPairAfterTenpai(strong, context)) {
+    return { best: fallback, mctsBest: fallback, strong, model, reason: '当前已听牌且存在保听候选，禁止拆将退听', notReason: null, modelReason: null, modelRejectReason: '规则约束阻断听牌后拆将退听候选，模型不得覆盖', modelAffected: false };
+  }
   const gap = fallback.value - strong.value;
   if (gap < WEAK_GAP && model.candidate && model.confidence !== 'weak') {
     const closeToMcts = fallback.value - model.candidate.value < WEAK_GAP;
     const closeToStrong = model.candidate.value - strong.value > -WEAK_GAP;
-    if (closeToMcts && closeToStrong && !hasInvalidReadyWait(model.candidate)) {
+    if (closeToMcts && closeToStrong && !hasInvalidReadyWait(model.candidate) && !breaksPairAfterTenpai(model.candidate, context)) {
       const affected = actionText(model.candidate) !== actionText(strong);
       return {
         best: model.candidate,

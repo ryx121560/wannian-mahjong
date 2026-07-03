@@ -2426,7 +2426,7 @@ function mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongActionText,c
   const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
   const waitInfo=aiWaitInfoAfterDiscard(detail.sub||hand.filter(function(_,j){return j!==detail.idx;}),playerIdx,route,tile);
   const base=(scoreInfo?scoreInfo.sc:0)-(detail.s||0)*2+(waitInfo.remaining||0)*0.25;
-  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak),dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
+  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak),breaksPair:!!detail.breaksPair,dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
   action.isStrongRuleChoice=mctsActionText(action)===strongActionText;
   return action;
 }
@@ -2580,7 +2580,7 @@ async function aiChooseDiscard(hand,playerIdx){
         const route=aiRouteSummaryForPlayer(sub,playerIdx);
         const tile=hand[strongChoice.idx];
         const dragonComboBreak=aiBreaksDragonCombo(hand,strongChoice.idx);
-        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx)||dragonComboBreak,dragonComboBreak:dragonComboBreak,isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,strongChoice.idx),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
+        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx)||dragonComboBreak,breaksPair:aiBreaksPair(hand,strongChoice.idx),dragonComboBreak:dragonComboBreak,isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,strongChoice.idx),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
         mctsCandidates.push(action);
       }
       const context=mctsDecisionContext(playerIdx,'discarding',mctsCandidates,strongAction,hand.map(tkey));

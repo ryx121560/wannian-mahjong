@@ -174,6 +174,38 @@ if (sequenceHighThreatSummary.finalAction === actionText({ action: 'discard', ti
   }
 }
 
+const tenpaiPairRegressionContext = {
+  turn: 81,
+  player: 2,
+  phase: 'discarding',
+  timeLimitMs: 10000,
+  scores: [100, 100, 100, 100],
+  dealer: 2,
+  wallRemaining: 32,
+  discards: [['tong8'], [], ['tong8'], ['tong8']],
+  melds: [{ player: 2, tile: 'wan7', count: 4, type: 'angang' }],
+  handSummary: ['tong6', 'dong', 'tong3', 'tiao5', 'tong8', 'tong5', 'bei', 'tong7', 'tong4', 'tiao5', 'tong2'],
+  opponentThreats: [
+    { player: 0, tenpaiRisk: 0.75, dalanRisk: 0.2, honorRisk: 0.35 },
+    { player: 1, tenpaiRisk: 0.68, dalanRisk: 0.2, honorRisk: 0.3 },
+    { player: 3, tenpaiRisk: 0.7, dalanRisk: 0.2, honorRisk: 0.3 },
+  ],
+  strongRuleAction: actionText({ action: 'discard', tile: 'tiao5', tileLabel: '5条' }),
+  candidates: [
+    { id: 'discard:tong2', action: 'discard', tile: 'tong2', tileLabel: '2筒', legal: true, baseScore: 3, shantenAfter: 0, route: 'norm', breaksRoute: false, breaksPair: false, defenseRisk: 0.25, dealInRisk: 0.2, kongRisk: 0, waitCount: 2, waitRemaining: 7 },
+    { id: 'discard:tong8', action: 'discard', tile: 'tong8', tileLabel: '8筒', legal: true, baseScore: -2, shantenAfter: 1, route: 'norm', breaksRoute: true, breaksPair: false, defenseRisk: 0.08, dealInRisk: 0.06, kongRisk: 0, waitCount: 2, waitRemaining: 7 },
+    { id: 'discard:tiao5', action: 'discard', tile: 'tiao5', tileLabel: '5条', legal: true, baseScore: 12, shantenAfter: 1, route: 'norm', breaksRoute: true, breaksPair: true, defenseRisk: 0.05, dealInRisk: 0.04, kongRisk: 0, waitCount: 0, waitRemaining: 0, isStrongRuleChoice: true },
+  ],
+};
+const tenpaiPairRegressionSummary = engine.decideWithMcts(tenpaiPairRegressionContext);
+extraCases += 1;
+if (tenpaiPairRegressionSummary.finalAction === actionText({ action: 'discard', tile: 'tiao5', tileLabel: '5条' })) {
+  failures.push(`mcts-tenpai-no-break-pair-001: final action should keep tenpai instead of breaking pair: ${tenpaiPairRegressionSummary.finalAction}`);
+}
+if (tenpaiPairRegressionSummary.finalAction !== actionText({ action: 'discard', tile: 'tong2', tileLabel: '2筒' })) {
+  failures.push(`mcts-tenpai-no-break-pair-001: expected keep-tenpai discard 2筒, actual ${tenpaiPairRegressionSummary.finalAction}`);
+}
+
 try { fs.unlinkSync(tempPath); } catch {}
 
 const expectedDistribution = raw.distribution || {};
@@ -185,4 +217,4 @@ const totalCases = raw.cases.length + extraCases;
 const pass = totalCases - failures.length;
 const rate = totalCases ? pass / totalCases : 0;
 console.log(JSON.stringify({ total: totalCases, pass, fail: failures.length, passRate: Number((rate * 100).toFixed(2)), distribution: byCategory, extraCases, failures: failures.slice(0, 30) }, null, 2));
-if (raw.cases.length !== 150 || extraCases !== 2 || failures.length > 0) process.exit(1);
+if (raw.cases.length !== 150 || extraCases !== 3 || failures.length > 0) process.exit(1);
