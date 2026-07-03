@@ -104,9 +104,17 @@ function sortedCandidates(context) {
         if (!byTile.has(candidate.tile))
             byTile.set(candidate.tile, candidate);
     }
-    return Array.from(byTile.values()).slice(0, 5);
+    const sorted = Array.from(byTile.values());
+    const agreedCandidate = agreedReviewCandidate(context);
+    if (agreedCandidate && byTile.has(agreedCandidate.tile)) {
+        return [agreedCandidate, ...sorted.filter((candidate) => candidate.tile !== agreedCandidate.tile)].slice(0, 5);
+    }
+    return sorted.slice(0, 5);
 }
 function systemCandidate(context) {
+    const agreedCandidate = agreedReviewCandidate(context);
+    if (agreedCandidate && !hasInvalidReadyWait(agreedCandidate))
+        return agreedCandidate;
     const sorted = sortedCandidates(context);
     const original = context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation) ? context.systemRecommendation : null;
     if (!original)
@@ -193,6 +201,21 @@ function adjustedCandidateScore(candidate) {
 }
 function candidateActionLabel(candidate) {
     return `打${candidate.tileLabel || candidate.tile}`;
+}
+function candidateForAction(context, action) {
+    if (!action)
+        return null;
+    return (context.candidates || []).find((candidate) => candidateActionLabel(candidate) === action) || null;
+}
+function agreedReviewAction(context) {
+    const summary = context.mctsSummary;
+    if (!(summary === null || summary === void 0 ? void 0 : summary.finalAction) || !summary.strongRuleAction || !summary.mctsAction || !summary.modelAction)
+        return null;
+    const actions = [summary.finalAction, summary.strongRuleAction, summary.mctsAction, summary.modelAction];
+    return actions.every((action) => action === summary.finalAction) ? summary.finalAction : null;
+}
+function agreedReviewCandidate(context) {
+    return candidateForAction(context, agreedReviewAction(context));
 }
 function mctsCandidateFor(context, candidate) {
     var _a, _b;

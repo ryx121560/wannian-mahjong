@@ -183,10 +183,17 @@ function sortedCandidates(context: RecommendationContext): CandidateView[] {
   for (const candidate of (context.candidates || []).slice().sort((a, b) => compareCandidates(a, b, context))) {
     if (!byTile.has(candidate.tile)) byTile.set(candidate.tile, candidate);
   }
-  return Array.from(byTile.values()).slice(0, 5);
+  const sorted = Array.from(byTile.values());
+  const agreedCandidate = agreedReviewCandidate(context);
+  if (agreedCandidate && byTile.has(agreedCandidate.tile)) {
+    return [agreedCandidate, ...sorted.filter((candidate) => candidate.tile !== agreedCandidate.tile)].slice(0, 5);
+  }
+  return sorted.slice(0, 5);
 }
 
 function systemCandidate(context: RecommendationContext): CandidateView | null {
+  const agreedCandidate = agreedReviewCandidate(context);
+  if (agreedCandidate && !hasInvalidReadyWait(agreedCandidate)) return agreedCandidate;
   const sorted = sortedCandidates(context);
   const original = context.systemRecommendation && !hasInvalidReadyWait(context.systemRecommendation) ? context.systemRecommendation : null;
   if (!original) return sorted[0] || context.systemRecommendation || null;
@@ -273,6 +280,22 @@ function adjustedCandidateScore(candidate: CandidateView): number {
 
 function candidateActionLabel(candidate: CandidateView): string {
   return `打${candidate.tileLabel || candidate.tile}`;
+}
+
+function candidateForAction(context: RecommendationContext, action?: string | null): CandidateView | null {
+  if (!action) return null;
+  return (context.candidates || []).find((candidate) => candidateActionLabel(candidate) === action) || null;
+}
+
+function agreedReviewAction(context: RecommendationContext): string | null {
+  const summary = context.mctsSummary;
+  if (!summary?.finalAction || !summary.strongRuleAction || !summary.mctsAction || !summary.modelAction) return null;
+  const actions = [summary.finalAction, summary.strongRuleAction, summary.mctsAction, summary.modelAction];
+  return actions.every((action) => action === summary.finalAction) ? summary.finalAction : null;
+}
+
+function agreedReviewCandidate(context: RecommendationContext): CandidateView | null {
+  return candidateForAction(context, agreedReviewAction(context));
 }
 
 function mctsCandidateFor(context: RecommendationContext, candidate: CandidateView): { action: string; averageValue: number; mainRisk: string; dealInRisk?: number; kongRisk?: number } | null {

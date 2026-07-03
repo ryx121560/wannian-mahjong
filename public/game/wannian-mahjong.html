@@ -633,14 +633,11 @@ function saveGameLog(result){
 function exportGameLogs(){
   let logs=[];
   try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before export',e);alert('导出失败：读取本地游戏记录失败，请检查浏览器 localStorage 是否可用。');return;}
-  // 如果当前正在对局中，把当前局也纳入导出
-  if(GS._gameLog && GS._gameLog.events && GS._gameLog.events.length>0){
-    logs=logs.filter(function(log){return !log||log.gameId!==GS._gameLog.gameId;});
-    logs.unshift(GS._gameLog);
-  }
-  if(!logs.length){alert('暂无游戏记录');return;}
+  const currentLog=(GS._gameLog&&GS._gameLog.events&&GS._gameLog.events.length>0)?GS._gameLog:(logs[0]||null);
+  const exportLogs=currentLog?[currentLog]:[];
+  if(!exportLogs.length){alert('暂无游戏记录');return;}
   try{
-    const text=JSON.stringify(logs,null,2);
+    const text=JSON.stringify(exportLogs,null,2);
     const blob=new Blob([text],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -3749,11 +3746,13 @@ function recommendationBaseContext(extra){
   },extra||{});
 }
 
-function candidateViewFromDetail(detail,hand,candScores){
+function candidateViewFromDetail(detail,hand,candScores,playerIdx){
+  playerIdx=playerIdx||0;
   const tile=hand[detail.idx]||detail.tile;
   const key=tkey(tile);
   const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
-  const waitTiles=(detail.waits||[]).map(function(k){return {tile:k,label:lbl(kt(k)),remaining:aiRemainingCountForWait(k,0,detail.sub||[],tile)};});
+  const waitKeys=detail.s===0?listWaitsForMeldCount(detail.sub||[],playerIdx,aiFixedMeldCount(playerIdx),key):(detail.waits||[]);
+  const waitTiles=waitKeys.map(function(k){return {tile:k,label:lbl(kt(k)),remaining:aiRemainingCountForWait(k,playerIdx,detail.sub||[],tile)};});
   const waitRemaining=waitTiles.reduce(function(sum,item){return sum+Math.max(0,item.remaining||0);},0);
   return {
     tile:key,
@@ -4069,7 +4068,7 @@ function updateSuggestion(){
     actionHtml+='<div class="suggest-action suggest-kong"><span class="action-label">杠</span> '+actions.kong.map(function(a){return a.tile+'（'+a.type+'）';}).join('、')+'</div>';
   }
   const selectedTile=getSelectedTile();
-  const candidateViews=candDetails.map(function(detail){return candidateViewFromDetail(detail,hand,candScores);});
+  const candidateViews=candDetails.map(function(detail){return candidateViewFromDetail(detail,hand,candScores,0);});
   const bestKey=tkey(hand[bestIdx]);
   const systemRecommendation=candidateViews.find(function(item){return item.tile===bestKey;})||candidateViews[0]||null;
   let mctsSummary=null;

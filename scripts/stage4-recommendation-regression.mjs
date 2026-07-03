@@ -166,11 +166,49 @@ if (!mctsTieBreakText.includes('最终采用复核排序更优的候选')) {
   failures.push('stage4-mcts-tiebreak: panel should explain why MCTS average overrides the original recommendation');
 }
 
+const finalConsistencyContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'wan1',
+  systemRecommendation: { tile: 'tong4', tileLabel: '4\u7b52', totalScore: 27, shantenAfter: 1, route: 'norm', speedScore: 1, handValueScore: 0.2, waitQualityScore: 0.1, defenseScore: 0.4, breaksPair: true },
+  candidates: [
+    { tile: 'tong4', tileLabel: '4\u7b52', totalScore: 27, shantenAfter: 1, route: 'norm', speedScore: 1, handValueScore: 0.2, waitQualityScore: 0.1, defenseScore: 0.4, breaksPair: true },
+    { tile: 'wan1', tileLabel: '1\u4e07', totalScore: 25, shantenAfter: 0, route: 'norm', speedScore: 3, handValueScore: 1.5, waitQualityScore: 2, defenseScore: 0.1, waitCount: 2, waitRemaining: 6 },
+    { tile: 'tiao7', tileLabel: '7\u6761', totalScore: 27, shantenAfter: 1, route: 'norm', speedScore: 1, handValueScore: 0.2, waitQualityScore: 0.1, defenseScore: 0.3, breaksTaatsu: true },
+  ],
+  mctsSummary: {
+    finalAction: '\u62531\u4e07',
+    strongRuleAction: '\u62531\u4e07',
+    mctsAction: '\u62531\u4e07',
+    modelAction: '\u62531\u4e07',
+    modelTendencyStrength: 'medium',
+    modelAffectedFinalChoice: false,
+    modelAgreement: { withMcts: true, withStrongRule: true },
+    overridden: false,
+    notOverrideReason: 'rule/mcts/model agree',
+    playerExplanation: '\u62531\u4e07',
+    candidates: [
+      { action: '\u62531\u4e07', averageValue: -2.1, mainRisk: 'stable', dealInRisk: 0.1, kongRisk: 0 },
+      { action: '\u62534\u7b52', averageValue: -8.41, mainRisk: 'breaks pair', dealInRisk: 0.1, kongRisk: 0 },
+    ],
+  },
+};
+const finalConsistencyPanel = engine.buildPanel(finalConsistencyContext);
+if (finalConsistencyPanel.systemTile !== 'wan1') {
+  failures.push(`stage4-final-consistency: final recommendation should follow agreed rule/mcts/model action wan1, actual ${finalConsistencyPanel.systemTile}`);
+}
+const finalRankingText = finalConsistencyPanel.sections.find((item) => item.title.includes('候选'))?.text || '';
+if (finalRankingText.includes('4\u7b52') && finalRankingText.indexOf('1\u4e07') > finalRankingText.indexOf('4\u7b52')) {
+  failures.push('stage4-final-consistency: candidate ranking should keep wan1 above tong4');
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }
 if (!runtimeHtml.includes('导出失败：生成或下载 JSON 文件失败') || !runtimeHtml.includes('[game log] export failed')) {
   failures.push('stage4-runtime: export failure lacks locatable message');
+}
+if (!runtimeHtml.includes('const exportLogs=currentLog?[currentLog]:[]') || !runtimeHtml.includes('JSON.stringify(exportLogs,null,2)')) {
+  failures.push('stage4-runtime: export should serialize only the current game log');
 }
 if (!runtimeHtml.includes('recordAiDiscardInterpretation') || !runtimeHtml.includes("createRecommendationRecord('ai-discard'")) {
   failures.push('stage4-runtime: ai discard interpretation is not recorded');
