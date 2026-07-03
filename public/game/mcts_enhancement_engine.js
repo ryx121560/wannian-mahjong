@@ -53,6 +53,33 @@ function numberValue(tile) {
     const match = tile.match(/(\d)$/);
     return match ? Number(match[1]) : null;
 }
+function numberSuit(tile) {
+    if (!tile)
+        return null;
+    const match = tile.match(/^(wan|tong|tiao)[1-9]$/);
+    return match ? match[1] : null;
+}
+function breaksCoreSequence(candidate, context) {
+    if (candidate.coreSequenceBreak)
+        return true;
+    if (candidate.action !== 'discard')
+        return false;
+    const suit = numberSuit(candidate.tile);
+    const value = numberValue(candidate.tile);
+    if (!suit || value == null)
+        return false;
+    const values = new Set((context.handSummary || [])
+        .filter((tile) => numberSuit(tile) === suit)
+        .map((tile) => numberValue(tile))
+        .filter((item) => item != null));
+    for (let start = 1; start <= 6; start += 1) {
+        if (values.has(start) && values.has(start + 1) && values.has(start + 2) && values.has(start + 3)) {
+            if (value === start + 1 || value === start + 2)
+                return true;
+        }
+    }
+    return false;
+}
 function scorePositionAdjustment(candidate, context) {
     const pos = scorePosition(context);
     if (pos === 'leading') {
@@ -101,6 +128,15 @@ function routeProtectionAdjustment(candidate) {
         return 0;
     const protectedRoute = ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(candidate.route || '');
     return protectedRoute ? -4.5 : -2;
+}
+function coreSequenceAdjustment(candidate, context) {
+    if (!breaksCoreSequence(candidate, context))
+        return 0;
+    const threat = strongestThreat(context);
+    const late = context.turn >= 48;
+    if (threat >= 0.75 || late)
+        return -2.5;
+    return -7.5;
 }
 function dragonComboAdjustment(candidate, context) {
     if (!candidate.dragonComboBreak)
@@ -168,6 +204,7 @@ function scoreCandidate(candidate, context) {
             + defenseAdjustment(candidate, context)
             + kongAdjustment(candidate, context)
             + routeProtectionAdjustment(candidate)
+            + coreSequenceAdjustment(candidate, context)
             + dragonComboAdjustment(candidate, context)
             + isolatedDiscardAdjustment(candidate, context)
             + invalidReadyAdjustment(candidate)
@@ -194,6 +231,8 @@ function modelScore(candidate, context) {
         score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
     if (candidate.dragonComboBreak)
         score -= 2.2;
+    if (breaksCoreSequence(candidate, context))
+        score -= strongestThreat(context) >= 0.75 ? 1.2 : 3.5;
     if (candidate.breaksRoute)
         score -= 1.4;
     if (pos === 'leading')

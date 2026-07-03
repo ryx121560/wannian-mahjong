@@ -16,6 +16,7 @@ export interface MctsCandidate {
   scoreImpact?: number;
   waitCount?: number;
   waitRemaining?: number;
+  coreSequenceBreak?: boolean;
   isStrongRuleChoice?: boolean;
   dragonComboBreak?: boolean;
   isolatedDiscardPriority?: number;
@@ -155,6 +156,32 @@ function numberValue(tile?: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+function numberSuit(tile?: string): string | null {
+  if (!tile) return null;
+  const match = tile.match(/^(wan|tong|tiao)[1-9]$/);
+  return match ? match[1] : null;
+}
+
+function breaksCoreSequence(candidate: MctsCandidate, context: MctsDecisionContext): boolean {
+  if (candidate.coreSequenceBreak) return true;
+  if (candidate.action !== 'discard') return false;
+  const suit = numberSuit(candidate.tile);
+  const value = numberValue(candidate.tile);
+  if (!suit || value == null) return false;
+  const values = new Set(
+    (context.handSummary || [])
+      .filter((tile) => numberSuit(tile) === suit)
+      .map((tile) => numberValue(tile))
+      .filter((item): item is number => item != null),
+  );
+  for (let start = 1; start <= 6; start += 1) {
+    if (values.has(start) && values.has(start + 1) && values.has(start + 2) && values.has(start + 3)) {
+      if (value === start + 1 || value === start + 2) return true;
+    }
+  }
+  return false;
+}
+
 function scorePositionAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
   const pos = scorePosition(context);
   if (pos === 'leading') {
@@ -197,6 +224,14 @@ function routeProtectionAdjustment(candidate: MctsCandidate): number {
   if (!candidate.breaksRoute) return 0;
   const protectedRoute = ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(candidate.route || '');
   return protectedRoute ? -4.5 : -2;
+}
+
+function coreSequenceAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
+  if (!breaksCoreSequence(candidate, context)) return 0;
+  const threat = strongestThreat(context);
+  const late = context.turn >= 48;
+  if (threat >= 0.75 || late) return -2.5;
+  return -7.5;
 }
 
 function dragonComboAdjustment(candidate: MctsCandidate, context: MctsDecisionContext): number {
@@ -251,6 +286,7 @@ function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext):
       + defenseAdjustment(candidate, context)
       + kongAdjustment(candidate, context)
       + routeProtectionAdjustment(candidate)
+      + coreSequenceAdjustment(candidate, context)
       + dragonComboAdjustment(candidate, context)
       + isolatedDiscardAdjustment(candidate, context)
       + invalidReadyAdjustment(candidate)
@@ -271,6 +307,7 @@ function modelScore(candidate: ScoredCandidate, context: MctsDecisionContext): n
   if ((candidate.waitCount || 0) >= 2) score += 0.5;
   if ((candidate.isolatedDiscardPriority || 0) > 0) score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
   if (candidate.dragonComboBreak) score -= 2.2;
+  if (breaksCoreSequence(candidate, context)) score -= strongestThreat(context) >= 0.75 ? 1.2 : 3.5;
   if (candidate.breaksRoute) score -= 1.4;
   if (pos === 'leading') score -= clampRisk(candidate.dealInRisk) * 2.2 + clampRisk(candidate.kongRisk) * 1.4;
   if (pos === 'behind' && (candidate.scoreImpact || 0) >= 2) score += 0.9;

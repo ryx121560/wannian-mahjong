@@ -381,6 +381,50 @@ function clearAiHandMeta(hand,key){
   if(Object.keys(meta).length===0)AI_HAND_META.delete(hand);
 }
 
+function createPlayer(name,human,score){
+  return {name:name,hand:[],human:human,score:score,melds:[],lastDrawnTile:null,lastDrawnTileKey:null};
+}
+
+function clearPlayerDrawMarker(playerIdx){
+  const player=GS.players&&GS.players[playerIdx];
+  if(!player)return;
+  player.lastDrawnTile=null;
+  player.lastDrawnTileKey=null;
+}
+
+function clearAllDrawMarkers(){
+  for(let i=0;i<4;i++)clearPlayerDrawMarker(i);
+}
+
+function markPlayerDrawnTile(playerIdx,tile){
+  const player=GS.players&&GS.players[playerIdx];
+  if(!player)return;
+  player.lastDrawnTile=tile||null;
+  player.lastDrawnTileKey=tile?tkey(tile):null;
+}
+
+function aiDisplayHand(playerIdx){
+  const player=GS.players&&GS.players[playerIdx];
+  const hand=[...(player&&player.hand?player.hand:[])];
+  const markerKey=player&&player.lastDrawnTileKey;
+  if(!markerKey)return hand.sort(tcmp);
+  let drawn=null;
+  for(let i=hand.length-1;i>=0;i--){
+    if(tkey(hand[i])===markerKey){
+      drawn=hand.splice(i,1)[0];
+      break;
+    }
+  }
+  hand.sort(tcmp);
+  if(drawn)hand.push(drawn);
+  return hand;
+}
+
+function aiDrawHighlight(playerIdx,tile){
+  const player=GS.players&&GS.players[playerIdx];
+  return !!(GS.showAI&&player&&player.lastDrawnTileKey&&tile&&tkey(tile)===player.lastDrawnTileKey);
+}
+
 function clearGameTimers(){
   clearTimeout(GS._aiActionTimer);GS._aiActionTimer=null;
   clearTimeout(GS._aiAnimTimer);GS._aiAnimTimer=null;
@@ -412,10 +456,10 @@ function clearGameSnapshot(reason){
 
 function idlePlayers(){
   return [
-    {name:'你',hand:[],human:true,score:scores[0],melds:[]},
-    {name:'AI下家',hand:[],human:false,score:scores[1],melds:[]},
-    {name:'AI对家',hand:[],human:false,score:scores[2],melds:[]},
-    {name:'AI上家',hand:[],human:false,score:scores[3],melds:[]}
+    createPlayer('你',true,scores[0]),
+    createPlayer('AI下家',false,scores[1]),
+    createPlayer('AI对家',false,scores[2]),
+    createPlayer('AI上家',false,scores[3])
   ];
 }
 
@@ -432,6 +476,7 @@ function enterIdleState(reason){
     _gameLog:null,_lastResult:null,
     _recommendation:{current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null}
   });
+  clearAllDrawMarkers();
   document.getElementById('suggest').style.display='none';
   document.getElementById('msg').style.display='none';
   document.getElementById('bt-selfplay').textContent='自弈';
@@ -516,6 +561,12 @@ function restoreGameSession(snapshot){
   }
   clearGameTimers();
   Object.assign(GS,restored.state);
+  for(let i=0;i<4;i++){
+    if(GS.players[i]){
+      GS.players[i].lastDrawnTile=null;
+      GS.players[i].lastDrawnTileKey=null;
+    }
+  }
   scores=GS.players.map(function(player){return player.score;});
   totalGamesPlayed=restored.totalGames;
   _selfPlay.running=restored.selfPlayRunning;
@@ -1057,12 +1108,12 @@ function render(){
 
   // AI hands
   // p=2 对家：横排（顶部）
-  const h2=[...GS.players[2].hand].sort(tcmp);
+  const h2=aiDisplayHand(2);
   const tw2=h2.length*(TW+GAP);
   let sx2=W/2-tw2/2;
   for(let i=0;i<h2.length;i++){
     const yo=(GS._aiDiscardAnim&&GS._aiDiscardAnim.p===2&&GS._aiDiscardAnim.idx===i)?+12:0;
-    drawTile(sx2+i*(TW+GAP),45+yo,h2[i],{face:!!GS.showAI,disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===2&&GS._aiDiscardAnim.idx===i)});
+    drawTile(sx2+i*(TW+GAP),45+yo,h2[i],{face:!!GS.showAI,hl:aiDrawHighlight(2,h2[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===2&&GS._aiDiscardAnim.idx===i)});
   }
   
   // 碰/杠展示 - 顶部玩家 (p=2)
@@ -1077,7 +1128,7 @@ function render(){
   }
   
   // p=3 上家（左侧）竖排
-  const h3=[...GS.players[3].hand].sort(tcmp);
+  const h3=aiDisplayHand(3);
   const startY3=H/2-h3.length*(TW+GAP)/2;
   for(let i=0;i<h3.length;i++){
     const ty=startY3+i*(TW+GAP);
@@ -1085,7 +1136,7 @@ function render(){
     ctx.save();
     ctx.translate(35, ty);
     ctx.rotate(Math.PI/2);
-    drawTile(0,-TH+lift,h3[i],{face:!!GS.showAI,disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===3&&GS._aiDiscardAnim.idx===i)});
+    drawTile(0,-TH+lift,h3[i],{face:!!GS.showAI,hl:aiDrawHighlight(3,h3[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===3&&GS._aiDiscardAnim.idx===i)});
     ctx.restore();
   }
   
@@ -1108,7 +1159,7 @@ function render(){
   }
   
   // p=1 下家（右侧）竖排
-  const h1=[...GS.players[1].hand].sort(tcmp);
+  const h1=aiDisplayHand(1);
   const startY1=H/2-h1.length*(TW+GAP)/2;
   for(let i=0;i<h1.length;i++){
     const ty=startY1+i*(TW+GAP);
@@ -1116,7 +1167,7 @@ function render(){
     ctx.save();
     ctx.translate(W-45, ty);
     ctx.rotate(Math.PI/2);
-    drawTile(0,0+lift,h1[i],{face:!!GS.showAI,disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===1&&GS._aiDiscardAnim.idx===i)});
+    drawTile(0,0+lift,h1[i],{face:!!GS.showAI,hl:aiDrawHighlight(1,h1[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===1&&GS._aiDiscardAnim.idx===i)});
     ctx.restore();
   }
 
@@ -1221,10 +1272,10 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
   if(!_selfPlay.running)configureAiLearning(false);
   GS.wall=shuffle(TILES);
   GS.players=[
-    {name:'你',hand:[],human:true,score:scores[0],melds:[]},
-    {name:'AI下家',hand:[],human:false,score:scores[1],melds:[]},
-    {name:'AI对家',hand:[],human:false,score:scores[2],melds:[]},
-    {name:'AI上家',hand:[],human:false,score:scores[3],melds:[]}
+    createPlayer('你',true,scores[0]),
+    createPlayer('AI下家',false,scores[1]),
+    createPlayer('AI对家',false,scores[2]),
+    createPlayer('AI上家',false,scores[3])
   ];
   GS.discards=[];GS.lastDiscard=null;GS.lastDiscardP=-1;clearSelectedTile();
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};
@@ -1364,6 +1415,7 @@ function completeHumanDraw(playerIdx,reason){
   if(GS.wall.length===0){drawGame();return false;}
   GS.newDrawnTile=GS.wall.pop();
   GS.players[playerIdx].hand.push(GS.newDrawnTile);
+  clearPlayerDrawMarker(playerIdx);
   logEvent(playerIdx,'摸牌',GS.newDrawnTile);
   GS.newDrawnIdx=GS.players[playerIdx].hand.length-1;
   clearSelectedTile();
@@ -1397,6 +1449,7 @@ function doDiscard(selectedTile){
   recordRecommendationChoice('discard','打'+lbl(tile));
   // The draw marker only applies before the current discard completes.
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  clearPlayerDrawMarker(GS.cur);
   
   GS.discards.push(tile);GS.lastDiscard=tile;GS.lastDiscardP=GS.cur;
   GS.playerDiscards[GS.cur].push(tile);
@@ -1465,6 +1518,7 @@ function nextTurn(){
   clearTimeout(GS._aiNextTurnTimer);GS._aiNextTurnTimer=null;
   GS._aiDiscardAnim=null;
   clearSelectedTile();
+  clearAllDrawMarkers();
   GS.turn++;GS.cur=(GS.cur+1)%4;GS.phase='drawing';GS.lastDiscard=null;
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
@@ -1504,6 +1558,7 @@ function persistSettledScores(){
 function drawGame(){
   clearSelectedTile();
   GS.phase='ended';GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  clearAllDrawMarkers();
   finalizeRecommendationSummary();
   saveGameLog({winner:null,type:'流局',scores:GS.players.map(p=>({name:p.name,score:p.score}))});
   renderFinalRecommendationPanel();
@@ -1556,6 +1611,7 @@ function doPong(p){
   GS.players[p].melds.push({tile:t,count:3});
   logEvent(p,'碰',t);
   GS.cur=p;GS.lastDiscard=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  clearPlayerDrawMarker(p);
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
   setMsg(`${GS.players[p].name}碰了${lbl(t)}，请出牌`);
   render();updateBtns();
@@ -1588,7 +1644,7 @@ function doKong(p){
   if(!GS.players[p].melds)GS.players[p].melds=[];
   GS.players[p].melds.push({tile:t,count:4});
   logEvent(p,'杠',t);
-  if(GS.wall.length>0){const dt=GS.wall.pop();GS.players[p].hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
+  if(GS.wall.length>0){const dt=GS.wall.pop();GS.players[p].hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);if(!GS.players[p].human)markPlayerDrawnTile(p,dt);}
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   GS.cur=p;GS.lastDiscard=null;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
@@ -1633,8 +1689,9 @@ function doSelfKong(p){
     pl.melds.push({tile:t,count:4});
   }
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  clearPlayerDrawMarker(p);
   logEvent(p,info.type==='add'?'加杠':'暗杠',t);
-  if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
+  if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
   const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
@@ -1651,6 +1708,7 @@ function applyWin(winner,wt){
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
   clearSelectedTile();
   GS.phase='ended';GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  clearAllDrawMarkers();
   document.getElementById('suggest').style.display='block';
   GS._preWinScores=GS.players.map(function(p){return p.score;});
   const eh=effectiveHand(winner);
@@ -1727,6 +1785,7 @@ async function aiTurn(p){
   const dt=GS.wall.pop();
   GS.newDrawnTile=dt;GS.newDrawnIdx=GS.players[p].hand.length;
   GS.players[p].hand.push(dt);
+  markPlayerDrawnTile(p,dt);
   logEvent(p,'摸牌',dt);
   GS.phase='discarding';
   saveGameSnapshot('ai-draw');
@@ -1807,8 +1866,9 @@ function aiSelfKong(p,kongInfo){
     pl.melds.push({tile:t,count:4});
   }
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  clearPlayerDrawMarker(p);
   logEvent(p,kongInfo.type==='add'?'加杠':'暗杠',t);
-  if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);}
+  if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
   const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
@@ -1837,7 +1897,7 @@ async function aiDiscard(p){
   sAll.sort(compareAiRoutes);
   logSuggestion(h,p,sAll[0].v,sAll[0].p,t,subLog,decisionLog);
   // 在排序后手牌中的位置（render 里用的是排序数组）
-  const sIdx=[...h].sort(tcmp).indexOf(t);
+  const sIdx=aiDisplayHand(p).indexOf(t);
   // 第一阶段：牌抬起展示
   GS._aiDiscardAnim={p:p,idx:sIdx};render();
   // 第二阶段：完成弃牌
@@ -1852,6 +1912,7 @@ async function aiDiscard(p){
     GS.discards.push(t);GS.lastDiscard=t;GS.lastDiscardP=p;
     GS.playerDiscards[p].push(t);
     GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+    clearPlayerDrawMarker(p);
     GS._aiDiscardAnim=null;
   _spOnDiscard(p,t);
     logEvent(p,'弃牌',t);
@@ -3998,9 +4059,9 @@ function updateSuggestion(){
     GS._recommendation.selectedTileKey=selectedTile?tkey(selectedTile):null;
   }
   const context=recommendationBaseContext({
+    handKeys:hand.map(tkey),
     concealedHandKeys:hand.map(tkey),
     meldContext:recommendationMelds(),
-    handKeys:hand.map(tkey),
     selectedTile:selectedTile?tkey(selectedTile):null,
     candidates:candidateViews,
     systemRecommendation:systemRecommendation,

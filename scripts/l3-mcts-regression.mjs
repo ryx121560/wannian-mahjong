@@ -54,6 +54,7 @@ const forbiddenTerms = ['UCB', 'search tree', 'rollout path', 'node visit', 'nod
 const raw = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
 const failures = [];
 const byCategory = {};
+let extraCases = 0;
 
 for (const item of raw.cases) {
   let clock = 0;
@@ -96,6 +97,51 @@ for (const item of raw.cases) {
   }
 }
 
+const sequenceCoreContext = {
+  turn: 23,
+  player: 2,
+  phase: 'discarding',
+  timeLimitMs: 10000,
+  scores: [100, 100, 100, 100],
+  dealer: 2,
+  wallRemaining: 70,
+  discards: [[], [], [], []],
+  melds: [],
+  handSummary: ['wan1', 'wan3', 'wan5', 'wan8', 'wan8', 'tong5', 'tong6', 'tong7', 'tong8', 'dong', 'nan', 'bei', 'bai', 'bai'],
+  opponentThreats: [
+    { player: 0, tenpaiRisk: 0.1, dalanRisk: 0.1, honorRisk: 0.1 },
+    { player: 1, tenpaiRisk: 0.1, dalanRisk: 0.1, honorRisk: 0.1 },
+    { player: 3, tenpaiRisk: 0.1, dalanRisk: 0.1, honorRisk: 0.1 },
+  ],
+  strongRuleAction: actionText({ action: 'discard', tile: 'wan1', tileLabel: '1万' }),
+  candidates: [
+    { id: 'discard:wan1', action: 'discard', tile: 'wan1', tileLabel: '1万', legal: true, baseScore: 0, shantenAfter: 2, route: 'norm', breaksRoute: false, defenseRisk: 0.22, dealInRisk: 0.08, kongRisk: 0, waitCount: 2, waitRemaining: 5, isStrongRuleChoice: true },
+    { id: 'discard:tong5', action: 'discard', tile: 'tong5', tileLabel: '5筒', legal: true, baseScore: -0.2, shantenAfter: 2, route: 'norm', breaksRoute: false, defenseRisk: 0.2, dealInRisk: 0.08, kongRisk: 0, waitCount: 2, waitRemaining: 4 },
+    { id: 'discard:tong6', action: 'discard', tile: 'tong6', tileLabel: '6筒', legal: true, baseScore: 4.3, shantenAfter: 2, route: 'norm', breaksRoute: true, defenseRisk: 0.08, dealInRisk: 0.05, kongRisk: 0, waitCount: 2, waitRemaining: 4 },
+    { id: 'discard:tong7', action: 'discard', tile: 'tong7', tileLabel: '7筒', legal: true, baseScore: 4.2, shantenAfter: 2, route: 'norm', breaksRoute: true, defenseRisk: 0.08, dealInRisk: 0.05, kongRisk: 0, waitCount: 2, waitRemaining: 4 },
+    { id: 'discard:tong8', action: 'discard', tile: 'tong8', tileLabel: '8筒', legal: true, baseScore: -0.1, shantenAfter: 2, route: 'norm', breaksRoute: false, defenseRisk: 0.2, dealInRisk: 0.08, kongRisk: 0, waitCount: 2, waitRemaining: 4 },
+  ],
+};
+const sequenceCoreSummary = engine.decideWithMcts(sequenceCoreContext);
+extraCases += 1;
+if ([actionText({ action: 'discard', tile: 'tong6', tileLabel: '6筒' }), actionText({ action: 'discard', tile: 'tong7', tileLabel: '7筒' })].includes(sequenceCoreSummary.finalAction)) {
+  failures.push(`mcts-sequence-core-protection-001: final action breaks 5-6-7-8 core sequence: ${sequenceCoreSummary.finalAction}`);
+}
+const sequenceCoreRank = sequenceCoreSummary.candidates.map((candidate) => candidate.action);
+const firstCoreBreak = Math.min(
+  ...[actionText({ action: 'discard', tile: 'tong6', tileLabel: '6筒' }), actionText({ action: 'discard', tile: 'tong7', tileLabel: '7筒' })]
+    .map((action) => sequenceCoreRank.indexOf(action))
+    .filter((idx) => idx >= 0),
+);
+const firstEdgeOrOutside = Math.min(
+  ...[actionText({ action: 'discard', tile: 'wan1', tileLabel: '1万' }), actionText({ action: 'discard', tile: 'tong5', tileLabel: '5筒' }), actionText({ action: 'discard', tile: 'tong8', tileLabel: '8筒' })]
+    .map((action) => sequenceCoreRank.indexOf(action))
+    .filter((idx) => idx >= 0),
+);
+if (Number.isFinite(firstCoreBreak) && Number.isFinite(firstEdgeOrOutside) && firstCoreBreak < firstEdgeOrOutside) {
+  failures.push(`mcts-sequence-core-protection-001: core breaker ranked above safer sequence edge/outside candidate: ${sequenceCoreRank.join(', ')}`);
+}
+
 try { fs.unlinkSync(tempPath); } catch {}
 
 const expectedDistribution = raw.distribution || {};
@@ -103,7 +149,8 @@ for (const [category, count] of Object.entries(expectedDistribution)) {
   if (byCategory[category] !== count) failures.push(`distribution ${category}: ${byCategory[category] || 0}, expected ${count}`);
 }
 
-const pass = raw.cases.length - failures.length;
-const rate = raw.cases.length ? pass / raw.cases.length : 0;
-console.log(JSON.stringify({ total: raw.cases.length, pass, fail: failures.length, passRate: Number((rate * 100).toFixed(2)), distribution: byCategory, failures: failures.slice(0, 30) }, null, 2));
-if (raw.cases.length !== 150 || failures.length > 0) process.exit(1);
+const totalCases = raw.cases.length + extraCases;
+const pass = totalCases - failures.length;
+const rate = totalCases ? pass / totalCases : 0;
+console.log(JSON.stringify({ total: totalCases, pass, fail: failures.length, passRate: Number((rate * 100).toFixed(2)), distribution: byCategory, extraCases, failures: failures.slice(0, 30) }, null, 2));
+if (raw.cases.length !== 150 || extraCases !== 1 || failures.length > 0) process.exit(1);

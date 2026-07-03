@@ -208,6 +208,18 @@ if (!runtimeHtml.includes('function formatWinSettlementText') || !runtimeHtml.in
 if (!/GS\._lastResult\.displayText[\s\S]{0,220}message\.textContent=GS\._lastResult\.displayText/.test(runtimeHtml)) {
   failures.push('stage4-runtime: restored ended game does not show full settlement details');
 }
+if (!runtimeHtml.includes('lastDrawnTile') || !runtimeHtml.includes('lastDrawnTileKey')) {
+  failures.push('stage4-runtime: AI drawn tile state is not stored per player');
+}
+if (!/function aiDisplayHand\s*\(/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: AI visible hand does not preserve drawn tile at the end');
+}
+if (!/aiDrawHighlight/.test(runtimeHtml) || !/lastDrawnTileKey/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: AI drawn tile green highlight is missing');
+}
+if (!/clearPlayerDrawMarker\s*\(/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: AI drawn tile marker is not cleared after discard or state transitions');
+}
 
 const summaryContext = {
   ...raw.cases[0].context,
