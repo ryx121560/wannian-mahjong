@@ -13980,6 +13980,93 @@
         "winnerGain": 6,
         "capped": false
       }
+    },
+    {
+    "id": "qiangxing-pao-gang-tenpai-001",
+    "level": "L1",
+      "category": "meld",
+      "description": "???7????7?????????????",
+      "meldCheck": {
+        "fn": "checkQiangXingPaoGangResult",
+        "input": {
+          "beforeGangHand": [
+            "wan8",
+            "wan8",
+            "tiao8",
+            "tiao9",
+            "bai",
+            "bai",
+            "xi"
+          ],
+          "gangTile": "wan7",
+          "gangDrawTile": "tiao7",
+          "wildTile": "xi"
+        }
+      },
+      "expected": {
+        "value": {
+          "isTenpai": true,
+          "paoGangSuccess": true
+        }
+      }
+    },
+    {
+    "id": "qiangxing-pao-gang-tenpai-002",
+    "level": "L1",
+      "category": "meld",
+      "description": "???7????8?????????????",
+      "meldCheck": {
+        "fn": "checkQiangXingPaoGangResult",
+        "input": {
+          "beforeGangHand": [
+            "wan8",
+            "wan8",
+            "tiao8",
+            "tiao9",
+            "bai",
+            "bai",
+            "xi"
+          ],
+          "gangTile": "wan7",
+          "gangDrawTile": "wan8",
+          "wildTile": "xi"
+        }
+      },
+      "expected": {
+        "value": {
+          "isTenpai": true,
+          "paoGangSuccess": true
+        }
+      }
+    },
+    {
+    "id": "qiangxing-pao-gang-tenpai-003",
+    "level": "L1",
+      "category": "meld",
+      "description": "???7?????????????????",
+      "meldCheck": {
+        "fn": "checkQiangXingPaoGangResult",
+        "input": {
+          "beforeGangHand": [
+            "wan8",
+            "wan8",
+            "tiao8",
+            "tiao9",
+            "bai",
+            "bai",
+            "xi"
+          ],
+          "gangTile": "wan7",
+          "gangDrawTile": "bai",
+          "wildTile": "xi"
+        }
+      },
+      "expected": {
+        "value": {
+          "isTenpai": true,
+          "paoGangSuccess": true
+        }
+      }
     }
   ]
 }

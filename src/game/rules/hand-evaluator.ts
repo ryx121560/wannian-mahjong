@@ -1,4 +1,4 @@
-import { ALL_TILE_KEYS, ARROW_TILES, HONOR_TILES, NUMBER_SUITS, WIND_TILES, countTileRecord, countTiles, isHonor, isNumberTile, tileMod3Group, tileSuit, tileValue, uniqueTiles } from './tile-utils';
+import { ALL_TILE_KEYS, ARROW_TILES, HONOR_TILES, NUMBER_SUITS, WIND_TILES, countTileRecord, countTiles, isHonor, isNumberTile, sortTiles, tileMod3Group, tileSuit, tileValue, uniqueTiles } from './tile-utils';
 import type { CanWinResult, HandClassification, HandRoute, HandType, Meld, ShantenResult, TenpaiResult, Tile, WinContext } from './types';
 
 const SHANTEN_CACHE_LIMIT = 5000;
@@ -56,7 +56,7 @@ function removeSet(counts: Record<string, number>, tiles: Tile[]): Record<string
 }
 
 function groupsOk(counts: Record<string, number>): boolean {
-  const active = Object.keys(counts).filter((tile) => counts[tile] > 0) as Tile[];
+  const active = sortTiles(Object.keys(counts).filter((tile) => counts[tile] > 0) as Tile[]);
   if (!active.length) return true;
   const tile = active[0];
   if (counts[tile] >= 3) {

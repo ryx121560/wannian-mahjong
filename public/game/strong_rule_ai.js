@@ -73,7 +73,7 @@ function removeSet(counts, tiles) {
     return next;
 }
 function groupsOk(counts) {
-    const active = Object.keys(counts).filter((tile) => counts[tile] > 0);
+    const active = (0, tile_utils_1.sortTiles)(Object.keys(counts).filter((tile) => counts[tile] > 0));
     if (!active.length)
         return true;
     const tile = active[0];
@@ -405,6 +405,8 @@ exports.canQiangXingPaoGang = canQiangXingPaoGang;
 exports.canZhiChan = canZhiChan;
 exports.canLianGang = canLianGang;
 exports.getGangDrawTile = getGangDrawTile;
+exports.checkQiangXingPaoGangResult = checkQiangXingPaoGangResult;
+const hand_evaluator_1 = require("./hand-evaluator");
 const tile_utils_1 = require("./tile-utils");
 function canPeng(hand, discardTile) {
     return hand.filter((tile) => tile === discardTile).length >= 2;
@@ -449,6 +451,46 @@ function getGangDrawTile(wallTiles) {
     if (!wallTiles.length)
         throw new Error('wallTiles is empty');
     return { drawTile: wallTiles[wallTiles.length - 1], remainingWall: wallTiles.slice(0, -1) };
+}
+function canWinWithWildcard(hand, melds, wildTile) {
+    if ((0, hand_evaluator_1.canWin)(hand, { melds }).canWin)
+        return true;
+    if (!wildTile || !hand.includes(wildTile))
+        return false;
+    const wildIndexes = hand.map((tile, index) => (tile === wildTile ? index : -1)).filter((index) => index >= 0);
+    let found = false;
+    const tryReplace = (source, offset) => {
+        if (found)
+            return;
+        if (offset >= wildIndexes.length) {
+            found = (0, hand_evaluator_1.canWin)(source, { melds }).canWin;
+            return;
+        }
+        const index = wildIndexes[offset];
+        for (const tile of tile_utils_1.ALL_TILE_KEYS) {
+            const next = source.slice();
+            next[index] = tile;
+            tryReplace(next, offset + 1);
+            if (found)
+                return;
+        }
+    };
+    tryReplace(hand, 0);
+    return found;
+}
+function checkTenpaiWithWildcard(hand, melds, wildTile) {
+    if ((0, hand_evaluator_1.checkTenpai)(hand, melds).isTenpai)
+        return true;
+    return tile_utils_1.ALL_TILE_KEYS.some((tile) => canWinWithWildcard(hand.concat(tile), melds, wildTile));
+}
+function checkQiangXingPaoGangResult(input) {
+    const melds = input.melds || [];
+    const afterGangHand = input.afterGangHand || [...(input.beforeGangHand || []), input.gangDrawTile];
+    const candidates = afterGangHand.length % 3 === 2
+        ? afterGangHand.map((_, index) => afterGangHand.filter((__, itemIndex) => itemIndex !== index))
+        : [afterGangHand];
+    const isTenpai = candidates.some((hand) => checkTenpaiWithWildcard(hand, melds, input.wildTile));
+    return { isTenpai, paoGangSuccess: isTenpai };
 }
 
 },

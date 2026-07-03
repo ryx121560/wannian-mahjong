@@ -25,4 +25,14 @@ if (JSON.stringify(settlement.delta) !== JSON.stringify([-1, -1, -1, 3])) {
   throw new Error(`scoreSettlement browser bundle mismatch: ${JSON.stringify(settlement.delta)}`);
 }
 
+const paoGang = engine.checkQiangXingPaoGangResult({
+  beforeGangHand: ['wan8', 'wan8', 'tiao8', 'tiao9', 'bai', 'bai', 'xi'],
+  gangTile: 'wan7',
+  gangDrawTile: 'tiao7',
+  wildTile: 'xi',
+});
+if (!paoGang || paoGang.isTenpai !== true || paoGang.paoGangSuccess !== true) {
+  throw new Error(`checkQiangXingPaoGangResult browser bundle mismatch: ${JSON.stringify(paoGang)}`);
+}
+
 console.log('Browser rule engine verified');

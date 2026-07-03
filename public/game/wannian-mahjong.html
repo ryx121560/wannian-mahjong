@@ -607,16 +607,16 @@ function ensureRecommendationLog(){
   if(!Array.isArray(GS._gameLog.mctsDecisionLogs))GS._gameLog.mctsDecisionLogs=[];
   return GS._gameLog;
 }
-function logEvent(p,action,tile){
+function logEvent(p,action,tile,extra){
   if(!GS._gameLog)return;
-  GS._gameLog.events.push({
+  GS._gameLog.events.push(Object.assign({
     turn:GS._gameLog.events.length+1,
     player:p,name:GS.players[p]?GS.players[p].name:'?',
     action:action,
     tile:tile?(typeof tile==='string'?tile:tkey(tile)):null,
     tileLabel:tile?lbl(tile):null,
     hand:GS.players[p]?GS.players[p].hand.map(t=>tkey(t)).join(',') : ''
-  });
+  },extra||{}));
 }
 function saveGameLog(result){
   if(!GS._gameLog)return;
@@ -1624,6 +1624,9 @@ function doKong(p){
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
   clearSelectedTile();
   const t=GS.lastDiscard;
+  const beforeGangHand=ruleTiles(GS.players[p].hand);
+  const gangCheck=RULE_ENGINE.canQiangXingPaoGang(beforeGangHand,ruleMeldsForPlayer(p),false,tkey(t));
+  const isPaoGang=!!(gangCheck&&gangCheck.isPaoGang);
   // 抢杠检测：其他玩家能否胡这张牌
   for(let _i=1;_i<4;_i++){
     const _pi=(p+_i)%4;
@@ -1643,15 +1646,35 @@ function doKong(p){
   // record meld
   if(!GS.players[p].melds)GS.players[p].melds=[];
   GS.players[p].melds.push({tile:t,count:4});
-  logEvent(p,'杠',t);
-  if(GS.wall.length>0){const dt=GS.wall.pop();GS.players[p].hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);if(!GS.players[p].human)markPlayerDrawnTile(p,dt);}
+  logEvent(p,isPaoGang?'强行跑杠':'杠',t,{isPaoGang:isPaoGang});
+  let paoGangResult=null;
+  if(GS.wall.length>0){
+    const dt=GS.wall.pop();
+    GS.players[p].hand.push(dt);
+    GS._kc[p]=(GS._kc[p]||0)+1;
+    GS._hasWild[p]=true;
+    if(isPaoGang&&RULE_ENGINE.checkQiangXingPaoGangResult){
+      paoGangResult=RULE_ENGINE.checkQiangXingPaoGangResult({
+        beforeGangHand:beforeGangHand.filter(function(key){return key!==tkey(t);}),
+        afterGangHand:ruleTiles(GS.players[p].hand),
+        gangTile:tkey(t),
+        gangDrawTile:tkey(dt),
+        wildTile:tkey(dt),
+        melds:ruleMeldsForPlayer(p)
+      });
+    }
+    logEvent(p,'杠后摸',dt,Object.assign({isPaoGang:isPaoGang},paoGangResult?{overallTenpai:!!paoGangResult.isTenpai,paoGangSuccess:!!paoGangResult.paoGangSuccess,reason:paoGangResult.paoGangSuccess?'强行跑杠后补牌整体进入听牌':'强行跑杠后补牌未形成整体听牌'}:{}));
+    if(!GS.players[p].human)markPlayerDrawnTile(p,dt);
+  }
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   GS.cur=p;GS.lastDiscard=null;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
   const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
-  setMsg(`${GS.players[p].name}杠了${lbl(t)}，请出牌`);
+  if(paoGangResult&&paoGangResult.paoGangSuccess)setMsg(`${GS.players[p].name}强行跑杠${lbl(t)}后跑到成功，请出牌`);
+  else if(paoGangResult)setMsg(`${GS.players[p].name}强行跑杠${lbl(t)}后未跑到，请出牌`);
+  else setMsg(`${GS.players[p].name}杠了${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot('open-kong');
   if(!GS.players[p].human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>aiDiscard(p),1200);}

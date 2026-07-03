@@ -142,6 +142,38 @@ if (Number.isFinite(firstCoreBreak) && Number.isFinite(firstEdgeOrOutside) && fi
   failures.push(`mcts-sequence-core-protection-001: core breaker ranked above safer sequence edge/outside candidate: ${sequenceCoreRank.join(', ')}`);
 }
 
+const sequenceHighThreatContext = {
+  turn: 49,
+  player: 2,
+  phase: 'discarding',
+  timeLimitMs: 10000,
+  scores: [100, 100, 100, 100],
+  dealer: 2,
+  wallRemaining: 28,
+  discards: [[], [], [], []],
+  melds: [],
+  handSummary: ['tong7', 'bai', 'bai', 'dong', 'wan3', 'wan8', 'wan8', 'nan', 'tong8', 'bei', 'fa', 'bei', 'wan1', 'tong6'],
+  opponentThreats: [
+    { player: 0, tenpaiRisk: 0.86, dalanRisk: 0.55, honorRisk: 0.7 },
+    { player: 1, tenpaiRisk: 0.78, dalanRisk: 0.45, honorRisk: 0.65 },
+    { player: 3, tenpaiRisk: 0.82, dalanRisk: 0.5, honorRisk: 0.62 },
+  ],
+  strongRuleAction: actionText({ action: 'discard', tile: 'tong6', tileLabel: '6筒' }),
+  candidates: [
+    { id: 'discard:tong6', action: 'discard', tile: 'tong6', tileLabel: '6筒', legal: true, baseScore: 4.8, shantenAfter: 2, route: 'norm', breaksRoute: true, defenseRisk: 0.05, dealInRisk: 0.04, kongRisk: 0, waitCount: 1, waitRemaining: 3, isStrongRuleChoice: true },
+    { id: 'discard:tong7', action: 'discard', tile: 'tong7', tileLabel: '7筒', legal: true, baseScore: 2.6, shantenAfter: 2, route: 'norm', breaksRoute: true, defenseRisk: 0.12, dealInRisk: 0.08, kongRisk: 0, waitCount: 1, waitRemaining: 3 },
+    { id: 'discard:wan1', action: 'discard', tile: 'wan1', tileLabel: '1万', legal: true, baseScore: 0.5, shantenAfter: 2, route: 'norm', breaksRoute: false, defenseRisk: 0.42, dealInRisk: 0.25, kongRisk: 0, waitCount: 1, waitRemaining: 3 },
+    { id: 'discard:fa', action: 'discard', tile: 'fa', tileLabel: '发', legal: true, baseScore: 0.1, shantenAfter: 2, route: 'norm', breaksRoute: false, defenseRisk: 0.5, dealInRisk: 0.3, kongRisk: 0, waitCount: 1, waitRemaining: 3 },
+  ],
+};
+const sequenceHighThreatSummary = engine.decideWithMcts(sequenceHighThreatContext);
+extraCases += 1;
+if (sequenceHighThreatSummary.finalAction === actionText({ action: 'discard', tile: 'tong6', tileLabel: '6筒' })) {
+  if (!sequenceHighThreatSummary.structureLossReason || !sequenceHighThreatSummary.defenseInfluence) {
+    failures.push('mcts-sequence-core-protection-149: high-threat sequence break lacks defense and structure-loss explanation');
+  }
+}
+
 try { fs.unlinkSync(tempPath); } catch {}
 
 const expectedDistribution = raw.distribution || {};
@@ -153,4 +185,4 @@ const totalCases = raw.cases.length + extraCases;
 const pass = totalCases - failures.length;
 const rate = totalCases ? pass / totalCases : 0;
 console.log(JSON.stringify({ total: totalCases, pass, fail: failures.length, passRate: Number((rate * 100).toFixed(2)), distribution: byCategory, extraCases, failures: failures.slice(0, 30) }, null, 2));
-if (raw.cases.length !== 150 || extraCases !== 1 || failures.length > 0) process.exit(1);
+if (raw.cases.length !== 150 || extraCases !== 2 || failures.length > 0) process.exit(1);

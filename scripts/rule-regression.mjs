@@ -127,6 +127,7 @@ for (const testCase of cases) {
       if (fn === 'canZhiChan') value = rules.canZhiChan(input.hand, input.melds, input.isTenpai, input.discardTile, input.discardPlayer).canZhiChan;
       if (fn === 'canLianGang') value = rules.canLianGang(input.hand, input.melds, input.lastGangDrawTile).canLianGang;
       if (fn === 'canQiangXingPaoGang') value = rules.canQiangXingPaoGang(input.hand, input.melds || [], input.isTenpai, input.discardTile);
+      if (fn === 'checkQiangXingPaoGangResult') value = rules.checkQiangXingPaoGangResult(input);
       if (fn === 'getGangDrawTile') value = rules.getGangDrawTile(input.wallTiles).drawTile;
       check(sameValue(value, expected.value), `${fn} expected ${JSON.stringify(expected.value)}, actual ${JSON.stringify(value)}`, failures);
     }

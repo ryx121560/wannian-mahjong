@@ -79,8 +79,10 @@ export interface MctsDecisionSummary {
     mainRisk: string;
     dealInRisk: number;
     kongRisk: number;
+    coreSequenceBreak: boolean;
   }>;
   defenseInfluence: string;
+  structureLossReason: string | null;
   hiddenInferenceUsed: boolean;
   hiddenInferenceNote: string;
   scoreSituationNote: string;
@@ -177,6 +179,11 @@ function breaksCoreSequence(candidate: MctsCandidate, context: MctsDecisionConte
   for (let start = 1; start <= 6; start += 1) {
     if (values.has(start) && values.has(start + 1) && values.has(start + 2) && values.has(start + 3)) {
       if (value === start + 1 || value === start + 2) return true;
+    }
+  }
+  for (let start = 1; start <= 7; start += 1) {
+    if (values.has(start) && values.has(start + 1) && values.has(start + 2)) {
+      if (value === start || value === start + 1 || value === start + 2) return true;
     }
   }
   return false;
@@ -410,6 +417,14 @@ function kongRiskNote(scored: ScoredCandidate[]): string {
   return risky ? '杠牌候选已评估抢杠、风牌和高牌风险' : '杠牌候选风险较低，已纳入补牌和杠开收益';
 }
 
+function structureLossReason(final: ScoredCandidate, context: MctsDecisionContext): string | null {
+  if (!breaksCoreSequence(final, context)) return null;
+  const threat = strongestThreat(context);
+  if (threat >= 0.75) return '当前处于高防守压力，系统已识别该弃牌会破坏完整顺子，但安全收益覆盖结构损失';
+  if (context.turn >= 48) return '终盘阶段安全优先，系统已识别该弃牌会破坏完整顺子并按防守收益覆盖处理';
+  return '系统已识别该弃牌会破坏完整顺子，低威胁局面默认降低该候选优先级';
+}
+
 function explanation(final: ScoredCandidate, summary: Pick<MctsDecisionSummary, 'overridden' | 'overrideReason' | 'notOverrideReason'>, context: MctsDecisionContext): string {
   const action = actionText(final);
   if (summary.overridden) return `${action} 是搜索复核后的选择：${summary.overrideReason}。${scoreSituationNote(context)}。`;
@@ -474,8 +489,10 @@ export function decideWithMcts(context: MctsDecisionContext, now = () => Date.no
         mainRisk: item.mainRisk,
         dealInRisk: Number(clampRisk(item.dealInRisk).toFixed(2)),
         kongRisk: Number(clampRisk(item.kongRisk).toFixed(2)),
+        coreSequenceBreak: breaksCoreSequence(item, context),
       })),
     defenseInfluence: defenseInfluence(context),
+    structureLossReason: structureLossReason(decision.best, context),
     hiddenInferenceUsed: true,
     hiddenInferenceNote: '已根据弃牌、副露、对手威胁和剩余可见牌做隐藏信息风险修正',
     scoreSituationNote: scoreSituationNote(context),

@@ -78,6 +78,12 @@ function breaksCoreSequence(candidate, context) {
                 return true;
         }
     }
+    for (let start = 1; start <= 7; start += 1) {
+        if (values.has(start) && values.has(start + 1) && values.has(start + 2)) {
+            if (value === start || value === start + 1 || value === start + 2)
+                return true;
+        }
+    }
     return false;
 }
 function scorePositionAdjustment(candidate, context) {
@@ -342,6 +348,16 @@ function kongRiskNote(scored) {
     const risky = kong.some((item) => clampRisk(item.kongRisk) >= 0.55 || isHonor(item.tile) || (numberValue(item.tile) || 0) >= 5);
     return risky ? '杠牌候选已评估抢杠、风牌和高牌风险' : '杠牌候选风险较低，已纳入补牌和杠开收益';
 }
+function structureLossReason(final, context) {
+    if (!breaksCoreSequence(final, context))
+        return null;
+    const threat = strongestThreat(context);
+    if (threat >= 0.75)
+        return '当前处于高防守压力，系统已识别该弃牌会破坏完整顺子，但安全收益覆盖结构损失';
+    if (context.turn >= 48)
+        return '终盘阶段安全优先，系统已识别该弃牌会破坏完整顺子并按防守收益覆盖处理';
+    return '系统已识别该弃牌会破坏完整顺子，低威胁局面默认降低该候选优先级';
+}
 function explanation(final, summary, context) {
     const action = actionText(final);
     if (summary.overridden)
@@ -407,8 +423,10 @@ function decideWithMcts(context, now = () => Date.now()) {
             mainRisk: item.mainRisk,
             dealInRisk: Number(clampRisk(item.dealInRisk).toFixed(2)),
             kongRisk: Number(clampRisk(item.kongRisk).toFixed(2)),
+            coreSequenceBreak: breaksCoreSequence(item, context),
         })),
         defenseInfluence: defenseInfluence(context),
+        structureLossReason: structureLossReason(decision.best, context),
         hiddenInferenceUsed: true,
         hiddenInferenceNote: '已根据弃牌、副露、对手威胁和剩余可见牌做隐藏信息风险修正',
         scoreSituationNote: scoreSituationNote(context),

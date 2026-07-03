@@ -220,6 +220,9 @@ if (!/aiDrawHighlight/.test(runtimeHtml) || !/lastDrawnTileKey/.test(runtimeHtml
 if (!/clearPlayerDrawMarker\s*\(/.test(runtimeHtml)) {
   failures.push('stage4-runtime: AI drawn tile marker is not cleared after discard or state transitions');
 }
+if (!runtimeHtml.includes('强行跑杠') || !runtimeHtml.includes('paoGangSuccess') || !runtimeHtml.includes('overallTenpai')) {
+  failures.push('stage4-runtime: qiangxing pao gang result is not written to exported event log');
+}
 
 const summaryContext = {
   ...raw.cases[0].context,
