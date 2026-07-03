@@ -3640,17 +3640,21 @@ function recommendationHandLabels(keys){
 
 function recommendationBaseContext(extra){
   const handKeys=(extra&&extra.handKeys)||((GS.players[0]&&GS.players[0].hand)||[]).map(tkey);
+  const concealedHandKeys=(GS.players[0]&&GS.players[0].hand?GS.players[0].hand:[]).map(tkey);
+  const meldContext=recommendationMelds();
   return Object.assign({
     turn:GS.turn||0,
     phaseLabel:GS.phase||'idle',
     currentPlayer:GS.cur||0,
     hand:handKeys,
+    concealedHandKeys:concealedHandKeys,
     handLabels:recommendationHandLabels(handKeys),
     selectedTile:GS._recommendation?GS._recommendation.selectedTileKey:null,
     systemRecommendation:null,
     candidates:[],
     discards:(GS.playerDiscards||[[],[],[],[]]).map(function(row){return (row||[]).map(tkey);}),
-    melds:recommendationMelds(),
+    melds:meldContext,
+    meldContext:meldContext,
     scores:GS.players.map(function(p){return p.score;}),
     aiLastDiscard:GS._recommendation&&GS._recommendation.lastAiInterpretation?GS._recommendation.lastAiInterpretation:null,
     responseEvent:null,
@@ -3820,18 +3824,13 @@ function updateSuggestion(){
     renderRecommendationPanel(Object.assign(base,{candidates:humanCandidates,systemRecommendation:humanCandidates[0]||null,mctsSummary:responseMctsSummary}));
     return;
   }
-  const realHand=GS.players[0].hand;
-  const realHandLen=realHand.length;
-  let hand=effectiveHand(0);
-  // 仅在newDrawnTile尚未入effectiveHand时才追加（避免aiTurn/nextTurn中push后重复计数）
+  let hand=[...(GS.players[0].hand||[])];
+  // Discard candidates must come only from the concealed hand; fixed melds are added by route evaluators.
   if(GS.newDrawnTile&&!hand.some(function(t){return t.k===GS.newDrawnTile.k;})){hand=[...hand,GS.newDrawnTile];}
-  // 副露会膨胀有效手牌数（1副露+3，2副露+6），放宽上限至20
-  if(hand.length<13||hand.length>20){el.style.display='none';return;}
+  if(hand.length<1||hand.length>14){el.style.display='none';return;}
 
-  // 构建候选索引：只遍历真实手牌，排除已副露（碰/吃/杠）的牌
   const candIndices=[];
-  for(let i=0;i<realHandLen;i++)candIndices.push(i);
-  if(GS.newDrawnTile)candIndices.push(hand.length-1);
+  for(let i=0;i<hand.length;i++)candIndices.push(i);
 
   const evaluated=evaluateDiscardCandidates(hand,0,{candidateIndices:candIndices});
   let bestShanten=evaluated.bestShanten,bestCands=evaluated.bestCands,bestPaths=evaluated.bestPaths,candDetails=evaluated.candDetails;
@@ -3955,7 +3954,7 @@ function updateSuggestion(){
 
   // 听牌分析（bestShanten===0）：列出等牌及剩余枚数
   if(bestShanten===0&&(bestPath==='norm'||bestPath==='7p')){
-    const subHand=realHand.filter(function(_,j){return j!==bestIdx;});
+    const subHand=hand.filter(function(_,j){return j!==bestIdx;});
     const waits=listWaits(subHand,0);
     const waitDetails=waits.map(function(k){return {k:k,remain:aiRemainingCountForWait(k,0,subHand,hand[bestIdx])};}).filter(function(w){return w.remain>0;}).sort(function(a,b){return b.remain-a.remain;});
     if(waitDetails.length>0){
@@ -3967,7 +3966,7 @@ function updateSuggestion(){
 
   // 一向听待牌分析（bestShanten===1）：列出进张后能听哪些牌
   if(bestShanten===1&&(bestPath==='norm'||bestPath==='7p')){
-    const subHand=realHand.filter(function(_,j){return j!==bestIdx;});
+    const subHand=hand.filter(function(_,j){return j!==bestIdx;});
     const waits=listWaits(subHand,0);
     const waitDetails=waits.map(function(k){return {k:k,remain:aiRemainingCountForWait(k,0,subHand,hand[bestIdx])};}).filter(function(w){return w.remain>0;});
     if(waitDetails.length>0){
@@ -3999,6 +3998,8 @@ function updateSuggestion(){
     GS._recommendation.selectedTileKey=selectedTile?tkey(selectedTile):null;
   }
   const context=recommendationBaseContext({
+    concealedHandKeys:hand.map(tkey),
+    meldContext:recommendationMelds(),
     handKeys:hand.map(tkey),
     selectedTile:selectedTile?tkey(selectedTile):null,
     candidates:candidateViews,

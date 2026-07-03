@@ -178,6 +178,12 @@ if (!runtimeHtml.includes('recordAiDiscardInterpretation') || !runtimeHtml.inclu
 if (!runtimeHtml.includes('function aiUnprotectedSingleHonor') || !runtimeHtml.includes('singleHonorAdj')) {
   failures.push('stage4-runtime: original draw-tiao3 replay lacks single honor discard priority over isolated middle tile');
 }
+if (/function updateSuggestion\(\)[\s\S]*?let hand=effectiveHand\(0\)/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: discard recommendation still uses effectiveHand as concealed hand after melds');
+}
+if (!runtimeHtml.includes('concealedHandKeys') || !runtimeHtml.includes('meldContext')) {
+  failures.push('stage4-runtime: recommendation context does not separate concealed hand and meld context');
+}
 if (!runtimeHtml.includes('responseActionText') || !runtimeHtml.includes('mctsSummaryFinalResponseCandidate')) {
   failures.push('stage4-runtime: response candidate matching is not action/player specific');
 }
