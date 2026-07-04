@@ -240,6 +240,63 @@ for (const keyword of ['边张孤张', '2条已见', '公开消耗', '伸展价�
   if (!isolatedEdgeText.includes(keyword)) failures.push(`stage4-isolated-edge: missing reason keyword ${keyword}`);
 }
 
+const pong8TongProtect567TongId = 'recommendation-pong-8tong-protect-567tong-001';
+const pong8TongProtect567TongContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'tiao6',
+  systemRecommendation: { tile: 'tiao6', tileLabel: '6\u6761', totalScore: 88, shantenAfter: 1, route: 'norm', speedScore: 1.2, handValueScore: 0.4, waitQualityScore: 0.3, defenseScore: 0.1 },
+  candidates: [
+    { tile: 'tiao6', tileLabel: '6\u6761', totalScore: 88, shantenAfter: 1, route: 'norm', speedScore: 1.2, handValueScore: 0.4, waitQualityScore: 0.3, defenseScore: 0.1 },
+    { tile: 'tong6', tileLabel: '6\u7b52', totalScore: 80, shantenAfter: 2, route: 'norm', speedScore: -0.5, handValueScore: 0.6, waitQualityScore: 0.4, defenseScore: 0.1, breaksTaatsu: true, furoTransitionAdj: -8, furoTransitionReason: '6\u7b52\u662f567\u7b52\u8fde\u7eed\u987a\u5b50\u7ed3\u6784\uff0c\u78b08\u7b52\u540e\u4e0d\u80fd\u6309\u5b64\u5f20\u5904\u7406\u3002' },
+    { tile: 'wan4', tileLabel: '4\u4e07', totalScore: 74, shantenAfter: 2, route: 'norm', speedScore: -0.3, handValueScore: 0.2, waitQualityScore: 0.1, defenseScore: 0.2, breaksMeld: true },
+  ],
+  melds: [{ player: 0, tile: 'tong8', count: 3, type: 'peng' }],
+};
+const pong8TongProtect567TongPanel = engine.buildPanel(pong8TongProtect567TongContext);
+if (pong8TongProtect567TongPanel.systemTile !== 'tiao6') {
+  failures.push(`${pong8TongProtect567TongId}: expected final recommendation tiao6, actual ${pong8TongProtect567TongPanel.systemTile}`);
+}
+const pong8TongProtect567TongRanking = pong8TongProtect567TongPanel.sections.find((item) => item.title.includes('候选'))?.text || '';
+if (pong8TongProtect567TongRanking.includes('6\u7b52') && pong8TongProtect567TongRanking.indexOf('6\u6761') > pong8TongProtect567TongRanking.indexOf('6\u7b52')) {
+  failures.push(`${pong8TongProtect567TongId}: candidate ranking should keep tiao6 above tong6`);
+}
+const pong8TongProtect567TongText = pong8TongProtect567TongPanel.sections.map((item) => item.text).join('\n');
+for (const keyword of ['567\u7b52', '\u4e0d\u80fd\u6309\u5b64\u5f20\u5904\u7406']) {
+  if (!pong8TongProtect567TongText.includes(keyword)) failures.push(`${pong8TongProtect567TongId}: missing reason keyword ${keyword}`);
+}
+if (pong8TongProtect567TongText.includes('6\u7b52\u4e3a\u8fb9\u5f20\u5b64\u5f20') || pong8TongProtect567TongText.includes('6\u7b52\u4e3a\u5b64\u5f20')) {
+  failures.push(`${pong8TongProtect567TongId}: tong6 should not be described as isolated after pong 8tong`);
+}
+
+const pong8TongDiscard3TongTenpai5WanId = 'recommendation-pong-8tong-discard-3tong-tenpai-5wan-001';
+const pong8TongDiscard3TongTenpai5WanContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'tong3',
+  systemRecommendation: { tile: 'tong3', tileLabel: '3\u7b52', totalScore: 90, shantenAfter: 0, route: 'norm', speedScore: 2, handValueScore: 0.8, waitQualityScore: 1.5, defenseScore: 0.1, waitCount: 1, waitRemaining: 2, furoTransitionAdj: 6, furoTransitionReason: '\u62533\u7b52\u540e\u8fdb\u51650\u5411\u542c\uff0c\u4fdd\u75593445\u4e07\u8f6c\u542c\u6838\u5fc3\u7ed3\u6784\uff0c\u660e\u786e\u5f855\u4e07\u3002' },
+  candidates: [
+    { tile: 'tong3', tileLabel: '3\u7b52', totalScore: 90, shantenAfter: 0, route: 'norm', speedScore: 2, handValueScore: 0.8, waitQualityScore: 1.5, defenseScore: 0.1, waitCount: 1, waitRemaining: 2, furoTransitionAdj: 6, furoTransitionReason: '\u62533\u7b52\u540e\u8fdb\u51650\u5411\u542c\uff0c\u4fdd\u75593445\u4e07\u8f6c\u542c\u6838\u5fc3\u7ed3\u6784\uff0c\u660e\u786e\u5f855\u4e07\u3002' },
+    { tile: 'wan5', tileLabel: '5\u4e07', totalScore: 78, shantenAfter: 1, route: 'norm', speedScore: -0.4, handValueScore: 0.2, waitQualityScore: 0.1, defenseScore: 0.2, breaksTaatsu: true, furoTransitionAdj: -8, furoTransitionReason: '5\u4e07\u662f3445\u4e07\u526f\u9732\u540e\u8f6c\u542c\u6838\u5fc3\u7ed3\u6784\uff0c\u4e0d\u5e94\u4f18\u5148\u62c6\u6389\u3002' },
+    { tile: 'tong6', tileLabel: '6\u7b52', totalScore: 76, shantenAfter: 1, route: 'norm', speedScore: -0.5, handValueScore: 0.3, waitQualityScore: 0.2, defenseScore: 0.1, breaksTaatsu: true },
+  ],
+  melds: [{ player: 0, tile: 'tong8', count: 3, type: 'peng' }],
+  furoTransitionReason: '\u62533\u7b52\u540e\u8fdb\u51650\u5411\u542c\uff0c\u4fdd\u75593445\u4e07\u8f6c\u542c\u6838\u5fc3\u7ed3\u6784\uff0c\u660e\u786e\u5f855\u4e07\u3002',
+};
+const pong8TongDiscard3TongTenpai5WanPanel = engine.buildPanel(pong8TongDiscard3TongTenpai5WanContext);
+if (pong8TongDiscard3TongTenpai5WanPanel.systemTile !== 'tong3') {
+  failures.push(`${pong8TongDiscard3TongTenpai5WanId}: expected final recommendation tong3, actual ${pong8TongDiscard3TongTenpai5WanPanel.systemTile}`);
+}
+const pong8TongDiscard3TongTenpai5WanRanking = pong8TongDiscard3TongTenpai5WanPanel.sections.find((item) => item.title.includes('候选'))?.text || '';
+if (!pong8TongDiscard3TongTenpai5WanRanking.includes('3\u7b52')) {
+  failures.push(`${pong8TongDiscard3TongTenpai5WanId}: candidate ranking should include tong3`);
+}
+if (pong8TongDiscard3TongTenpai5WanRanking.includes('5\u4e07') && pong8TongDiscard3TongTenpai5WanRanking.indexOf('3\u7b52') > pong8TongDiscard3TongTenpai5WanRanking.indexOf('5\u4e07')) {
+  failures.push(`${pong8TongDiscard3TongTenpai5WanId}: candidate ranking should keep tong3 above wan5`);
+}
+const pong8TongDiscard3TongTenpai5WanText = pong8TongDiscard3TongTenpai5WanPanel.sections.map((item) => item.text).join('\n');
+for (const keyword of ['0\u5411\u542c', '5\u4e07', '3445\u4e07', '\u8f6c\u542c\u6838\u5fc3\u7ed3\u6784']) {
+  if (!pong8TongDiscard3TongTenpai5WanText.includes(keyword)) failures.push(`${pong8TongDiscard3TongTenpai5WanId}: missing reason keyword ${keyword}`);
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }
