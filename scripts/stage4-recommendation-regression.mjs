@@ -201,6 +201,45 @@ if (finalRankingText.includes('4\u7b52') && finalRankingText.indexOf('1\u4e07') 
   failures.push('stage4-final-consistency: candidate ranking should keep wan1 above tong4');
 }
 
+const isolatedEdgeContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'tiao1',
+  systemRecommendation: { tile: 'tiao6', tileLabel: '6条', totalScore: 100, shantenAfter: 2, route: 'norm', speedScore: 1, handValueScore: 0.5, waitQualityScore: 0.2, defenseScore: -0.3 },
+  candidates: [
+    { tile: 'tiao6', tileLabel: '6条', totalScore: 100, shantenAfter: 2, route: 'norm', speedScore: 1, handValueScore: 0.5, waitQualityScore: 0.2, defenseScore: -0.3 },
+    { tile: 'wan4', tileLabel: '4万', totalScore: 92, shantenAfter: 3, route: 'norm', speedScore: -1, handValueScore: 0.2, waitQualityScore: 0.1, defenseScore: 0.4, breaksMeld: true },
+    { tile: 'tiao1', tileLabel: '1条', totalScore: 100, shantenAfter: 2, route: 'norm', speedScore: 1, handValueScore: 0.5, waitQualityScore: 0.2, defenseScore: -0.3, edgeVisibleAdj: 6, edgeVisibleReason: '1条为边张孤张，关键连接牌2条已见并被公开消耗，伸展价值下降。' },
+  ],
+  mctsSummary: {
+    finalAction: '打6条',
+    strongRuleAction: '打6条',
+    mctsAction: '打1条',
+    modelAction: '打1条',
+    modelTendencyStrength: 'strong',
+    modelAffectedFinalChoice: false,
+    modelAgreement: { withMcts: true, withStrongRule: false },
+    overridden: false,
+    notOverrideReason: '候选综合评分接近',
+    playerExplanation: '复核建议打1条',
+    candidates: [
+      { action: '打6条', averageValue: 14.43, mainRisk: '对手威胁较高', dealInRisk: 0.4, kongRisk: 0 },
+      { action: '打1条', averageValue: 16.23, mainRisk: '对手威胁较高', dealInRisk: 0.4, kongRisk: 0 },
+    ],
+  },
+};
+const isolatedEdgePanel = engine.buildPanel(isolatedEdgeContext);
+if (isolatedEdgePanel.systemTile !== 'tiao1') {
+  failures.push(`stage4-isolated-edge: expected final recommendation tiao1, actual ${isolatedEdgePanel.systemTile}`);
+}
+const isolatedRankingText = isolatedEdgePanel.sections.find((item) => item.title.includes('候选'))?.text || '';
+if (isolatedRankingText.includes('6条') && isolatedRankingText.indexOf('1条') > isolatedRankingText.indexOf('6条')) {
+  failures.push('stage4-isolated-edge: candidate ranking should put tiao1 above tiao6');
+}
+const isolatedEdgeText = isolatedEdgePanel.sections.map((item) => item.text).join('\n');
+for (const keyword of ['边张孤张', '2条已见', '公开消耗', '伸展价值下降']) {
+  if (!isolatedEdgeText.includes(keyword)) failures.push(`stage4-isolated-edge: missing reason keyword ${keyword}`);
+}
+
 if (runtimeHtml.includes('30秒后自动跳过') || /_respTimer\s*=\s*gameSetTimeout[\s\S]{0,260}30000/.test(runtimeHtml)) {
   failures.push('stage4-runtime: response countdown still exists');
 }
@@ -276,11 +315,23 @@ if (!runtimeHtml.includes('recommendationMelds().some(function(m){return m.playe
 if (runtimeHtml.includes('discardHasNeighbor')) {
   failures.push('stage4-runtime: furo transition explanation is still blocked by isolated-neighbor check');
 }
+if (!runtimeHtml.includes('function visibleEdgeIsolatedAdj') || !runtimeHtml.includes('edgeVisibleReason')) {
+  failures.push('stage4-runtime: isolated edge discard does not consider visible key-tile consumption');
+}
+if (!runtimeHtml.includes('waitKeys.length>0?Math.min(top.v,0):top.v')) {
+  failures.push('stage4-runtime: exposed-meld discard candidates do not promote legal tenpai waits to 0 shanten');
+}
+if (!runtimeHtml.includes('aiBreaksMeld(hand,discardIdx)||aiBreaksTaatsu(hand,discardIdx)||aiBreaksPair(hand,discardIdx)')) {
+  failures.push('stage4-runtime: structure tiles can still be described as isolated discards');
+}
 if (!fs.readFileSync(sourcePath, 'utf8').includes('副露后转听核心结构')) {
   failures.push('stage4-copy: furo transition reason does not explain the 3445 core structure');
 }
 if (!fs.readFileSync(sourcePath, 'utf8').includes('context.furoTransitionReason')) {
   failures.push('stage4-copy: recommendation panel does not render hand-level furo transition explanation');
+}
+if (!fs.readFileSync(sourcePath, 'utf8').includes('candidateDisplayScore')) {
+  failures.push('stage4-copy: candidate score display still lacks relative normalization');
 }
 if (!runtimeHtml.includes('lastDrawnTile') || !runtimeHtml.includes('lastDrawnTileKey')) {
   failures.push('stage4-runtime: AI drawn tile state is not stored per player');

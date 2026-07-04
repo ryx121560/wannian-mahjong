@@ -2253,9 +2253,12 @@ function evaluateDiscardCandidates(hand,playerIdx,options){
     ];
     routes.sort(compareAiRoutes);
     const top=routes[0];
-    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:top.v,path:top.p,routes:routes,breaksMeld:aiBreaksMeld(hand,i),breaksPair:aiBreaksPair(hand,i),breaksTaatsu:aiBreaksTaatsu(hand,i),dragonComboBreak:aiBreaksDragonCombo(hand,i),isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,i)});
-    if(top.v<bestShanten){bestShanten=top.v;bestCands=[i];bestPaths=[top.p];}
-    else if(top.v===bestShanten){bestCands.push(i);bestPaths.push(top.p);}
+    const fixedMelds=aiFixedMeldCount(playerIdx)+(options.extraMeld&&options.extraMeld.tile?1:0);
+    const waitKeys=(top.p==='norm'||top.p==='7p')?listWaitsForMeldCount(sub,playerIdx,fixedMelds,tkey(hand[i])):[];
+    const displayShanten=waitKeys.length>0?Math.min(top.v,0):top.v;
+    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:displayShanten,path:top.p,routes:routes,waits:waitKeys,breaksMeld:aiBreaksMeld(hand,i),breaksPair:aiBreaksPair(hand,i),breaksTaatsu:aiBreaksTaatsu(hand,i),dragonComboBreak:aiBreaksDragonCombo(hand,i),isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,i)});
+    if(displayShanten<bestShanten){bestShanten=displayShanten;bestCands=[i];bestPaths=[top.p];}
+    else if(displayShanten===bestShanten){bestCands.push(i);bestPaths.push(top.p);}
   }
   return {bestShanten:bestShanten,bestCands:bestCands,bestPaths:bestPaths,candDetails:details};
 }
@@ -2340,6 +2343,17 @@ function aiIsolatedDiscardPriority(h,idx){
   if(t.v===2||t.v===8)return 3;
   if(t.v===3||t.v===7)return 2;
   return 1;
+}
+
+function visibleEdgeIsolatedAdj(hand,idx,playerIdx){
+  const tile=hand[idx];
+  if(!tile||tile.t!=='num')return 0;
+  if(hand.filter(function(t){return teq(t,tile);}).length!==1)return 0;
+  if(aiBreaksMeld(hand,idx)||aiBreaksTaatsu(hand,idx)||aiBreaksPair(hand,idx))return 0;
+  if(tile.v!==1&&tile.v!==9)return 0;
+  const key=tile.s+(tile.v===1?2:8);
+  const remain=aiRemainingCountForWait(key,playerIdx,hand.filter(function(_,j){return j!==idx;}),tile);
+  return remain<=1?6:remain===2?3:0;
 }
 
 function aiRemainingCountForWait(tileKey,playerIdx,handAfterDiscard,discardTile){
@@ -3500,6 +3514,7 @@ function furoTransitionCoreReason(hand,discardIdx,playerIdx){
   if(!discard||discard.t!=='num')return '';
   const sameDiscard=hand.filter(function(t){return teq(t,discard);}).length;
   if(sameDiscard!==1)return '';
+  if(aiBreaksMeld(hand,discardIdx)||aiBreaksTaatsu(hand,discardIdx)||aiBreaksPair(hand,discardIdx))return '';
   const suitNames={wan:'万',tong:'筒',tiao:'条'};
   for(const suit of suits){
     const nums=hand.filter(function(t){return t.t==='num'&&t.s===suit;}).map(function(t){return t.v;});
@@ -3819,6 +3834,8 @@ function candidateViewFromDetail(detail,hand,candScores,playerIdx){
     dalanRouteScore:detail.path==='dalan'?1:0,
     defenseScore:defenseScore(tile,0),
     structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0)+(detail.dragonComboBreak?-6:0)+(detail.isolatedDiscardPriority||0)*0.25+(scoreInfo&&scoreInfo.furoTransitionAdj<0?scoreInfo.furoTransitionAdj:0),
+    edgeVisibleAdj:scoreInfo?scoreInfo.edgeVisibleAdj||0:0,
+    edgeVisibleReason:scoreInfo&&scoreInfo.edgeVisibleAdj>0?lbl(tile)+'为边张孤张，关键连接牌已公开消耗，伸展价值下降。':'',
     furoTransitionAdj:scoreInfo?scoreInfo.furoTransitionAdj||0:0,
     furoTransitionReason:scoreInfo&&scoreInfo.furoTransitionAdj<0?'3445万 是副露后转听核心结构，拆这组会降低碰牌后转听能力。':(scoreInfo&&scoreInfo.furoTransitionAdj>0?'副露后优先处理孤张，保留 3445万 这类副露后转听核心结构。':''),
     waitCount:waitTiles.length,
@@ -3998,8 +4015,10 @@ function updateSuggestion(){
       const recommendationDefenseScores=candDetails.map(function(item){return defenseScore(hand[item.idx],0);});
       const recommendationDefenseDiff=Math.max(...recommendationDefenseScores)-Math.min(...recommendationDefenseScores);
       const isolatedAdj=aiCanUseIsolatedTieBreak(0,danger,phase,bestShanten,recommendationDefenseDiff)?aiIsolatedDiscardPriority(hand,ci)*0.25:0;
+      const edgeVisibleAdj=visibleEdgeIsolatedAdj(hand,ci,0);
+      const structureAdj=(d.breaksMeld?-10:0)+(d.breaksTaatsu?-4:0)+(d.breaksPair?-3:0);
       const furoTransitionAdj=furoTransitionStructureScore(hand,ci,0);
-      q+=dragonAdj+isolatedAdj+furoTransitionAdj;
+      q+=dragonAdj+isolatedAdj+edgeVisibleAdj+structureAdj+furoTransitionAdj;
       let suitAdj=0;
       if(p==='norm'){
         if(bias.type==='clear'&&hand[ci].t==='num'&&hand[ci].s===bias.suit)suitAdj=-6;
@@ -4032,7 +4051,7 @@ function updateSuggestion(){
       if(phase==='early'){phaseAdj=0.3;q+=phaseAdj;}
       const defRaw=defenseScore(hand[ci],0);
       var _pc=hand.filter(function(h){return teq(h,hand[ci]);}).length;const sc=q+safeW*defRaw+(_pc>=2&&_pc<=3?-2.5:0);
-      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,furoTransitionAdj:furoTransitionAdj,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
+      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,edgeVisibleAdj:edgeVisibleAdj,structureAdj:structureAdj,furoTransitionAdj:furoTransitionAdj,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
       if(bestCandSet.has(ci)&&bestCands.length>1&&sc>bestScore){bestScore=sc;bestIdx=ci;bestPath=p;}
     });
   }

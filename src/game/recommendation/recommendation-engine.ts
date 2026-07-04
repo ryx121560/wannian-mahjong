@@ -28,6 +28,8 @@ export interface CandidateView {
   followUpPending?: string;
   furoTransitionAdj?: number;
   furoTransitionReason?: string;
+  edgeVisibleAdj?: number;
+  edgeVisibleReason?: string;
 }
 
 export interface RecommendationContext {
@@ -194,6 +196,15 @@ function sortedCandidates(context: RecommendationContext): CandidateView[] {
   return sorted.slice(0, 5);
 }
 
+function candidateDisplayScore(candidate: CandidateView, candidates: CandidateView[]): number {
+  const values = candidates.map((item) => Number(item.totalScore || 0)).filter(Number.isFinite);
+  if (!values.length) return toDisplayScore(candidate.totalScore, -8, 18);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  if (max === min) return 80;
+  return Math.max(0, Math.min(100, Math.round(((Number(candidate.totalScore || 0) - min) / (max - min)) * 80 + 10)));
+}
+
 function systemCandidate(context: RecommendationContext): CandidateView | null {
   const agreedCandidate = agreedReviewCandidate(context);
   if (agreedCandidate && !hasInvalidReadyWait(agreedCandidate)) return agreedCandidate;
@@ -322,7 +333,7 @@ function shouldPreferCandidateOver(current: CandidateView, challenger: Candidate
   const challengerMcts = mctsCandidateFor(context, challenger);
   if (!currentMcts || !challengerMcts) return false;
   const averageGap = Number(challengerMcts.averageValue || 0) - Number(currentMcts.averageValue || 0);
-  if (averageGap < 2) return false;
+  if (averageGap < 1.5) return false;
   return mctsRiskScore(challengerMcts, challenger) <= mctsRiskScore(currentMcts, current) + 0.001;
 }
 
@@ -335,7 +346,7 @@ function compareCandidates(a: CandidateView, b: CandidateView, context: Recommen
     const averageGap = Number(bMcts.averageValue || 0) - Number(aMcts.averageValue || 0);
     const aRisk = mctsRiskScore(aMcts, a);
     const bRisk = mctsRiskScore(bMcts, b);
-    if (Math.abs(averageGap) >= 2) {
+    if (Math.abs(averageGap) >= 1.5) {
       if (averageGap > 0 && bRisk <= aRisk + 0.001) return averageGap;
       if (averageGap < 0 && aRisk <= bRisk + 0.001) return averageGap;
     }
@@ -375,7 +386,7 @@ export function buildDiscardRecommendation(context: RecommendationContext): Reco
   const candidates = sortedCandidates(context);
   const second = secondCandidate(context, best);
   const confidence = confidenceFor(candidates);
-  const score = toDisplayScore(best.totalScore, -8, 18);
+  const score = candidateDisplayScore(best, candidates);
   const body = [
     line('推荐打出', `<span class="rec-tile">${esc(best.tileLabel)}</span>`),
     line('推荐目标', '长期期望收益最高'),
@@ -384,7 +395,7 @@ export function buildDiscardRecommendation(context: RecommendationContext): Reco
     modelReviewLine(context) ? line('策略模型复核', esc(modelReviewLine(context))) : '',
     line('置信度', esc(confidence)),
     line('综合评分', `${score} 分`),
-    line('第二候选', second ? `${esc(second.tileLabel)}，${toDisplayScore(second.totalScore, -8, 18)} 分` : '暂无'),
+    line('第二候选', second ? `${esc(second.tileLabel)}，${candidateDisplayScore(second, candidates)} 分` : '暂无'),
     furoTransitionContextText(context, best) ? `<p>${esc(furoTransitionContextText(context, best))}</p>` : '',
     `<p class="rec-conclusion">结论：当前推荐偏向${esc(topicFor(best))}，弃${esc(best.tileLabel)}后为${esc(best.shantenAfter)}向听，并综合考虑结构、打点、防守和位置。</p>`,
   ].join('');
@@ -420,13 +431,15 @@ export function buildCandidateRanking(context: RecommendationContext): Recommend
     if (!candidate.breaksMeld && !candidate.breaksPair && !candidate.breaksTaatsu) reasons.push('不明显破坏面子、搭子或对子');
     if (candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu) reasons.push('会影响已有结构');
     if (furoTransitionText(candidate)) reasons.push(furoTransitionText(candidate));
+    if (candidate.edgeVisibleReason) reasons.push(candidate.edgeVisibleReason);
     reasons.push(`弃后为 ${displayShantenText(candidate)}`);
     if (hasInvalidReadyWait(candidate)) reasons.push('0 向听校验未发现合法待牌，按未形成有效听牌处理');
     if ((candidate.defenseScore || 0) > 0.2) reasons.push('公开信息下安全性较好');
     if ((candidate.defenseScore || 0) < -0.6) reasons.push('防守风险偏高');
     const review = mctsCandidateNote(context, `打${candidate.tileLabel}`);
     if (review) reasons.push(review);
-    return `<div class="rec-candidate"><b>${index + 1}. ${esc(candidate.tileLabel)} - ${toDisplayScore(candidate.totalScore, -8, 18)} 分｜${esc(candidateTag(candidate, index))}</b><ul>${reasons.map((item) => `<li>${esc(item)}</li>`).join('')}</ul></div>`;
+    const displayScore = candidateDisplayScore(candidate, sortedCandidates(context));
+    return `<div class="rec-candidate"><b>${index + 1}. ${esc(candidate.tileLabel)} - ${displayScore} 分｜${esc(candidateTag(candidate, index))}</b><ul>${reasons.map((item) => `<li>${esc(item)}</li>`).join('')}</ul></div>`;
   }).join('');
   return section('三、候选牌排序原因', rows || '<p>暂无候选排序。</p>');
 }
