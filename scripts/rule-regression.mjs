@@ -64,8 +64,26 @@ const data = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
 const failed = [];
 let passed = 0;
 const byCategory = {};
+const extraCases = [
+  {
+    id: 'rule-no-cross-suit-pair-win-001',
+    level: 'L1',
+    category: 'bug-regression',
+    hand: ['tong2', 'tong3', 'tong4', 'tong5', 'tong6', 'tong7', 'tong8', 'dong', 'nan', 'bei', 'tiao8'],
+    context: { melds: [{ type: 'angang', tiles: ['wan7', 'wan7', 'wan7', 'wan7'] }], winTile: 'tiao8', winType: '自摸' },
+    expected: { canWin: false },
+  },
+  {
+    id: 'rule-same-tile-pair-win-001',
+    level: 'L1',
+    category: 'bug-regression',
+    hand: ['tong2', 'tong3', 'tong4', 'tong5', 'tong6', 'tong7', 'tong8', 'dong', 'nan', 'bei', 'tong8'],
+    context: { melds: [{ type: 'angang', tiles: ['wan7', 'wan7', 'wan7', 'wan7'] }], winTile: 'tong8', winType: '自摸' },
+    expected: { canWin: true },
+  },
+];
 
-const cases = data.cases.filter((testCase) => {
+const cases = data.cases.concat(extraCases).filter((testCase) => {
   if (options.level && testCase.level !== options.level) return false;
   if (options.category && !(testCase.category || 'uncategorized').includes(options.category)) return false;
   return true;

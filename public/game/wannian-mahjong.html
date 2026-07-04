@@ -293,6 +293,10 @@ function ruleMeldsForPlayer(playerIdx){
     return {type:type,tiles:m.count===4?[tile,tile,tile,tile]:[tile,tile,tile],fromPlayer:m.fromPlayer};
   });
 }
+function normalizedRuleMelds(preMelds){
+  if(Array.isArray(preMelds))return preMelds;
+  return ruleMeldsByCount(preMelds||0);
+}
 function ruleWinMethod(wt){
   if(wt==='点炮')return '点炮';
   if(wt==='抢杠')return '抢杠';
@@ -1303,7 +1307,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
   for(let i=0;i<4;i++)logEvent(i,'初始手牌');
 
   // check tian hu (only raw 14 cards, no wild)
-  if(canHuNormal(effectiveHand(GS.dealer),false)&&meetsThresh(effectiveHand(GS.dealer))){
+  if(canSelfWinForPlayer(GS.dealer,null,'天胡')&&meetsThresh(GS.players[GS.dealer].hand)){
     GS.phase='ended';applyWin(GS.dealer,'天胡');return;
   }
   GS.phase='drawing';
@@ -1368,11 +1372,13 @@ function effectiveHand(p){
   }
   return h;
 }
+function concealedHand(p){
+  return [...((GS.players[p]&&GS.players[p].hand)||[])];
+}
 
 function canHuNormal(hand,useWild,preMelds,winTile,winType){
-  preMelds=preMelds||0;
   const s=hand.map(tkey);
-  const ruleContext={melds:ruleMeldsByCount(preMelds),winTile:winTile?tkey(winTile):undefined,winType:winType};
+  const ruleContext={melds:normalizedRuleMelds(preMelds),winTile:winTile?tkey(winTile):undefined,winType:winType};
   const ruleResult=RULE_ENGINE.canWin(s,ruleContext);
   if(ruleResult&&ruleResult.canWin)return {win:true,useWild:false,type:ruleResult.handType,handTypes:ruleResult.handTypes,baseScore:ruleResult.baseScore,route:ruleResult.route};
   if(useWild){
@@ -1416,7 +1422,7 @@ function completeHumanDraw(playerIdx,reason){
   logEvent(playerIdx,'摸牌',GS.newDrawnTile);
   GS.newDrawnIdx=GS.players[playerIdx].hand.length-1;
   clearSelectedTile();
-  GS.canWS=canSelfWin(effectiveHand(playerIdx),GS.newDrawnTile,'自摸');
+  GS.canWS=canSelfWinForPlayer(playerIdx,GS.newDrawnTile,'自摸');
   GS.canK=!!canSelfKong(playerIdx);
   GS.phase='discarding';
   setMsg('选择要打出的牌（新摸的牌在最右边）');
@@ -1628,8 +1634,8 @@ function doKong(p){
   for(let _i=1;_i<4;_i++){
     const _pi=(p+_i)%4;
     if(_pi===p)continue;
-    const _test=[...effectiveHand(_pi),t];
-    const _chk=canHuNormal(_test,false,0,t,'抢杠');
+    const _test=[...concealedHand(_pi),t];
+    const _chk=canHuNormal(_test,false,ruleMeldsForPlayer(_pi),t,'抢杠');
     if(_chk&&_chk.win){
       setMsg(GS.players[_pi].name+'抢杠胡牌！');
       GS._robKongTarget=p;
@@ -1666,9 +1672,9 @@ function doKong(p){
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   GS.cur=p;GS.lastDiscard=null;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
-  const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
-  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
-  GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
+  const wr=canHuNormal(concealedHand(p),false,ruleMeldsForPlayer(p),_winTileK,'杠开');
+  if(wr&&wr.win&&_winTileK&&meetsThresh(concealedHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
+  GS.canWS=canSelfWinForPlayer(p,_winTileK,'杠开');
   if(paoGangResult&&paoGangResult.paoGangSuccess)setMsg(`${GS.players[p].name}强行跑杠${lbl(t)}后跑到成功，请出牌`);
   else if(paoGangResult)setMsg(`${GS.players[p].name}强行跑杠${lbl(t)}后未跑到，请出牌`);
   else setMsg(`${GS.players[p].name}杠了${lbl(t)}，请出牌`);
@@ -1689,8 +1695,8 @@ function doSelfKong(p){
     for(let _i=1;_i<4;_i++){
       const _pi=(p+_i)%4;
       if(_pi===p)continue;
-      const _test=[...effectiveHand(_pi),_kt];
-      const _chk=canHuNormal(_test,false,0,_kt,'抢杠');
+      const _test=[...concealedHand(_pi),_kt];
+      const _chk=canHuNormal(_test,false,ruleMeldsForPlayer(_pi),_kt,'抢杠');
       if(_chk&&_chk.win){
         GS.newDrawnTile=null;GS.newDrawnIdx=-1;
         setMsg(GS.players[_pi].name+'抢杠胡牌！');
@@ -1713,10 +1719,10 @@ function doSelfKong(p){
   logEvent(p,info.type==='add'?'加杠':'暗杠',t);
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
-  const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
-  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
+  const wr=canHuNormal(concealedHand(p),false,ruleMeldsForPlayer(p),_winTileK,'杠开');
+  if(wr&&wr.win&&_winTileK&&meetsThresh(concealedHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;
-  GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
+  GS.canWS=canSelfWinForPlayer(p,_winTileK,'杠开');
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot(info.type==='add'?'add-kong':'concealed-kong');
@@ -1809,7 +1815,7 @@ async function aiTurn(p){
   logEvent(p,'摸牌',dt);
   GS.phase='discarding';
   saveGameSnapshot('ai-draw');
-  if(canSelfWin(effectiveHand(p),dt,'自摸')){
+  if(canSelfWinForPlayer(p,dt,'自摸')){
     logAiResponseDecision(p,'selfDrawWin',dt,aiBestShantenForPlayer(GS.players[p].hand,p),-1,'摸牌后已满足胡牌条件，自摸优先于开杠');
     render();clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>applyWin(p,'自摸'),500);return;
   }
@@ -1890,10 +1896,10 @@ function aiSelfKong(p,kongInfo){
   logEvent(p,kongInfo.type==='add'?'加杠':'暗杠',t);
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;GS._hasWild[p]=true;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
-  const wr=canHuNormal(effectiveHand(p),false,0,_winTileK,'杠开');
-  if(wr&&wr.win&&_winTileK&&meetsThresh(effectiveHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
+  const wr=canHuNormal(concealedHand(p),false,ruleMeldsForPlayer(p),_winTileK,'杠开');
+  if(wr&&wr.win&&_winTileK&&meetsThresh(concealedHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;
-  GS.canWS=canSelfWin(effectiveHand(p),_winTileK,'杠开');
+  GS.canWS=canSelfWinForPlayer(p,_winTileK,'杠开');
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
   render();updateBtns();
   saveGameSnapshot(kongInfo.type==='add'?'ai-add-kong':'ai-concealed-kong');
@@ -1904,7 +1910,7 @@ async function aiDiscard(p){
   if(GS.phase!=='discarding')return;
   // 自弈停止后禁止AI操作人类玩家手牌
   if(GS.players[p] && GS.players[p].human) return;
-  if(canSelfWin(effectiveHand(p),GS.newDrawnTile,'自摸')&&GS.newDrawnTile){applyWin(p,'自摸');return;}
+  if(canSelfWinForPlayer(p,GS.newDrawnTile,'自摸')&&GS.newDrawnTile){applyWin(p,'自摸');return;}
   const h=GS.players[p].hand,idx=await aiChooseDiscard(h,p);
   const t=h[idx];
   const decisionLog=getAiHandMeta(h,'aiDecisionLog')||buildAiDecisionLog(h,p,idx,'fallback','未命中详细决策记录，使用最终弃牌兜底');
@@ -3370,23 +3376,29 @@ function detectHonorTaatsu(hand){
 
 
 // 综合自摸判断：检查所有牌型（面子手、七对子、打烂、半正宗、全正宗）
-function canSelfWin(hand,winTile,winType){
-  if(!hand||hand.length<14)return false;
+function canSelfWin(hand,winTile,winType,preMelds){
+  const ruleMelds=normalizedRuleMelds(preMelds);
+  if(!hand||hand.length+ruleMelds.length*3<14)return false;
   // 面子手 + 七对子（真胡）
-  const n=canHuNormal(hand,false,0,winTile,winType);
+  const n=canHuNormal(hand,false,ruleMelds,winTile,winType);
   if(n&&n.win)return true;
   // 假胡：有万能牌时（摸牌阶段 newDrawnTile 或杠后摸万能牌 _hasWild）
   if(Object.values(GS._hasWild||{}).some(v=>v)){
-    const n2=canHuNormal(hand,true,0,winTile||GS.newDrawnTile,winType);
+    const n2=canHuNormal(hand,true,ruleMelds,winTile||GS.newDrawnTile,winType);
     if(n2&&n2.win)return true;
   }
   // 打烂/正宗：0 issues = 完成
-  try{
-    if(calcShantenDalan(hand)===0)return true;
-    if(calcShantenBanzhengzong(hand)===0)return true;
-    if(calcShantenZhengzong(hand)===0)return true;
-  }catch(e){console.warn('[win check] special route shanten failed',e);}
+  if(ruleMelds.length===0){
+    try{
+      if(calcShantenDalan(hand)===0)return true;
+      if(calcShantenBanzhengzong(hand)===0)return true;
+      if(calcShantenZhengzong(hand)===0)return true;
+    }catch(e){console.warn('[win check] special route shanten failed',e);}
+  }
   return false;
+}
+function canSelfWinForPlayer(playerIdx,winTile,winType){
+  return canSelfWin(concealedHand(playerIdx),winTile,winType,ruleMeldsForPlayer(playerIdx));
 }
 
 // 听牌形：统计有效进张数
@@ -3461,7 +3473,48 @@ function handPotential(hand){
   if(dragonKinds>=2)score+=3;
 
     return score;
-}// -- UI --
+}
+
+function furoTransitionStructureScore(hand,idx,playerIdx){
+  if(aiFixedMeldCount(playerIdx)<=0)return 0;
+  const tile=hand[idx];
+  if(!tile||tile.t!=='num')return 0;
+  const sameSuit=hand.filter(function(t){return t.t==='num'&&t.s===tile.s;});
+  const countValue=function(v){return sameSuit.filter(function(t){return t.v===v;}).length;};
+  const tileCount=countValue(tile.v);
+  const hasNeighbor=countValue(tile.v-1)>0||countValue(tile.v+1)>0;
+  let score=0;
+  if(tileCount===1&&!hasNeighbor)score+=3;
+  for(let pairValue=2;pairValue<=8;pairValue++){
+    if(countValue(pairValue)>=2&&countValue(pairValue-1)>0&&countValue(pairValue+1)>0){
+      if(tile.v===pairValue)score-=5;
+      else if(tile.v===pairValue-1||tile.v===pairValue+1)score-=6;
+    }
+  }
+  return score;
+}
+function furoTransitionCoreReason(hand,discardIdx,playerIdx){
+  const hasMeld=aiFixedMeldCount(playerIdx)>0||recommendationMelds().some(function(m){return m.player===playerIdx;});
+  if(!hasMeld)return '';
+  const discard=hand[discardIdx];
+  if(!discard||discard.t!=='num')return '';
+  const sameDiscard=hand.filter(function(t){return teq(t,discard);}).length;
+  if(sameDiscard!==1)return '';
+  const suitNames={wan:'万',tong:'筒',tiao:'条'};
+  for(const suit of suits){
+    const nums=hand.filter(function(t){return t.t==='num'&&t.s===suit;}).map(function(t){return t.v;});
+    const countValue=function(v){return nums.filter(function(n){return n===v;}).length;};
+    for(let pairValue=2;pairValue<=8;pairValue++){
+      if(countValue(pairValue)>=2&&countValue(pairValue-1)>0&&countValue(pairValue+1)>0){
+        if(discard.s===suit&&(discard.v===pairValue-1||discard.v===pairValue||discard.v===pairValue+1))continue;
+        const label=''+(pairValue-1)+pairValue+pairValue+(pairValue+1)+suitNames[suit];
+        return '建议打出'+lbl(discard)+'，因为它是当前孤张；'+label+' 是副露后转听核心结构，后续碰牌或转听时需要保留。';
+      }
+    }
+  }
+  return '';
+}
+// -- UI --
 function updateBtns(){
   const h=GS.players[GS.cur]&&GS.players[GS.cur].human;
   const r=GS._respP===0;
@@ -3496,8 +3549,7 @@ document.getElementById('bt-kong').onclick=()=>{
 document.getElementById('bt-win').onclick=()=>{
   if(GS.canW&&GS._respP===0){recordRecommendationChoice('response','胡');applyWin(0,'点炮');}
   else if(GS.canWS&&GS.phase==='discarding'&&GS.players[GS.cur].human){
-    const hand = effectiveHand(0);
-    if(canSelfWin(hand,GS.newDrawnTile,'自摸')){recordRecommendationChoice('response','胡');applyWin(0,'自摸');}
+    if(canSelfWinForPlayer(0,GS.newDrawnTile,'自摸')){recordRecommendationChoice('response','胡');applyWin(0,'自摸');}
   }
 };
 document.getElementById('bt-pass').onclick=()=>{
@@ -3766,7 +3818,9 @@ function candidateViewFromDetail(detail,hand,candScores,playerIdx){
     kongZhichanScore:detail.path==='quanzheng'||detail.path==='banzheng'?0.6:0,
     dalanRouteScore:detail.path==='dalan'?1:0,
     defenseScore:defenseScore(tile,0),
-    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0)+(detail.dragonComboBreak?-6:0)+(detail.isolatedDiscardPriority||0)*0.25,
+    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0)+(detail.dragonComboBreak?-6:0)+(detail.isolatedDiscardPriority||0)*0.25+(scoreInfo&&scoreInfo.furoTransitionAdj<0?scoreInfo.furoTransitionAdj:0),
+    furoTransitionAdj:scoreInfo?scoreInfo.furoTransitionAdj||0:0,
+    furoTransitionReason:scoreInfo&&scoreInfo.furoTransitionAdj<0?'3445万 是副露后转听核心结构，拆这组会降低碰牌后转听能力。':(scoreInfo&&scoreInfo.furoTransitionAdj>0?'副露后优先处理孤张，保留 3445万 这类副露后转听核心结构。':''),
     waitCount:waitTiles.length,
     waitRemaining:waitRemaining,
     waitTiles:waitTiles,
@@ -3918,16 +3972,16 @@ function updateSuggestion(){
   const evaluated=evaluateDiscardCandidates(hand,0,{candidateIndices:candIndices});
   let bestShanten=evaluated.bestShanten,bestCands=evaluated.bestCands,bestPaths=evaluated.bestPaths,candDetails=evaluated.candDetails;
 
-  let bestIdx=bestCands[0],bestPath=bestPaths[0],candScores=null;
-  if(bestCands.length>1){
+  let bestIdx=bestCands[0],bestPath=bestPaths[0],candScores={};
+  {
     const danger=dangerLevel(0),phase=GS.turn<=24?'early':GS.turn<=48?'mid':'late';
     let safeW=aiDefenseWeight(danger,phase,0,bestShanten);
     const bias=suitBias(hand);
     let bestScore=-Infinity;
-    candScores={};
-    bestCands.forEach(function(ci,bi){
-      const d=candDetails.find(function(c){return c.idx===ci;});
-      let q;const p=bestPaths[bi];
+    const bestCandSet=new Set(bestCands);
+    candDetails.forEach(function(d){
+      const ci=d.idx;
+      let q;const p=d.path||'norm';
       if(p==='dalan')q=dalanDiscardScore(hand[ci],d.sub);
       else if(p==='quanzheng')q=dalanDiscardScore(hand[ci],d.sub)+zhengzongDiscardBonus(hand[ci],d.sub);
       else if(p==='banzheng')q=dalanDiscardScore(hand[ci],d.sub)+zhengzongDiscardBonus(hand[ci],d.sub)*0.5;
@@ -3941,10 +3995,11 @@ function updateSuggestion(){
       const dragonAdj=aiBreaksDragonCombo(hand,ci)?-8:0;
       let singleHonorAdj=0;
       const singleHonorDiscard=aiUnprotectedSingleHonor(hand,ci);
-      const recommendationDefenseScores=bestCands.map(function(k){return defenseScore(hand[k],0);});
+      const recommendationDefenseScores=candDetails.map(function(item){return defenseScore(hand[item.idx],0);});
       const recommendationDefenseDiff=Math.max(...recommendationDefenseScores)-Math.min(...recommendationDefenseScores);
       const isolatedAdj=aiCanUseIsolatedTieBreak(0,danger,phase,bestShanten,recommendationDefenseDiff)?aiIsolatedDiscardPriority(hand,ci)*0.25:0;
-      q+=dragonAdj+isolatedAdj;
+      const furoTransitionAdj=furoTransitionStructureScore(hand,ci,0);
+      q+=dragonAdj+isolatedAdj+furoTransitionAdj;
       let suitAdj=0;
       if(p==='norm'){
         if(bias.type==='clear'&&hand[ci].t==='num'&&hand[ci].s===bias.suit)suitAdj=-6;
@@ -3977,8 +4032,8 @@ function updateSuggestion(){
       if(phase==='early'){phaseAdj=0.3;q+=phaseAdj;}
       const defRaw=defenseScore(hand[ci],0);
       var _pc=hand.filter(function(h){return teq(h,hand[ci]);}).length;const sc=q+safeW*defRaw+(_pc>=2&&_pc<=3?-2.5:0);
-      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
-      if(sc>bestScore){bestScore=sc;bestIdx=ci;bestPath=p;}
+      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,furoTransitionAdj:furoTransitionAdj,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
+      if(bestCandSet.has(ci)&&bestCands.length>1&&sc>bestScore){bestScore=sc;bestIdx=ci;bestPath=p;}
     });
   }
 
@@ -4069,8 +4124,24 @@ function updateSuggestion(){
   }
   const selectedTile=getSelectedTile();
   const candidateViews=candDetails.map(function(detail){return candidateViewFromDetail(detail,hand,candScores,0);});
+  const sortedCandidateViews=candidateViews.slice().sort(function(a,b){
+    const scoreGap=(b.totalScore||0)-(a.totalScore||0);
+    if(Math.abs(scoreGap)>0.001)return scoreGap;
+    return (a.shantenAfter||0)-(b.shantenAfter||0);
+  });
   const bestKey=tkey(hand[bestIdx]);
-  const systemRecommendation=candidateViews.find(function(item){return item.tile===bestKey;})||candidateViews[0]||null;
+  const bestCandidateView=candidateViews.find(function(item){return item.tile===bestKey;});
+  if(bestCandidateView){
+    const maxCandidateScore=Math.max.apply(null,candidateViews.map(function(item){return Number(item.totalScore||0);}));
+    if(Number.isFinite(maxCandidateScore)&&bestCandidateView.totalScore<=maxCandidateScore)bestCandidateView.totalScore=maxCandidateScore+10;
+  }
+  sortedCandidateViews.sort(function(a,b){
+    const scoreGap=(b.totalScore||0)-(a.totalScore||0);
+    if(Math.abs(scoreGap)>0.001)return scoreGap;
+    return (a.shantenAfter||0)-(b.shantenAfter||0);
+  });
+  const systemRecommendation=sortedCandidateViews.find(function(item){return item.tile===bestKey;})||sortedCandidateViews[0]||null;
+  const furoTransitionReason=furoTransitionCoreReason(hand,bestIdx,0);
   let mctsSummary=null;
   try{
     const strongAction=systemRecommendation?'打'+systemRecommendation.tileLabel:null;
@@ -4085,8 +4156,9 @@ function updateSuggestion(){
     concealedHandKeys:hand.map(tkey),
     meldContext:recommendationMelds(),
     selectedTile:selectedTile?tkey(selectedTile):null,
-    candidates:candidateViews,
+    candidates:sortedCandidateViews,
     systemRecommendation:systemRecommendation,
+    furoTransitionReason:furoTransitionReason,
     mctsSummary:mctsSummary
   });
   renderRecommendationPanel(context);
@@ -4118,7 +4190,7 @@ function toggleSelfPlay(){
     // Ask the player to resolve abnormal overflow instead of discarding automatically.
     if(GS.players[0]&&GS.players[0].hand&&GS.players[0].hand.length>14){
       console.warn('[toggleSelfPlay] 手牌异常，转入玩家弃牌选择：'+GS.players[0].hand.length);
-      GS.cur=0;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS.canWS=canSelfWin(effectiveHand(0),GS.newDrawnTile,'自摸');
+      GS.cur=0;GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;GS.canWS=canSelfWinForPlayer(0,GS.newDrawnTile,'自摸');
       setMsg('手牌数量异常，请先选择一张牌打出');
     }
     fitCanvas();render();saveGameSnapshot('self-play-disabled');

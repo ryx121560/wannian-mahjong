@@ -234,6 +234,12 @@ if (!runtimeHtml.includes('responseHonorTreasureValue') || !runtimeHtml.includes
 if (!/function canSelfWin\s*\(\s*hand\s*,\s*winTile/.test(runtimeHtml)) {
   failures.push('stage4-runtime: self draw win check does not accept winTile');
 }
+if (!runtimeHtml.includes('function canSelfWinForPlayer') || !runtimeHtml.includes('ruleMeldsForPlayer(playerIdx)')) {
+  failures.push('stage4-runtime: self draw win check must use concealed hand plus real meld context');
+}
+if (/canSelfWin\(effectiveHand\(/.test(runtimeHtml) || /canHuNormal\(effectiveHand\([^)]*\),false,0/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: self draw win check still evaluates effectiveHand without meld context');
+}
 if (/canSelfWin\(effectiveHand\(p\)\)/.test(runtimeHtml) || /canSelfWin\(hand\)\{recordRecommendationChoice\('response','胡'\)/.test(runtimeHtml)) {
   failures.push('stage4-runtime: self draw win check still omits winTile at call site');
 }
@@ -245,6 +251,36 @@ if (!runtimeHtml.includes('function formatWinSettlementText') || !runtimeHtml.in
 }
 if (!/GS\._lastResult\.displayText[\s\S]{0,220}message\.textContent=GS\._lastResult\.displayText/.test(runtimeHtml)) {
   failures.push('stage4-runtime: restored ended game does not show full settlement details');
+}
+if (!runtimeHtml.includes('furoTransitionStructureScore') || !runtimeHtml.includes('furoTransitionAdj')) {
+  failures.push('stage4-runtime: furo transition 3445 structure protection is missing from recommendation scoring');
+}
+if (!runtimeHtml.includes('furoTransitionReason') || !runtimeHtml.includes('furoTransitionAdj:furoTransitionAdj')) {
+  failures.push('stage4-runtime: furo transition scoring is not exposed to candidate display');
+}
+if (!runtimeHtml.includes('sortedCandidateViews') || !runtimeHtml.includes('candidateViews.slice().sort')) {
+  failures.push('stage4-runtime: candidate display ranking does not follow final recommendation score');
+}
+if (!runtimeHtml.includes('candDetails.forEach(function(d)') || runtimeHtml.includes('bestCands.forEach(function(ci')) {
+  failures.push('stage4-runtime: furo transition scoring must be generated for all discard candidates');
+}
+if (!runtimeHtml.includes('bestCandidateView.totalScore=maxCandidateScore+10')) {
+  failures.push('stage4-runtime: final recommendation is not promoted to the top of candidate display ranking');
+}
+if (!runtimeHtml.includes('function furoTransitionCoreReason') || !runtimeHtml.includes('furoTransitionReason:furoTransitionReason')) {
+  failures.push('stage4-runtime: furo transition explanation is not passed as hand-level recommendation context');
+}
+if (!runtimeHtml.includes('recommendationMelds().some(function(m){return m.player===playerIdx;}')) {
+  failures.push('stage4-runtime: furo transition explanation ignores visible meld context');
+}
+if (runtimeHtml.includes('discardHasNeighbor')) {
+  failures.push('stage4-runtime: furo transition explanation is still blocked by isolated-neighbor check');
+}
+if (!fs.readFileSync(sourcePath, 'utf8').includes('副露后转听核心结构')) {
+  failures.push('stage4-copy: furo transition reason does not explain the 3445 core structure');
+}
+if (!fs.readFileSync(sourcePath, 'utf8').includes('context.furoTransitionReason')) {
+  failures.push('stage4-copy: recommendation panel does not render hand-level furo transition explanation');
 }
 if (!runtimeHtml.includes('lastDrawnTile') || !runtimeHtml.includes('lastDrawnTileKey')) {
   failures.push('stage4-runtime: AI drawn tile state is not stored per player');

@@ -26,6 +26,8 @@ export interface CandidateView {
   followUpRoute?: string;
   followUpReason?: string;
   followUpPending?: string;
+  furoTransitionAdj?: number;
+  furoTransitionReason?: string;
 }
 
 export interface RecommendationContext {
@@ -67,6 +69,7 @@ export interface RecommendationContext {
     scoreSituationNote?: string;
     kongRiskNote?: string;
   } | null;
+  furoTransitionReason?: string | null;
 }
 
 export interface RecommendationRecord {
@@ -347,6 +350,17 @@ function displayShantenText(candidate: CandidateView): string {
   return `${candidate.shantenAfter} 向听`;
 }
 
+function furoTransitionText(candidate: CandidateView): string {
+  if (candidate.furoTransitionReason) return candidate.furoTransitionReason;
+  if ((candidate.furoTransitionAdj || 0) < 0) return '3445万 是副露后转听核心结构，拆这组会降低碰牌后转听能力。';
+  if ((candidate.furoTransitionAdj || 0) > 0) return '副露后优先处理孤张，保留 3445万 这类副露后转听核心结构。';
+  return '';
+}
+
+function furoTransitionContextText(context: RecommendationContext, candidate?: CandidateView | null): string {
+  return context.furoTransitionReason || (candidate ? furoTransitionText(candidate) : '');
+}
+
 function topicFor(candidate: CandidateView): string {
   if ((candidate.defenseScore || 0) > Math.max(candidate.speedScore || 0, candidate.handValueScore || 0)) return '防守安全';
   if ((candidate.dalanRouteScore || 0) > 0.5) return '打烂/正宗路线';
@@ -371,6 +385,7 @@ export function buildDiscardRecommendation(context: RecommendationContext): Reco
     line('置信度', esc(confidence)),
     line('综合评分', `${score} 分`),
     line('第二候选', second ? `${esc(second.tileLabel)}，${toDisplayScore(second.totalScore, -8, 18)} 分` : '暂无'),
+    furoTransitionContextText(context, best) ? `<p>${esc(furoTransitionContextText(context, best))}</p>` : '',
     `<p class="rec-conclusion">结论：当前推荐偏向${esc(topicFor(best))}，弃${esc(best.tileLabel)}后为${esc(best.shantenAfter)}向听，并综合考虑结构、打点、防守和位置。</p>`,
   ].join('');
   return section('一、系统推荐', body);
@@ -389,7 +404,7 @@ export function buildDetailedReasons(context: RecommendationContext): Recommenda
     line('速度', `${scoreWord(speed)}，弃${esc(best.tileLabel)}后为${esc(displayShantenText(best))}。`),
     line('打点', `${scoreWord(value)}，当前路线为${esc(route)}。`),
     line('听牌质量', `${scoreWord(wait)}，${best.waitRemaining ? `剩余有效进张约 ${best.waitRemaining} 枚。` : '当前还未形成明确待牌。'}`),
-    line('结构影响', `${esc(structure)}。${best.breaksPair ? '会拆对子，需要权衡。' : ''}${best.breaksTaatsu ? '会拆搭子，需要权衡。' : ''}`),
+    line('结构影响', `${esc(structure)}。${best.breaksPair ? '会拆对子，需要权衡。' : ''}${best.breaksTaatsu ? '会拆搭子，需要权衡。' : ''}${furoTransitionContextText(context, best) ? esc(furoTransitionContextText(context, best)) : ''}`),
     line('防守风险', `${scoreWord(defense)}，只基于公开牌河、副露和已见牌判断。`),
     mctsReviewLine(context) ? line('后续复核', esc(mctsReviewLine(context))) : '',
     modelReviewLine(context) ? line('阶段六复核', esc(modelReviewLine(context))) : '',
@@ -404,6 +419,7 @@ export function buildCandidateRanking(context: RecommendationContext): Recommend
     const reasons: string[] = [];
     if (!candidate.breaksMeld && !candidate.breaksPair && !candidate.breaksTaatsu) reasons.push('不明显破坏面子、搭子或对子');
     if (candidate.breaksMeld || candidate.breaksPair || candidate.breaksTaatsu) reasons.push('会影响已有结构');
+    if (furoTransitionText(candidate)) reasons.push(furoTransitionText(candidate));
     reasons.push(`弃后为 ${displayShantenText(candidate)}`);
     if (hasInvalidReadyWait(candidate)) reasons.push('0 向听校验未发现合法待牌，按未形成有效听牌处理');
     if ((candidate.defenseScore || 0) > 0.2) reasons.push('公开信息下安全性较好');
