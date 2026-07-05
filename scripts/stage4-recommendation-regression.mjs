@@ -201,6 +201,7 @@ if (finalRankingText.includes('4\u7b52') && finalRankingText.indexOf('1\u4e07') 
   failures.push('stage4-final-consistency: candidate ranking should keep wan1 above tong4');
 }
 
+const isolatedEdgeId = 'recommendation-isolated-edge-visible-count-001';
 const isolatedEdgeContext = {
   ...raw.cases[0].context,
   selectedTile: 'tiao1',
@@ -229,15 +230,59 @@ const isolatedEdgeContext = {
 };
 const isolatedEdgePanel = engine.buildPanel(isolatedEdgeContext);
 if (isolatedEdgePanel.systemTile !== 'tiao1') {
-  failures.push(`stage4-isolated-edge: expected final recommendation tiao1, actual ${isolatedEdgePanel.systemTile}`);
+  failures.push(`${isolatedEdgeId}: expected final recommendation tiao1, actual ${isolatedEdgePanel.systemTile}`);
 }
 const isolatedRankingText = isolatedEdgePanel.sections.find((item) => item.title.includes('候选'))?.text || '';
 if (isolatedRankingText.includes('6条') && isolatedRankingText.indexOf('1条') > isolatedRankingText.indexOf('6条')) {
-  failures.push('stage4-isolated-edge: candidate ranking should put tiao1 above tiao6');
+  failures.push(`${isolatedEdgeId}: candidate ranking should put tiao1 above tiao6`);
 }
 const isolatedEdgeText = isolatedEdgePanel.sections.map((item) => item.text).join('\n');
 for (const keyword of ['边张孤张', '2条已见', '公开消耗', '伸展价值下降']) {
-  if (!isolatedEdgeText.includes(keyword)) failures.push(`stage4-isolated-edge: missing reason keyword ${keyword}`);
+  if (!isolatedEdgeText.includes(keyword)) failures.push(`${isolatedEdgeId}: missing reason keyword ${keyword}`);
+}
+
+const draw8WanKeep56TongId = 'recommendation-draw-8wan-keep-56tong-001';
+const draw8WanKeep56TongContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'dong',
+  systemRecommendation: { tile: 'dong', tileLabel: '东', totalScore: 86, shantenAfter: 2, route: 'norm', speedScore: 0.8, handValueScore: 0.4, waitQualityScore: 0.2, defenseScore: 0.1 },
+  candidates: [
+    { tile: 'dong', tileLabel: '东', totalScore: 86, shantenAfter: 2, route: 'norm', speedScore: 0.8, handValueScore: 0.4, waitQualityScore: 0.2, defenseScore: 0.1 },
+    { tile: 'tong5', tileLabel: '5筒', totalScore: 72, shantenAfter: 3, route: 'norm', speedScore: -0.8, handValueScore: 0.3, waitQualityScore: 0.4, defenseScore: 0.2, breaksTaatsu: true, furoTransitionReason: '5筒6筒是连续搭子，摸8万后不应拆除有效结构。' },
+    { tile: 'tong6', tileLabel: '6筒', totalScore: 72, shantenAfter: 3, route: 'norm', speedScore: -0.8, handValueScore: 0.3, waitQualityScore: 0.4, defenseScore: 0.2, breaksTaatsu: true, furoTransitionReason: '5筒6筒是连续搭子，摸8万后不应拆除有效结构。' },
+  ],
+};
+const draw8WanKeep56TongPanel = engine.buildPanel(draw8WanKeep56TongContext);
+if (draw8WanKeep56TongPanel.systemTile === 'tong5' || draw8WanKeep56TongPanel.systemTile === 'tong6') {
+  failures.push(`${draw8WanKeep56TongId}: final recommendation should not break 5筒6筒`);
+}
+const draw8WanKeep56TongRanking = draw8WanKeep56TongPanel.sections.find((item) => item.title.includes('候选'))?.text || '';
+if (draw8WanKeep56TongRanking.includes('5筒') && draw8WanKeep56TongRanking.indexOf('东') > draw8WanKeep56TongRanking.indexOf('5筒')) {
+  failures.push(`${draw8WanKeep56TongId}: candidate ranking should keep safe loose tile above tong5`);
+}
+const draw8WanKeep56TongText = draw8WanKeep56TongPanel.sections.map((item) => item.text).join('\n');
+if (!draw8WanKeep56TongText.includes('5筒6筒') || !draw8WanKeep56TongText.includes('不应拆除有效结构')) {
+  failures.push(`${draw8WanKeep56TongId}: missing 56tong protection reason`);
+}
+
+const lowThreatDoNotBreak56TongId = 'ai-discard-low-threat-do-not-break-56tong-for-safety-001';
+const lowThreatDoNotBreak56TongContext = {
+  ...raw.cases[0].context,
+  selectedTile: 'bei',
+  systemRecommendation: { tile: 'bei', tileLabel: '北', totalScore: 84, shantenAfter: 2, route: 'norm', speedScore: 0.7, handValueScore: 0.3, waitQualityScore: 0.2, defenseScore: 0.1 },
+  candidates: [
+    { tile: 'bei', tileLabel: '北', totalScore: 84, shantenAfter: 2, route: 'norm', speedScore: 0.7, handValueScore: 0.3, waitQualityScore: 0.2, defenseScore: 0.1 },
+    { tile: 'tong5', tileLabel: '5筒', totalScore: 70, shantenAfter: 3, route: 'norm', speedScore: -0.7, handValueScore: 0.3, waitQualityScore: 0.3, defenseScore: 0.5, breaksTaatsu: true, furoTransitionReason: '低威胁阶段不能仅因安全分拆5筒6筒有效搭子。' },
+    { tile: 'tong6', tileLabel: '6筒', totalScore: 70, shantenAfter: 3, route: 'norm', speedScore: -0.7, handValueScore: 0.3, waitQualityScore: 0.3, defenseScore: 0.5, breaksTaatsu: true, furoTransitionReason: '低威胁阶段不能仅因安全分拆5筒6筒有效搭子。' },
+  ],
+};
+const lowThreatDoNotBreak56TongPanel = engine.buildPanel(lowThreatDoNotBreak56TongContext);
+if (lowThreatDoNotBreak56TongPanel.systemTile === 'tong5' || lowThreatDoNotBreak56TongPanel.systemTile === 'tong6') {
+  failures.push(`${lowThreatDoNotBreak56TongId}: low-threat final recommendation should not break 5筒6筒`);
+}
+const lowThreatDoNotBreak56TongText = lowThreatDoNotBreak56TongPanel.sections.map((item) => item.text).join('\n');
+if (!lowThreatDoNotBreak56TongText.includes('低威胁') || !lowThreatDoNotBreak56TongText.includes('不能仅因安全分拆5筒6筒')) {
+  failures.push(`${lowThreatDoNotBreak56TongId}: missing low-threat structure protection reason`);
 }
 
 const pong8TongProtect567TongId = 'recommendation-pong-8tong-protect-567tong-001';

@@ -25,7 +25,8 @@
     "verify:stage6-data-gates": "node scripts/verify-stage6-data-gates.mjs",
     "verify:stage6-random-invariants": "node scripts/verify-stage6-random-invariants.mjs",
     "verify:stage6-replay": "node scripts/verify-stage6-replay.mjs",
-    "compare:stage6-selfplay-metrics": "node scripts/compare-stage6-selfplay-metrics.mjs"
+    "compare:stage6-selfplay-metrics": "node scripts/compare-stage6-selfplay-metrics.mjs",
+    "selfplay:smoke": "node scripts/selfplay-smoke.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",
