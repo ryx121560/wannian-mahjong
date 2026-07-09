@@ -24,6 +24,8 @@ export interface CandidateScore {
     isDalanRoute: boolean;
     kongOpportunity: boolean;
     dragonComboBreak?: boolean;
+    destroyedStructureType?: StructurePenaltyResult['destroyedStructure']['type'];
+    breaksPair?: boolean;
     isolatedDiscardPriority?: number;
     defense?: DefenseResult;
   };
@@ -95,6 +97,7 @@ export interface AIDecision {
     kongZhichan: KongZhichanPotential;
     position: PositionAdjustment;
     defenseState?: AttackDefenseStatus;
+    finalDecisionGuard?: { triggered: boolean; reason: string; blockedReasonCodes: string[] };
   };
 }
 

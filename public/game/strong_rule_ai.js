@@ -914,6 +914,75 @@ function shantenRegressionPenalty(shantenBefore, shantenAfter, defenseState) {
         return regression * 4;
     return regression * 8;
 }
+function hasClearDefenseReason(candidate) {
+    var _a;
+    const defenseState = (_a = candidate.metadata.defense) === null || _a === void 0 ? void 0 : _a.state.state;
+    if (defenseState === 'full-fold')
+        return true;
+    if (defenseState === 'half-fold' && candidate.breakdown.defenseScore > 0.8)
+        return true;
+    return false;
+}
+function severeBreakRank(candidate) {
+    const destroyedType = candidate.metadata.destroyedStructureType;
+    if (candidate.metadata.dragonComboBreak)
+        return 5;
+    if (candidate.metadata.breaksPair || destroyedType === 'duizi')
+        return 4;
+    if (destroyedType === 'mianzi')
+        return 3;
+    if (destroyedType === 'dazi')
+        return 1;
+    return 0;
+}
+function compareGuardFallback(a, b) {
+    const shantenDiff = a.metadata.shantenAfter - b.metadata.shantenAfter;
+    if (shantenDiff)
+        return shantenDiff;
+    const breakDiff = severeBreakRank(a) - severeBreakRank(b);
+    if (breakDiff)
+        return breakDiff;
+    const effectiveDiff = (b.metadata.effectiveCount || 0) - (a.metadata.effectiveCount || 0);
+    if (effectiveDiff)
+        return effectiveDiff;
+    return b.totalScore - a.totalScore || a.tile.localeCompare(b.tile);
+}
+function finalDecisionGuard(candidates) {
+    const selected = candidates[0];
+    const bestShanten = Math.min(...candidates.map((candidate) => candidate.metadata.shantenAfter));
+    const bestCandidates = candidates.filter((candidate) => candidate.metadata.shantenAfter === bestShanten);
+    const hasTenpaiCandidate = bestCandidates.some((candidate) => candidate.metadata.shantenAfter <= 0);
+    const selectedBreakRank = severeBreakRank(selected);
+    const blockedReasonCodes = [];
+    if (selected.metadata.shantenAfter > bestShanten + 1)
+        blockedReasonCodes.push('shanten-regression');
+    if (hasTenpaiCandidate && selected.metadata.shantenAfter > bestShanten)
+        blockedReasonCodes.push('abandons-tenpai');
+    if (selected.metadata.dragonComboBreak)
+        blockedReasonCodes.push('breaks-complete-dragon-combo');
+    if (selected.metadata.breaksPair || selected.metadata.destroyedStructureType === 'duizi')
+        blockedReasonCodes.push('breaks-pair');
+    if (selectedBreakRank >= 3 && !hasClearDefenseReason(selected)) {
+        const fallback = bestCandidates
+            .filter((candidate) => !candidate.metadata.dragonComboBreak)
+            .filter((candidate) => severeBreakRank(candidate) < selectedBreakRank)
+            .slice()
+            .sort(compareGuardFallback)[0];
+        if (fallback) {
+            return { selected: fallback, guardReason: 'final-decision-guard-structure', blockedReasonCodes };
+        }
+    }
+    if (blockedReasonCodes.length && !hasClearDefenseReason(selected)) {
+        const fallback = candidates
+            .filter((candidate) => !candidate.metadata.dragonComboBreak)
+            .slice()
+            .sort(compareGuardFallback)[0];
+        if (fallback && fallback.tile !== selected.tile) {
+            return { selected: fallback, guardReason: 'final-decision-guard-high-risk', blockedReasonCodes };
+        }
+    }
+    return { selected, guardReason: null, blockedReasonCodes };
+}
 function makeDecision(state, config) {
     var _a, _b;
     const hand = (0, utils_1.getPlayerHand)(state);
@@ -943,6 +1012,7 @@ function makeDecision(state, config) {
         const defense = evaluateDefense(tile);
         const structure = (0, structure_penalty_1.evaluateStructurePenalty)(hand, melds, tile);
         const dragonComboBreak = (0, structure_penalty_1.breaksDragonCombo)(hand, tile);
+        const breaksPair = hand.filter((item) => item === tile).length >= 2;
         const isolatedPriority = (0, structure_penalty_1.isolatedDiscardPriority)(hand, tile);
         const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
         const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
@@ -978,6 +1048,8 @@ function makeDecision(state, config) {
                 isDalanRoute: dalanRoute.shouldConsiderDalan,
                 kongOpportunity: kongZhichan.kongZhichanScore > 0,
                 dragonComboBreak,
+                destroyedStructureType: structure.destroyedStructure.type,
+                breaksPair,
                 isolatedDiscardPriority: isolatedPriority,
                 defense,
             },
@@ -992,14 +1064,15 @@ function makeDecision(state, config) {
     });
     if (!candidates.length)
         throw new Error('no legal discard candidates');
-    const selected = candidates[0];
+    const guarded = finalDecisionGuard(candidates);
+    const selected = guarded.selected;
     return {
         selectedTile: selected.tile,
         selectedScore: selected.totalScore,
         allCandidates: candidates,
         phase,
         reasoning: reasoningFor(selected, phase),
-        metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position, defenseState: (_b = selected.metadata.defense) === null || _b === void 0 ? void 0 : _b.state },
+        metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position, defenseState: (_b = selected.metadata.defense) === null || _b === void 0 ? void 0 : _b.state, finalDecisionGuard: guarded.guardReason ? { triggered: true, reason: guarded.guardReason, blockedReasonCodes: guarded.blockedReasonCodes } : undefined },
     };
 }
 

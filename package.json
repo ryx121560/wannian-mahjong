@@ -26,7 +26,9 @@
     "verify:stage6-random-invariants": "node scripts/verify-stage6-random-invariants.mjs",
     "verify:stage6-replay": "node scripts/verify-stage6-replay.mjs",
     "compare:stage6-selfplay-metrics": "node scripts/compare-stage6-selfplay-metrics.mjs",
-    "selfplay:smoke": "node scripts/selfplay-smoke.mjs"
+    "selfplay:smoke": "node scripts/selfplay-smoke.mjs",
+    "test:stage7-recommendation": "node scripts/stage7-recommendation-regression.mjs",
+    "test:stage7-ai-unified": "node scripts/stage7-ai-unified-dynamic-regression.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",

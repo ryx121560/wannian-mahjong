@@ -307,6 +307,7 @@ function topicFor(candidate) {
     return '牌效速度';
 }
 function buildDiscardRecommendation(context) {
+    var _a, _b;
     const best = systemCandidate(context);
     if (!best)
         return section('一、系统推荐', '<p>当前没有可用的出牌推荐。</p>');
@@ -314,15 +315,24 @@ function buildDiscardRecommendation(context) {
     const second = secondCandidate(context, best);
     const confidence = confidenceFor(candidates);
     const score = candidateDisplayScore(best, candidates);
+    const secondDiff = second
+        ? `和第二候选${second.tileLabel}相比，${best.tileLabel}的综合评分为 ${score} 分，${second.tileLabel}为 ${candidateDisplayScore(second, candidates)} 分；差异主要来自向听、结构、后续均值和风险取舍。`
+        : '当前没有足够接近的第二候选。';
+    const reviewSupported = ((_a = context.mctsSummary) === null || _a === void 0 ? void 0 : _a.modelAction) || ((_b = context.mctsSummary) === null || _b === void 0 ? void 0 : _b.mctsAction)
+        ? 'MCTS/阶段六模型已参与复核，最终推荐以同源候选排序为准。'
+        : '当前主要依据规则候选、结构保护和公开风险排序。';
     const body = [
         line('推荐打出', `<span class="rec-tile">${esc(best.tileLabel)}</span>`),
         line('推荐目标', '长期期望收益最高'),
+        line('核心理由', `弃${esc(best.tileLabel)}后为${esc(displayShantenText(best))}，${best.breaksMeld || best.breaksPair || best.breaksTaatsu ? '虽然会影响部分结构，但综合收益仍排在前列' : '不明显拆顺子、搭子或对子'}。`),
         ...reviewDecisionLines(context),
         mctsReviewLine(context) ? line('收益复核', esc(mctsReviewLine(context))) : '',
         modelReviewLine(context) ? line('策略模型复核', esc(modelReviewLine(context))) : '',
+        line('复核结论', esc(reviewSupported)),
         line('置信度', esc(confidence)),
         line('综合评分', `${score} 分`),
         line('第二候选', second ? `${esc(second.tileLabel)}，${candidateDisplayScore(second, candidates)} 分` : '暂无'),
+        line('和第二候选相比', esc(secondDiff)),
         furoTransitionContextText(context, best) ? `<p>${esc(furoTransitionContextText(context, best))}</p>` : '',
         `<p class="rec-conclusion">结论：当前推荐偏向${esc(topicFor(best))}，弃${esc(best.tileLabel)}后为${esc(best.shantenAfter)}向听，并综合考虑结构、打点、防守和位置。</p>`,
     ].join('');
@@ -339,16 +349,21 @@ function buildDetailedReasons(context) {
     const defense = toDisplayScore((_d = best.defenseScore) !== null && _d !== void 0 ? _d : 0, -2, 3);
     const route = ROUTE_LABELS[best.route] || best.route || '普通路线';
     const structure = best.breaksMeld || best.breaksPair || best.breaksTaatsu ? '可能破坏结构' : '不明显破坏结构';
+    const mctsNote = mctsCandidateNote(context, candidateActionLabel(best));
+    const tradeoff = secondCandidate(context, best)
+        ? `取舍重点是保留${esc(best.tileLabel)}对应的同源排序优势；若不选第二候选，是因为当前综合收益、结构保护或风险复核更支持最终推荐。`
+        : '取舍较明确，当前没有同级别竞争候选。';
     const body = [
         line('速度', `${scoreWord(speed)}，弃${esc(best.tileLabel)}后为${esc(displayShantenText(best))}。`),
-        line('打点', `${scoreWord(value)}，当前路线为${esc(route)}。`),
+        line('收益', `${scoreWord(value)}，当前路线为${esc(route)}。${mctsNote ? esc(mctsNote) : '暂无明确后续均值复核数据。'}`),
         line('听牌质量', `${scoreWord(wait)}，${best.waitRemaining ? `剩余有效进张约 ${best.waitRemaining} 枚。` : '当前还未形成明确待牌。'}`),
         line('结构影响', `${esc(structure)}。${best.breaksPair ? '会拆对子，需要权衡。' : ''}${best.breaksTaatsu ? '会拆搭子，需要权衡。' : ''}${furoTransitionContextText(context, best) ? esc(furoTransitionContextText(context, best)) : ''}`),
         line('防守风险', `${scoreWord(defense)}，只基于公开牌河、副露和已见牌判断。`),
+        line('取舍', tradeoff),
         mctsReviewLine(context) ? line('后续复核', esc(mctsReviewLine(context))) : '',
         modelReviewLine(context) ? line('阶段六复核', esc(modelReviewLine(context))) : '',
         line('杠/直铲机会', (best.kongZhichanScore || 0) > 0.5 ? '存在潜在收益，推荐保留相关结构。' : '暂无明显机会。'),
-        line('分数位置', '已纳入当前分数位置，不单独评价玩家能力。'),
+        line('分数位置', '已纳入当前分数位置，只影响本手取舍，不输出玩家水平判断。'),
     ].join('');
     return section('二、详细推荐理由', body);
 }

@@ -56,9 +56,30 @@ function resolveNextBin() {
   return process.platform === 'win32' ? 'npx.cmd' : 'npx';
 }
 
+function syncDirForStandalone(source, target) {
+  if (!fs.existsSync(source)) return false;
+  fs.rmSync(target, { recursive: true, force: true });
+  fs.cpSync(source, target, { recursive: true });
+  return true;
+}
+
+function ensureStandaloneAssets() {
+  const standaloneDir = path.resolve(process.cwd(), '.next', 'standalone');
+  const publicSource = path.resolve(process.cwd(), 'public');
+  const publicTarget = path.join(standaloneDir, 'public');
+  const staticSource = path.resolve(process.cwd(), '.next', 'static');
+  const staticTarget = path.join(standaloneDir, '.next', 'static');
+  const copiedPublic = syncDirForStandalone(publicSource, publicTarget);
+  const copiedStatic = syncDirForStandalone(staticSource, staticTarget);
+  if (copiedPublic || copiedStatic) {
+    console.log(`[next-with-port] Synced standalone assets: public=${copiedPublic} static=${copiedStatic}`);
+  }
+}
+
 function resolveStartCommand(port) {
   const standaloneServer = path.resolve(process.cwd(), '.next', 'standalone', 'server.js');
   if (fs.existsSync(standaloneServer)) {
+    ensureStandaloneAssets();
     return {
       command: process.execPath,
       args: [standaloneServer],
