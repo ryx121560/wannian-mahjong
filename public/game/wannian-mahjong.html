@@ -1886,8 +1886,9 @@ function selfPlayAudit(){
   return _selfPlay.audit;
 }
 function winAuditSnapshot(winner,wt,winTile,ruleResult){
+  const auditLog=GS._gameLog||null;
   return {
-    gameId:currentLog&&currentLog.gameId,
+    gameId:auditLog&&auditLog.gameId,
     turn:GS.turn,
     winner:winner,
     hand:concealedHand(winner).map(tkey),
@@ -1896,7 +1897,7 @@ function winAuditSnapshot(winner,wt,winTile,ruleResult){
     winType:wt,
     lastDiscardPlayer:GS.lastDiscardP,
     ruleResult:ruleResult,
-    lastEvents:currentLog&&Array.isArray(currentLog.events)?currentLog.events.slice(-10):[],
+    lastEvents:auditLog&&Array.isArray(auditLog.events)?auditLog.events.slice(-10):[],
     stateSnapshot:{phase:GS.phase,cur:GS.cur,wall:GS.wall.length,scores:GS.players.map(function(p){return p.score;})}
   };
 }
@@ -1907,14 +1908,15 @@ function auditFinalWinBeforeSettlement(winner,wt){
   const ruleContext={melds:ruleMelds,winTile:winTile?tkey(winTile):undefined,winType:ruleWinMethod(wt)};
   const ruleResult=RULE_ENGINE.canWin(ruleTiles(hand),ruleContext);
   const audit=selfPlayAudit();
+  const auditLog=GS._gameLog||null;
   if(!ruleResult||!ruleResult.canWin){
     audit.invalidWins++;
     const failure=winAuditSnapshot(winner,wt,winTile,ruleResult);
     audit.failures.push(Object.assign({type:'invalidWin',message:'Game declared win, but rule engine canWin=false'},failure));
     console.error('[win-audit] invalid win blocked',failure);
-    if(currentLog){
-      currentLog.invalidWins=(currentLog.invalidWins||0)+1;
-      currentLog.winAuditFailure=failure;
+    if(auditLog){
+      auditLog.invalidWins=(auditLog.invalidWins||0)+1;
+      auditLog.winAuditFailure=failure;
     }
     return {ok:false,ruleResult:ruleResult,winTile:winTile};
   }
@@ -1925,7 +1927,7 @@ function auditFinalWinBeforeSettlement(winner,wt){
     const warning=winAuditSnapshot(winner,wt,winTile,ruleResult);
     audit.failures.push(Object.assign({type:'suspiciousWin',message:'Rule engine accepted win, but win context is incomplete or abnormal'},warning));
     console.warn('[win-audit] suspicious win context',warning);
-    if(currentLog)currentLog.suspiciousWins=(currentLog.suspiciousWins||0)+1;
+    if(auditLog)auditLog.suspiciousWins=(auditLog.suspiciousWins||0)+1;
   }
   return {ok:true,ruleResult:ruleResult,winTile:winTile};
 }

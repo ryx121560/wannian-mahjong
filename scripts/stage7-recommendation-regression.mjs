@@ -154,6 +154,8 @@ const runtimeChecks = [
   ['stage7-runtime-export-analysis-only', 'trainingDataIncluded:false'],
   ['stage7-runtime-no-new-front-entry', 'bt-ai-log-export'],
 ];
+const winAuditBlock = runtimeHtml.slice(runtimeHtml.indexOf('function winAuditSnapshot'), runtimeHtml.indexOf('// -- AI --'));
+assertCase('stage7-runtime-win-audit-no-free-current-log', !/\bcurrentLog\b/.test(winAuditBlock), 'win audit must not reference free currentLog');
 for (const [id, needle] of runtimeChecks) {
   assertCase(id, runtimeHtml.includes(needle), `运行时缺少 ${needle}`);
 }
