@@ -1887,11 +1887,13 @@ function selfPlayAudit(){
 }
 function winAuditSnapshot(winner,wt,winTile,ruleResult){
   const auditLog=GS._gameLog||null;
+  const auditHand=auditWinHand(winner,wt,winTile);
   return {
     gameId:auditLog&&auditLog.gameId,
     turn:GS.turn,
     winner:winner,
-    hand:concealedHand(winner).map(tkey),
+    hand:auditHand.map(tkey),
+    concealedHand:concealedHand(winner).map(tkey),
     melds:ruleMeldsForPlayer(winner),
     winTile:winTile?tkey(winTile):null,
     winType:wt,
@@ -1901,12 +1903,18 @@ function winAuditSnapshot(winner,wt,winTile,ruleResult){
     stateSnapshot:{phase:GS.phase,cur:GS.cur,wall:GS.wall.length,scores:GS.players.map(function(p){return p.score;})}
   };
 }
+function auditWinHand(winner,wt,winTile){
+  const hand=concealedHand(winner);
+  if((wt==='点炮'||wt==='抢杠')&&winTile)return hand.concat([winTile]);
+  return hand;
+}
 function auditFinalWinBeforeSettlement(winner,wt){
   const hand=concealedHand(winner);
   const ruleMelds=ruleMeldsForPlayer(winner);
   const winTile=(wt==='点炮'||wt==='抢杠')?GS.lastDiscard:(GS.newDrawnTile||hand[hand.length-1]||null);
+  const auditHand=auditWinHand(winner,wt,winTile);
   const ruleContext={melds:ruleMelds,winTile:winTile?tkey(winTile):undefined,winType:ruleWinMethod(wt)};
-  const ruleResult=RULE_ENGINE.canWin(ruleTiles(hand),ruleContext);
+  const ruleResult=RULE_ENGINE.canWin(ruleTiles(auditHand),ruleContext);
   const audit=selfPlayAudit();
   const auditLog=GS._gameLog||null;
   if(!ruleResult||!ruleResult.canWin){
@@ -1920,7 +1928,7 @@ function auditFinalWinBeforeSettlement(winner,wt){
     }
     return {ok:false,ruleResult:ruleResult,winTile:winTile};
   }
-  const tileCount=hand.length+ruleMelds.length*3;
+  const tileCount=auditHand.length+ruleMelds.length*3;
   const missingPointContext=(wt==='点炮'||wt==='抢杠')&&(!GS.lastDiscard||GS.lastDiscardP<0);
   if(tileCount!==14||!winTile||missingPointContext){
     audit.suspiciousWins++;

@@ -156,6 +156,7 @@ const runtimeChecks = [
 ];
 const winAuditBlock = runtimeHtml.slice(runtimeHtml.indexOf('function winAuditSnapshot'), runtimeHtml.indexOf('// -- AI --'));
 assertCase('stage7-runtime-win-audit-no-free-current-log', !/\bcurrentLog\b/.test(winAuditBlock), 'win audit must not reference free currentLog');
+assertCase('stage7-runtime-win-audit-complete-response-hand', winAuditBlock.includes('function auditWinHand') && winAuditBlock.includes('RULE_ENGINE.canWin(ruleTiles(auditHand)'), 'win audit must verify complete response hand');
 for (const [id, needle] of runtimeChecks) {
   assertCase(id, runtimeHtml.includes(needle), `运行时缺少 ${needle}`);
 }
