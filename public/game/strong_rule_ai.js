@@ -914,6 +914,84 @@ function shantenRegressionPenalty(shantenBefore, shantenAfter, defenseState) {
         return regression * 4;
     return regression * 8;
 }
+const NUMBER_SUITS = ['wan', 'tong', 'tiao'];
+const WIND_TILES = new Set(['dong', 'nan', 'xi', 'bei']);
+const DRAGON_TILES = new Set(['zhong', 'fa', 'bai']);
+function tileSuitKey(tile) {
+    if (tile.startsWith('wan'))
+        return 'wan';
+    if (tile.startsWith('tong'))
+        return 'tong';
+    if (tile.startsWith('tiao'))
+        return 'tiao';
+    return null;
+}
+function hasNumberNeighbor(hand, tile) {
+    const suit = tileSuitKey(tile);
+    if (!suit)
+        return false;
+    const value = Number(tile.replace(suit, ''));
+    return hand.some((item) => {
+        if (item === tile)
+            return false;
+        if (tileSuitKey(item) !== suit)
+            return false;
+        const nextValue = Number(item.replace(suit, ''));
+        return Math.abs(nextValue - value) === 1 || Math.abs(nextValue - value) === 2;
+    });
+}
+function mixedRouteAnalysis(hand) {
+    const suitCounts = NUMBER_SUITS.map((suit) => ({ suit, count: hand.filter((tile) => tile.startsWith(suit)).length }));
+    suitCounts.sort((a, b) => b.count - a.count);
+    const main = suitCounts[0];
+    const honorTiles = hand.filter((tile) => WIND_TILES.has(tile) || DRAGON_TILES.has(tile));
+    const honorCount = honorTiles.length;
+    const offSuitNumberCount = hand.filter((tile) => {
+        const suit = tileSuitKey(tile);
+        return suit && suit !== main.suit;
+    }).length;
+    const windKinds = new Set(honorTiles.filter((tile) => WIND_TILES.has(tile))).size;
+    const dragonKinds = new Set(honorTiles.filter((tile) => DRAGON_TILES.has(tile))).size;
+    const strong = main.count >= 6 && honorCount >= 4 && main.count + honorCount >= 10 && offSuitNumberCount <= 3;
+    return {
+        type: strong ? 'mixed-strong' : null,
+        mainSuit: main.suit,
+        mainSuitCount: main.count,
+        honorCount,
+        offSuitNumberCount,
+        windCombo: windKinds >= 2,
+        dragonCombo: dragonKinds >= 2,
+        adjustment: 0,
+    };
+}
+function mixedRouteDiscardAdjustment(hand, tile, analysis) {
+    if (analysis.type !== 'mixed-strong')
+        return analysis;
+    const suit = tileSuitKey(tile);
+    let adjustment = 0;
+    let reason = '';
+    if (suit && suit !== analysis.mainSuit) {
+        adjustment += hasNumberNeighbor(hand, tile) ? 0.95 : 0.65;
+        reason = 'off-suit-number-first';
+    }
+    else if (suit === analysis.mainSuit) {
+        adjustment -= 0.45;
+        reason = 'protect-main-suit';
+    }
+    else if (WIND_TILES.has(tile) && analysis.windCombo) {
+        adjustment -= 1.25;
+        reason = 'protect-wind-combo';
+    }
+    else if (DRAGON_TILES.has(tile) && analysis.dragonCombo) {
+        adjustment -= 1.25;
+        reason = 'protect-dragon-combo';
+    }
+    else if (WIND_TILES.has(tile) || DRAGON_TILES.has(tile)) {
+        adjustment -= 0.45;
+        reason = 'protect-honor-route';
+    }
+    return { ...analysis, adjustment: (0, utils_1.roundScore)(adjustment), reason };
+}
 function hasClearDefenseReason(candidate) {
     var _a;
     const defenseState = (_a = candidate.metadata.defense) === null || _a === void 0 ? void 0 : _a.state.state;
@@ -1000,6 +1078,7 @@ function makeDecision(state, config) {
     const position = (0, position_adjuster_1.analyzePosition)(state.scores || [0, 0, 0, 0], currentPlayer);
     const kongZhichan = (0, kong_zhichan_analyzer_1.analyzeKongZhichan)(hand, melds, tenpai.isTenpai, classification.handTypes, state.wallRemaining || ((_a = state.wallTiles) === null || _a === void 0 ? void 0 : _a.length) || 70);
     const dalanRoute = (0, dalan_router_1.evaluateDalanRoute)(hand, melds, state.turn || 1);
+    const mixedRouteBase = mixedRouteAnalysis(hand);
     const speedContext = { shantenBefore: shanten.shanten };
     const legalDiscards = (0, utils_1.uniqueDiscards)(state.newDrawnTile ? hand.filter((tile) => tile !== state.newDrawnTile) : hand);
     const evaluateDefense = (0, defense_engine_1.createDefenseEvaluator)(state, currentPlayer);
@@ -1014,6 +1093,7 @@ function makeDecision(state, config) {
         const dragonComboBreak = (0, structure_penalty_1.breaksDragonCombo)(hand, tile);
         const breaksPair = hand.filter((item) => item === tile).length >= 2;
         const isolatedPriority = (0, structure_penalty_1.isolatedDiscardPriority)(hand, tile);
+        const mixedRoute = mixedRouteDiscardAdjustment(hand, tile, mixedRouteBase);
         const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
         const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
         const breakdown = {
@@ -1035,6 +1115,7 @@ function makeDecision(state, config) {
             + breakdown.defenseScore * finalWeights.defense
             + breakdown.positionAdjustment * finalWeights.position
             + breakdown.structurePenalty * finalWeights.structure
+            + (mixedRoute.adjustment || 0)
             - regressionPenalty);
         return {
             tile,
@@ -1050,6 +1131,7 @@ function makeDecision(state, config) {
                 dragonComboBreak,
                 destroyedStructureType: structure.destroyedStructure.type,
                 breaksPair,
+                mixedRoute,
                 isolatedDiscardPriority: isolatedPriority,
                 defense,
             },
@@ -1072,7 +1154,7 @@ function makeDecision(state, config) {
         allCandidates: candidates,
         phase,
         reasoning: reasoningFor(selected, phase),
-        metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position, defenseState: (_b = selected.metadata.defense) === null || _b === void 0 ? void 0 : _b.state, finalDecisionGuard: guarded.guardReason ? { triggered: true, reason: guarded.guardReason, blockedReasonCodes: guarded.blockedReasonCodes } : undefined },
+        metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, mixedRoute: selected.metadata.mixedRoute, kongZhichan, position, defenseState: (_b = selected.metadata.defense) === null || _b === void 0 ? void 0 : _b.state, finalDecisionGuard: guarded.guardReason ? { triggered: true, reason: guarded.guardReason, blockedReasonCodes: guarded.blockedReasonCodes } : undefined },
     };
 }
 

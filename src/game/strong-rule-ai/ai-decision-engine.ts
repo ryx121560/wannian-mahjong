@@ -67,6 +67,78 @@ function shantenRegressionPenalty(shantenBefore: number, shantenAfter: number, d
   return regression * 8;
 }
 
+const NUMBER_SUITS = ['wan', 'tong', 'tiao'] as const;
+const WIND_TILES = new Set<Tile>(['dong', 'nan', 'xi', 'bei']);
+const DRAGON_TILES = new Set<Tile>(['zhong', 'fa', 'bai']);
+
+function tileSuitKey(tile: Tile): 'wan' | 'tong' | 'tiao' | null {
+  if (tile.startsWith('wan')) return 'wan';
+  if (tile.startsWith('tong')) return 'tong';
+  if (tile.startsWith('tiao')) return 'tiao';
+  return null;
+}
+
+function hasNumberNeighbor(hand: Tile[], tile: Tile): boolean {
+  const suit = tileSuitKey(tile);
+  if (!suit) return false;
+  const value = Number(tile.replace(suit, ''));
+  return hand.some((item) => {
+    if (item === tile) return false;
+    if (tileSuitKey(item) !== suit) return false;
+    const nextValue = Number(item.replace(suit, ''));
+    return Math.abs(nextValue - value) === 1 || Math.abs(nextValue - value) === 2;
+  });
+}
+
+function mixedRouteAnalysis(hand: Tile[]): NonNullable<CandidateScore['metadata']['mixedRoute']> {
+  const suitCounts = NUMBER_SUITS.map((suit) => ({ suit, count: hand.filter((tile) => tile.startsWith(suit)).length }));
+  suitCounts.sort((a, b) => b.count - a.count);
+  const main = suitCounts[0];
+  const honorTiles = hand.filter((tile) => WIND_TILES.has(tile) || DRAGON_TILES.has(tile));
+  const honorCount = honorTiles.length;
+  const offSuitNumberCount = hand.filter((tile) => {
+    const suit = tileSuitKey(tile);
+    return suit && suit !== main.suit;
+  }).length;
+  const windKinds = new Set(honorTiles.filter((tile) => WIND_TILES.has(tile))).size;
+  const dragonKinds = new Set(honorTiles.filter((tile) => DRAGON_TILES.has(tile))).size;
+  const strong = main.count >= 6 && honorCount >= 4 && main.count + honorCount >= 10 && offSuitNumberCount <= 3;
+  return {
+    type: strong ? 'mixed-strong' : null,
+    mainSuit: main.suit,
+    mainSuitCount: main.count,
+    honorCount,
+    offSuitNumberCount,
+    windCombo: windKinds >= 2,
+    dragonCombo: dragonKinds >= 2,
+    adjustment: 0,
+  };
+}
+
+function mixedRouteDiscardAdjustment(hand: Tile[], tile: Tile, analysis: NonNullable<CandidateScore['metadata']['mixedRoute']>): NonNullable<CandidateScore['metadata']['mixedRoute']> {
+  if (analysis.type !== 'mixed-strong') return analysis;
+  const suit = tileSuitKey(tile);
+  let adjustment = 0;
+  let reason = '';
+  if (suit && suit !== analysis.mainSuit) {
+    adjustment += hasNumberNeighbor(hand, tile) ? 0.95 : 0.65;
+    reason = 'off-suit-number-first';
+  } else if (suit === analysis.mainSuit) {
+    adjustment -= 0.45;
+    reason = 'protect-main-suit';
+  } else if (WIND_TILES.has(tile) && analysis.windCombo) {
+    adjustment -= 1.25;
+    reason = 'protect-wind-combo';
+  } else if (DRAGON_TILES.has(tile) && analysis.dragonCombo) {
+    adjustment -= 1.25;
+    reason = 'protect-dragon-combo';
+  } else if (WIND_TILES.has(tile) || DRAGON_TILES.has(tile)) {
+    adjustment -= 0.45;
+    reason = 'protect-honor-route';
+  }
+  return { ...analysis, adjustment: roundScore(adjustment), reason };
+}
+
 function hasClearDefenseReason(candidate: CandidateScore): boolean {
   const defenseState = candidate.metadata.defense?.state.state;
   if (defenseState === 'full-fold') return true;
@@ -141,6 +213,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
   const position = analyzePosition(state.scores || [0, 0, 0, 0], currentPlayer);
   const kongZhichan = analyzeKongZhichan(hand, melds, tenpai.isTenpai, classification.handTypes, state.wallRemaining || state.wallTiles?.length || 70);
   const dalanRoute = evaluateDalanRoute(hand, melds, state.turn || 1);
+  const mixedRouteBase = mixedRouteAnalysis(hand);
   const speedContext = { shantenBefore: shanten.shanten };
   const legalDiscards = uniqueDiscards(state.newDrawnTile ? hand.filter((tile) => tile !== state.newDrawnTile) : hand);
   const evaluateDefense = createDefenseEvaluator(state, currentPlayer);
@@ -155,6 +228,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
     const dragonComboBreak = breaksDragonCombo(hand, tile);
     const breaksPair = hand.filter((item) => item === tile).length >= 2;
     const isolatedPriority = isolatedDiscardPriority(hand, tile);
+    const mixedRoute = mixedRouteDiscardAdjustment(hand, tile, mixedRouteBase);
     const attackScore = speed.speedScore + handValue.handValueScore + waitQuality.waitQualityScore + kongZhichan.kongZhichanScore + dalanRoute.dalanRouteScore + dalanImpact;
     const posScore = positionScore(position.offenseMultiplier, position.defenseMultiplier, attackScore, defense.defenseScore);
     const breakdown = {
@@ -177,6 +251,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
       + breakdown.defenseScore * finalWeights.defense
       + breakdown.positionAdjustment * finalWeights.position
       + breakdown.structurePenalty * finalWeights.structure
+      + (mixedRoute.adjustment || 0)
       - regressionPenalty,
     );
     return {
@@ -193,6 +268,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
         dragonComboBreak,
         destroyedStructureType: structure.destroyedStructure.type,
         breaksPair,
+        mixedRoute,
         isolatedDiscardPriority: isolatedPriority,
         defense,
       },
@@ -213,6 +289,6 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
     allCandidates: candidates,
     phase,
     reasoning: reasoningFor(selected, phase),
-    metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, kongZhichan, position, defenseState: selected.metadata.defense?.state, finalDecisionGuard: guarded.guardReason ? { triggered: true, reason: guarded.guardReason, blockedReasonCodes: guarded.blockedReasonCodes } : undefined },
+    metadata: { shanten: shanten.shanten, isTenpai: tenpai.isTenpai, dalanRoute, mixedRoute: selected.metadata.mixedRoute, kongZhichan, position, defenseState: selected.metadata.defense?.state, finalDecisionGuard: guarded.guardReason ? { triggered: true, reason: guarded.guardReason, blockedReasonCodes: guarded.blockedReasonCodes } : undefined },
   };
 }

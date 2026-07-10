@@ -26,6 +26,17 @@ export interface CandidateScore {
     dragonComboBreak?: boolean;
     destroyedStructureType?: StructurePenaltyResult['destroyedStructure']['type'];
     breaksPair?: boolean;
+    mixedRoute?: {
+      type: 'mixed-strong' | null;
+      mainSuit?: string;
+      mainSuitCount: number;
+      honorCount: number;
+      offSuitNumberCount: number;
+      windCombo: boolean;
+      dragonCombo: boolean;
+      adjustment: number;
+      reason?: string;
+    };
     isolatedDiscardPriority?: number;
     defense?: DefenseResult;
   };
@@ -94,6 +105,7 @@ export interface AIDecision {
     shanten: number;
     isTenpai: boolean;
     dalanRoute: DalanRouteAnalysis | null;
+    mixedRoute?: CandidateScore['metadata']['mixedRoute'];
     kongZhichan: KongZhichanPotential;
     position: PositionAdjustment;
     defenseState?: AttackDefenseStatus;

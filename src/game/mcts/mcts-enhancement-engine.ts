@@ -21,6 +21,8 @@ export interface MctsCandidate {
   isStrongRuleChoice?: boolean;
   dragonComboBreak?: boolean;
   isolatedDiscardPriority?: number;
+  mixedRouteType?: 'mixed-strong' | string | null;
+  mixedRouteReason?: string | null;
   modelFeatures?: {
     routeTransition?: boolean;
     complexRanking?: boolean;
@@ -229,6 +231,11 @@ function kongAdjustment(candidate: MctsCandidate, context: MctsDecisionContext):
 }
 
 function routeProtectionAdjustment(candidate: MctsCandidate): number {
+  if (candidate.mixedRouteType === 'mixed-strong') {
+    if (candidate.mixedRouteReason === 'off-suit-number-first') return 2.8;
+    if (candidate.mixedRouteReason === 'protect-wind-combo' || candidate.mixedRouteReason === 'protect-dragon-combo') return -5.5;
+    if (candidate.mixedRouteReason === 'protect-main-suit' || candidate.mixedRouteReason === 'protect-honor-route') return -2.2;
+  }
   if (!candidate.breaksRoute) return 0;
   const protectedRoute = ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(candidate.route || '');
   return protectedRoute ? -4.5 : -2;
@@ -344,6 +351,10 @@ function modelScore(candidate: ScoredCandidate, context: MctsDecisionContext): n
   if ((candidate.waitRemaining || 0) >= 4) score += 0.8;
   if ((candidate.waitCount || 0) >= 2) score += 0.5;
   if ((candidate.isolatedDiscardPriority || 0) > 0) score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
+  if (candidate.mixedRouteType === 'mixed-strong') {
+    if (candidate.mixedRouteReason === 'off-suit-number-first') score += 1.4;
+    if (candidate.mixedRouteReason === 'protect-wind-combo' || candidate.mixedRouteReason === 'protect-dragon-combo') score -= 2.8;
+  }
   if (candidate.dragonComboBreak) score -= 2.2;
   if (breaksPairAfterTenpai(candidate, context)) score -= 24;
   if (breaksCoreSequence(candidate, context)) score -= strongestThreat(context) >= 0.75 ? 1.2 : 3.5;
@@ -371,6 +382,7 @@ function buildModelAdvice(scored: ScoredCandidate[], context: MctsDecisionContex
     .filter((candidate) => !candidate.legal || hasInvalidReadyWait(candidate) || breaksPairAfterTenpai(candidate, context))
     .map((candidate) => `${actionText(candidate)}:${!candidate.legal ? 'illegal-blocked' : hasInvalidReadyWait(candidate) ? 'ready-wait-blocked' : 'tenpai-pair-regression-blocked'}`);
   const routeTransitionCandidate = ranked.find((item) => !!item.candidate.modelFeatures?.routeTransition
+    || item.candidate.mixedRouteType === 'mixed-strong'
     || ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(item.candidate.route || ''));
   const routeTransitionJudgment = routeTransitionCandidate
     ? `模型识别到${actionText(routeTransitionCandidate.candidate)}存在路线转换价值，已作为弱增强信号参与复核。`

@@ -130,6 +130,14 @@ function kongAdjustment(candidate, context) {
     return reward - Math.min(1.4, risk) * 5.5;
 }
 function routeProtectionAdjustment(candidate) {
+    if (candidate.mixedRouteType === 'mixed-strong') {
+        if (candidate.mixedRouteReason === 'off-suit-number-first')
+            return 2.8;
+        if (candidate.mixedRouteReason === 'protect-wind-combo' || candidate.mixedRouteReason === 'protect-dragon-combo')
+            return -5.5;
+        if (candidate.mixedRouteReason === 'protect-main-suit' || candidate.mixedRouteReason === 'protect-honor-route')
+            return -2.2;
+    }
     if (!candidate.breaksRoute)
         return 0;
     const protectedRoute = ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(candidate.route || '');
@@ -264,6 +272,12 @@ function modelScore(candidate, context) {
         score += 0.5;
     if ((candidate.isolatedDiscardPriority || 0) > 0)
         score += Math.min(2, Number(candidate.isolatedDiscardPriority || 0) * 0.25);
+    if (candidate.mixedRouteType === 'mixed-strong') {
+        if (candidate.mixedRouteReason === 'off-suit-number-first')
+            score += 1.4;
+        if (candidate.mixedRouteReason === 'protect-wind-combo' || candidate.mixedRouteReason === 'protect-dragon-combo')
+            score -= 2.8;
+    }
     if (candidate.dragonComboBreak)
         score -= 2.2;
     if (breaksPairAfterTenpai(candidate, context))
@@ -299,6 +313,7 @@ function buildModelAdvice(scored, context) {
     const routeTransitionCandidate = ranked.find((item) => {
         var _a;
         return !!((_a = item.candidate.modelFeatures) === null || _a === void 0 ? void 0 : _a.routeTransition)
+            || item.candidate.mixedRouteType === 'mixed-strong'
             || ['dalan', '7p', 'quanzheng', 'banzheng', 'high-value'].includes(item.candidate.route || '');
     });
     const routeTransitionJudgment = routeTransitionCandidate

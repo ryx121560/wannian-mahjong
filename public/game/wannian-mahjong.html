@@ -2296,6 +2296,37 @@ function suitBias(hand){
   return {suit:topSuit,count:topNum,type:'none'};
 }
 
+function mixedStrongRoute(hand){
+  const cnt={wan:0,tong:0,tiao:0};let honorCnt=0;
+  const winds=new Set(),dragons=new Set();
+  for(const t of hand){
+    if(t.t==='honor'){
+      honorCnt++;
+      if(['dong','nan','xi','bei'].includes(t.s))winds.add(t.s);
+      if(['zhong','fa','bai'].includes(t.s))dragons.add(t.s);
+    }else if(t.t==='num')cnt[t.s]++;
+  }
+  const e=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+  const topSuit=e[0][0],topNum=e[0][1];
+  const offSuit=hand.filter(function(t){return t.t==='num'&&t.s!==topSuit;}).length;
+  const strong=topNum>=6&&honorCnt>=4&&topNum+honorCnt>=10&&offSuit<=3;
+  return {type:strong?'mixed-strong':null,suit:topSuit,mainSuitCount:topNum,honorCount:honorCnt,offSuitNumberCount:offSuit,windCombo:winds.size>=2,dragonCombo:dragons.size>=2};
+}
+
+function mixedStrongDiscardInfo(hand,tile){
+  const route=mixedStrongRoute(hand);
+  if(route.type!=='mixed-strong'||!tile)return {type:null,reason:null,adjustment:0};
+  if(tile.t==='num'&&tile.s!==route.suit){
+    const hasBuddy=hand.some(function(h){return h!==tile&&h.t==='num'&&h.s===tile.s&&Math.abs(h.v-tile.v)<=2;});
+    return {type:route.type,reason:'off-suit-number-first',adjustment:hasBuddy?0.95:0.65};
+  }
+  if(tile.t==='num'&&tile.s===route.suit)return {type:route.type,reason:'protect-main-suit',adjustment:-0.45};
+  if(tile.t==='honor'&&['dong','nan','xi','bei'].includes(tile.s)&&route.windCombo)return {type:route.type,reason:'protect-wind-combo',adjustment:-1.25};
+  if(tile.t==='honor'&&['zhong','fa','bai'].includes(tile.s)&&route.dragonCombo)return {type:route.type,reason:'protect-dragon-combo',adjustment:-1.25};
+  if(tile.t==='honor')return {type:route.type,reason:'protect-honor-route',adjustment:-0.45};
+  return {type:route.type,reason:null,adjustment:0};
+}
+
 // 对手手牌推理：从弃牌反推对手可能持有的花色
 function oppSuitDanger(oppIdx,tile){
   if(tile.t!=='num')return 0;
@@ -2584,9 +2615,10 @@ function mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongActionText,c
   const key=tkey(tile);
   const route=detail.path||'norm';
   const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
+  const mixedInfo=mixedStrongDiscardInfo(hand,tile);
   const waitInfo=aiWaitInfoAfterDiscard(detail.sub||hand.filter(function(_,j){return j!==detail.idx;}),playerIdx,route,tile);
   const base=(scoreInfo?scoreInfo.sc:0)-(detail.s||0)*2+(waitInfo.remaining||0)*0.25;
-  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak),breaksPair:!!detail.breaksPair,dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
+  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak),breaksPair:!!detail.breaksPair,dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,mixedRouteType:mixedInfo.type,mixedRouteReason:mixedInfo.reason,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
   action.isStrongRuleChoice=mctsActionText(action)===strongActionText;
   return action;
 }
@@ -4312,6 +4344,8 @@ function updateSuggestion(){
         if(oc===1&&hand[ci].t==='num'){const t=hand[ci];const hasBuddy=hand.some(function(h,j){return j!==ci&&h.t==='num'&&h.s===t.s&&Math.abs(h.v-t.v)===1;});if(hasBuddy)q-=2;}
       }
       const dragonAdj=aiBreaksDragonCombo(hand,ci)?-8:0;
+      const mixedInfo=mixedStrongDiscardInfo(hand,hand[ci]);
+      const mixedRouteAdj=mixedInfo.adjustment||0;
       let singleHonorAdj=0;
       const singleHonorDiscard=aiUnprotectedSingleHonor(hand,ci);
       const recommendationDefenseScores=candDetails.map(function(item){return defenseScore(hand[item.idx],0);});
@@ -4320,7 +4354,7 @@ function updateSuggestion(){
       const edgeVisibleAdj=visibleEdgeIsolatedAdj(hand,ci,0);
       const structureAdj=(d.breaksMeld?-10:0)+(d.breaksTaatsu?-4:0)+(d.breaksPair?-3:0);
       const furoTransitionAdj=furoTransitionStructureScore(hand,ci,0);
-      q+=dragonAdj+isolatedAdj+edgeVisibleAdj+structureAdj+furoTransitionAdj;
+      q+=dragonAdj+isolatedAdj+edgeVisibleAdj+structureAdj+furoTransitionAdj+mixedRouteAdj;
       let suitAdj=0;
       if(p==='norm'){
         if(bias.type==='clear'&&hand[ci].t==='num'&&hand[ci].s===bias.suit)suitAdj=-6;
@@ -4353,7 +4387,7 @@ function updateSuggestion(){
       if(phase==='early'){phaseAdj=0.3;q+=phaseAdj;}
       const defRaw=defenseScore(hand[ci],0);
       var _pc=hand.filter(function(h){return teq(h,hand[ci]);}).length;const sc=q+safeW*defRaw+(_pc>=2&&_pc<=3?-2.5:0);
-      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,edgeVisibleAdj:edgeVisibleAdj,structureAdj:structureAdj,furoTransitionAdj:furoTransitionAdj,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
+      candScores[ci]={qBase:qBase,pairAdj:pairAdj,suitAdj:suitAdj,phaseAdj:phaseAdj,dragonAdj:dragonAdj,isolatedAdj:isolatedAdj,edgeVisibleAdj:edgeVisibleAdj,structureAdj:structureAdj,furoTransitionAdj:furoTransitionAdj,mixedRouteAdj:mixedRouteAdj,mixedRouteType:mixedInfo.type,mixedRouteReason:mixedInfo.reason,singleHonorAdj:singleHonorAdj,defRaw:defRaw,safeW:safeW,sc:sc};
       if(bestCandSet.has(ci)&&bestCands.length>1&&sc>bestScore){bestScore=sc;bestIdx=ci;bestPath=p;}
     });
   }

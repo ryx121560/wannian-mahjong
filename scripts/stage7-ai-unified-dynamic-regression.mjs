@@ -107,6 +107,28 @@ cases.push({
   },
 });
 
+cases.push({
+  id: 'stage7-ai-discard-mixed-honor-route-001',
+  turn: 31,
+  player: 3,
+  hand: ['wan1', 'wan1', 'wan2', 'wan3', 'wan3', 'wan7', 'wan8', 'tong4', 'tong6', 'dong', 'xi', 'zhong', 'fa', 'bai'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['wan9', 'tong9', 'tiao9'],
+    ['nan', 'wan4', 'tong2'],
+    ['bei', 'wan5', 'tong3'],
+    ['tiao1', 'wan6', 'tong7'],
+  ],
+  melds: [],
+  wallRemaining: 62,
+  expected: {
+    allowedFinalTiles: ['tong4', 'tong6'],
+    forbiddenFinalTiles: ['dong', 'xi'],
+    requiredCandidateTiles: ['tong4', 'tong6'],
+    requiredMetadata: { mixedRouteType: 'mixed-strong' },
+  },
+});
+
 function makeState(scene) {
   return {
     hand: scene.hand,
@@ -147,6 +169,8 @@ function candidateViews(decision) {
     breaksMeld: (candidate.breakdown?.structurePenalty || 0) <= -6,
     breaksPair: !!candidate.metadata?.dragonComboBreak,
     breaksTaatsu: (candidate.breakdown?.structurePenalty || 0) < 0,
+    mixedRouteType: candidate.metadata?.mixedRoute?.type || null,
+    mixedRouteReason: candidate.metadata?.mixedRoute?.reason || null,
   }));
 }
 
@@ -164,6 +188,8 @@ function mctsCandidatesFromDecision(decision) {
     breaksPair: !!candidate.metadata?.dragonComboBreak,
     dragonComboBreak: !!candidate.metadata?.dragonComboBreak,
     isolatedDiscardPriority: candidate.metadata?.isolatedDiscardPriority || 0,
+    mixedRouteType: candidate.metadata?.mixedRoute?.type || null,
+    mixedRouteReason: candidate.metadata?.mixedRoute?.reason || null,
     defenseRisk: Math.max(0, Math.min(1, 1 - ((candidate.breakdown?.defenseScore || 0) + 2) / 6)),
     dealInRisk: 0.1,
     kongRisk: 0,
@@ -271,6 +297,12 @@ function compareScene(scene) {
     }
     if ((aiChosen?.shantenAfter ?? 99) > scene.expected.maxShantenAfter) {
       mismatches.push(`shantenAfter ${(aiChosen?.shantenAfter ?? 99)} > ${scene.expected.maxShantenAfter}`);
+    }
+    if (scene.expected.requiredMetadata?.mixedRouteType) {
+      const routeType = aiChosen?.mixedRouteType || decision.metadata?.mixedRoute?.type || null;
+      if (routeType !== scene.expected.requiredMetadata.mixedRouteType) {
+        mismatches.push(`mixedRouteType ${routeType || 'none'} != ${scene.expected.requiredMetadata.mixedRouteType}`);
+      }
     }
     const anomalyCodes = [];
     const bestShanten = Math.min(...views.map((candidate) => candidate.shantenAfter));
