@@ -1003,6 +1003,8 @@ function hasClearDefenseReason(candidate) {
 }
 function severeBreakRank(candidate) {
     const destroyedType = candidate.metadata.destroyedStructureType;
+    if (candidate.metadata.breaksKongCore)
+        return 6;
     if (candidate.metadata.dragonComboBreak)
         return 5;
     if (candidate.metadata.breaksPair || destroyedType === 'duizi')
@@ -1012,6 +1014,16 @@ function severeBreakRank(candidate) {
     if (destroyedType === 'dazi')
         return 1;
     return 0;
+}
+function breaksConcealedKongCore(hand, tile, kongOpportunity) {
+    return kongOpportunity && hand.filter((item) => item === tile).length >= 4;
+}
+function canUseGuardFallback(candidate) {
+    if (candidate.metadata.dragonComboBreak)
+        return false;
+    if (candidate.metadata.breaksKongCore && !hasClearDefenseReason(candidate))
+        return false;
+    return true;
 }
 function compareGuardFallback(a, b) {
     const shantenDiff = a.metadata.shantenAfter - b.metadata.shantenAfter;
@@ -1027,22 +1039,25 @@ function compareGuardFallback(a, b) {
 }
 function finalDecisionGuard(candidates) {
     const selected = candidates[0];
-    const bestShanten = Math.min(...candidates.map((candidate) => candidate.metadata.shantenAfter));
-    const bestCandidates = candidates.filter((candidate) => candidate.metadata.shantenAfter === bestShanten);
-    const hasTenpaiCandidate = bestCandidates.some((candidate) => candidate.metadata.shantenAfter <= 0);
+    const topCandidateWindow = candidates.slice(0, Math.min(5, candidates.length));
+    const bestShanten = Math.min(...topCandidateWindow.map((candidate) => candidate.metadata.shantenAfter));
+    const bestCandidates = topCandidateWindow.filter((candidate) => candidate.metadata.shantenAfter === bestShanten);
+    const hasTenpaiCandidate = topCandidateWindow.some((candidate) => candidate.metadata.isTenpaiAfter === true);
     const selectedBreakRank = severeBreakRank(selected);
     const blockedReasonCodes = [];
     if (selected.metadata.shantenAfter > bestShanten + 1)
         blockedReasonCodes.push('shanten-regression');
-    if (hasTenpaiCandidate && selected.metadata.shantenAfter > bestShanten)
+    if (hasTenpaiCandidate && selected.metadata.isTenpaiAfter !== true)
         blockedReasonCodes.push('abandons-tenpai');
+    if (selected.metadata.breaksKongCore)
+        blockedReasonCodes.push('breaks-kong-core');
     if (selected.metadata.dragonComboBreak)
         blockedReasonCodes.push('breaks-complete-dragon-combo');
     if (selected.metadata.breaksPair || selected.metadata.destroyedStructureType === 'duizi')
         blockedReasonCodes.push('breaks-pair');
     if (selectedBreakRank >= 3 && !hasClearDefenseReason(selected)) {
         const fallback = bestCandidates
-            .filter((candidate) => !candidate.metadata.dragonComboBreak)
+            .filter(canUseGuardFallback)
             .filter((candidate) => severeBreakRank(candidate) < selectedBreakRank)
             .slice()
             .sort(compareGuardFallback)[0];
@@ -1051,8 +1066,8 @@ function finalDecisionGuard(candidates) {
         }
     }
     if (blockedReasonCodes.length && !hasClearDefenseReason(selected)) {
-        const fallback = candidates
-            .filter((candidate) => !candidate.metadata.dragonComboBreak)
+        const fallback = topCandidateWindow
+            .filter(canUseGuardFallback)
             .slice()
             .sort(compareGuardFallback)[0];
         if (fallback && fallback.tile !== selected.tile) {
@@ -1086,7 +1101,8 @@ function makeDecision(state, config) {
         const afterHand = (0, utils_1.removeOne)(hand, tile);
         const speed = (0, speed_evaluator_1.evaluateSpeed)(hand, melds, tile, speedContext);
         const handValue = (0, hand_value_evaluator_1.evaluateHandValue)(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
-        const waitQuality = tenpai.isTenpai ? (0, wait_quality_evaluator_1.evaluateWaitQuality)(afterHand, melds, (0, rules_1.checkTenpai)(afterHand, melds)) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
+        const afterTenpai = (0, rules_1.checkTenpai)(afterHand, melds);
+        const waitQuality = tenpai.isTenpai ? (0, wait_quality_evaluator_1.evaluateWaitQuality)(afterHand, melds, afterTenpai) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
         const dalanImpact = (0, dalan_router_1.evaluateDalanImpact)(hand, melds, tile, dalanRoute);
         const defense = evaluateDefense(tile);
         const structure = (0, structure_penalty_1.evaluateStructurePenalty)(hand, melds, tile);
@@ -1124,10 +1140,12 @@ function makeDecision(state, config) {
             metadata: {
                 shantenBefore: speed.shantenBefore,
                 shantenAfter: speed.shantenAfter,
+                isTenpaiAfter: afterTenpai.isTenpai,
                 expectedBaseScore: handValue.expectedBaseScore,
                 effectiveCount: speed.effectiveCount,
                 isDalanRoute: dalanRoute.shouldConsiderDalan,
                 kongOpportunity: kongZhichan.kongZhichanScore > 0,
+                breaksKongCore: breaksConcealedKongCore(hand, tile, kongZhichan.kongZhichanScore > 0),
                 dragonComboBreak,
                 destroyedStructureType: structure.destroyedStructure.type,
                 breaksPair,

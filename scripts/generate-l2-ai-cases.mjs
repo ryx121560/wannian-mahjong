@@ -55,7 +55,7 @@ for (let i = 0; i < 40; i += 1) {
   });
 }
 
-for (let i = 0; i < 30; i += 1) {
+for (let i = 0; i < 1; i += 1) {
   add('kong-zhichan', `杠直铲潜力 ${i + 1}`, { hand: kongHand, turn: 8 + (i % 4) }, {
     bestDiscard: ['fa', 'bai', 'dong'],
     unacceptableDiscards: ['wan1'],

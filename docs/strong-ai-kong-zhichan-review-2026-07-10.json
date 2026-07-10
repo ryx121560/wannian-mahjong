@@ -1,0 +1,739 @@
+{
+  "schemaVersion": "strong-ai-kong-zhichan-review-v1",
+  "generatedAt": "2026-07-10T04:47:22.453Z",
+  "source": "docs/strong-rule-ai-l2-cases.json",
+  "category": "kong-zhichan",
+  "totalCases": 1,
+  "failedCases": 0,
+  "passedCases": 1,
+  "purpose": "导出 kong-zhichan 回归牌例，供产品逐条判断测试期望应更新还是 AI 策略应修复。",
+  "reviewLegend": {
+    "reviewStatus": [
+      "pending",
+      "reviewed"
+    ],
+    "reviewConclusion": [
+      "测试期望应更新",
+      "AI策略应修复",
+      "需要补充规则口径"
+    ]
+  },
+  "cases": [
+    {
+      "id": "L2-kong-zhichan-001",
+      "category": "kong-zhichan",
+      "description": "杠直铲潜力 1",
+      "level": "L2",
+      "input": {
+        "hand": [
+          "wan1",
+          "wan1",
+          "wan1",
+          "wan1",
+          "tong2",
+          "tong3",
+          "tong4",
+          "tiao5",
+          "tiao6",
+          "tiao7",
+          "dong",
+          "dong",
+          "fa",
+          "bai"
+        ],
+        "melds": [],
+        "discards": [
+          [],
+          [],
+          [],
+          []
+        ],
+        "scores": [
+          100,
+          100,
+          100,
+          100
+        ],
+        "turn": 8,
+        "currentPlayer": 0,
+        "dealer": 0,
+        "wallRemaining": 80,
+        "passRecords": []
+      },
+      "expected": {
+        "bestDiscard": [
+          "fa",
+          "bai",
+          "dong"
+        ],
+        "unacceptableDiscards": [
+          "wan1"
+        ],
+        "reasoningKeywords": [
+          "杠"
+        ]
+      },
+      "actual": {
+        "selectedTile": "bai",
+        "selectedScore": -8.6361,
+        "phase": "middle",
+        "reasoning": "中盘。主要考量杠直铲、防守。兼顾速度、打点、听牌、杠直铲、打烂、防守、位置和结构。综合得分-8.6361，选择弃白板。",
+        "combinedReasoning": "中盘。主要考量杠直铲、防守。兼顾速度、打点、听牌、杠直铲、打烂、防守、位置和结构。综合得分-8.6361，选择弃白板。 attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135",
+        "durationMs": 92,
+        "metadata": {
+          "shanten": 0,
+          "isTenpai": false,
+          "dalanRoute": {
+            "shouldConsiderDalan": false,
+            "dalanProgress": {
+              "allDifferent": false,
+              "honorCount": 3,
+              "maxDiffOk": false,
+              "progressPercent": 13
+            },
+            "recommendedSubtype": "半正宗",
+            "subtypeUpgradePotential": {
+              "mod3Convergence": 0.6,
+              "sevenHonorsProgress": 3
+            },
+            "dalanRouteScore": 0,
+            "normalRouteAbandonCost": 0.95
+          },
+          "mixedRoute": {
+            "type": null,
+            "mainSuit": "wan",
+            "mainSuitCount": 4,
+            "honorCount": 4,
+            "offSuitNumberCount": 6,
+            "windCombo": false,
+            "dragonCombo": true,
+            "adjustment": 0
+          },
+          "kongZhichan": {
+            "anGangOpportunities": [
+              {
+                "tile": "wan1",
+                "probability": 1,
+                "expectedGain": 2,
+                "robRisk": 0.1
+              }
+            ],
+            "zhiChanOpportunities": [],
+            "paoGangOpportunities": [],
+            "lianGangPotential": {
+              "probability": 0.15,
+              "extraMultiplier": 2
+            },
+            "noColorPotential": {
+              "isPossible": false,
+              "probability": 0,
+              "bonusMultiplier": 2
+            },
+            "kongZhichanScore": 0.2833
+          },
+          "position": {
+            "situation": "even",
+            "offenseMultiplier": 1,
+            "defenseMultiplier": 1,
+            "riskTolerance": 0.6
+          },
+          "defenseState": {
+            "state": "attack",
+            "reasoning": "attack-default",
+            "factors": {
+              "selfTenpai": false,
+              "selfShanten": 0,
+              "maxOpponentTenpaiProb": 0.15,
+              "scorePosition": "even",
+              "turn": 8
+            },
+            "offenseWeight": 1,
+            "defenseWeight": 1
+          }
+        },
+        "selectedCandidateRankByScore": 1,
+        "selectedCandidate": {
+          "rank": 1,
+          "tile": "bai",
+          "totalScore": -8.6361,
+          "breakdown": {
+            "speedScore": -0.75,
+            "handValueScore": 0.1017,
+            "waitQualityScore": 0,
+            "kongZhichanScore": 0.2833,
+            "dalanRouteScore": 0,
+            "defenseScore": -0.135,
+            "positionAdjustment": 0,
+            "structurePenalty": 0
+          },
+          "metadata": {
+            "shantenBefore": 0,
+            "shantenAfter": 1,
+            "expectedBaseScore": 1.05,
+            "effectiveCount": 0,
+            "isDalanRoute": false,
+            "kongOpportunity": true,
+            "dragonComboBreak": false,
+            "destroyedStructureType": "none",
+            "breaksPair": false,
+            "mixedRoute": {
+              "type": null,
+              "mainSuit": "wan",
+              "mainSuitCount": 4,
+              "honorCount": 4,
+              "offSuitNumberCount": 6,
+              "windCombo": false,
+              "dragonCombo": true,
+              "adjustment": 0
+            },
+            "isolatedDiscardPriority": 5,
+            "defenseState": {
+              "state": "attack",
+              "reasoning": "attack-default",
+              "factors": {
+                "selfTenpai": false,
+                "selfShanten": 0,
+                "maxOpponentTenpaiProb": 0.15,
+                "scorePosition": "even",
+                "turn": 8
+              },
+              "offenseWeight": 1,
+              "defenseWeight": 1
+            },
+            "defenseScore": -0.135,
+            "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+          }
+        },
+        "topCandidates": [
+          {
+            "rank": 1,
+            "tile": "bai",
+            "totalScore": -8.6361,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": 0
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "none",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 5,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 2,
+            "tile": "fa",
+            "totalScore": -8.6361,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": 0
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "none",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 5,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 3,
+            "tile": "dong",
+            "totalScore": -9.0399,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.0969,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -0.4
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "duizi",
+              "breaksPair": true,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 4,
+            "tile": "tiao5",
+            "totalScore": -9.6361,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -1
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 5,
+            "tile": "tiao6",
+            "totalScore": -9.6361,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -1
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 6,
+            "tile": "tong2",
+            "totalScore": -9.6361,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -1
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 7,
+            "tile": "tong3",
+            "totalScore": -9.6361,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": 0,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -1
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 8,
+            "tile": "tiao7",
+            "totalScore": -9.6781,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": -0.1,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -1
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 9,
+            "tile": "tong4",
+            "totalScore": -9.6781,
+            "breakdown": {
+              "speedScore": -0.75,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": -0.1,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -1
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 1,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 0,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": false,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          },
+          {
+            "rank": 10,
+            "tile": "wan1",
+            "totalScore": -9.8448,
+            "breakdown": {
+              "speedScore": 0.0833,
+              "handValueScore": 0.1017,
+              "waitQualityScore": 0,
+              "kongZhichanScore": 0.2833,
+              "dalanRouteScore": -0.1,
+              "defenseScore": -0.135,
+              "positionAdjustment": 0,
+              "structurePenalty": -10
+            },
+            "metadata": {
+              "shantenBefore": 0,
+              "shantenAfter": 0,
+              "expectedBaseScore": 1.05,
+              "effectiveCount": 1,
+              "isDalanRoute": false,
+              "kongOpportunity": true,
+              "dragonComboBreak": false,
+              "destroyedStructureType": "mianzi",
+              "breaksPair": true,
+              "mixedRoute": {
+                "type": null,
+                "mainSuit": "wan",
+                "mainSuitCount": 4,
+                "honorCount": 4,
+                "offSuitNumberCount": 6,
+                "windCombo": false,
+                "dragonCombo": true,
+                "adjustment": 0
+              },
+              "isolatedDiscardPriority": 0,
+              "defenseState": {
+                "state": "attack",
+                "reasoning": "attack-default",
+                "factors": {
+                  "selfTenpai": false,
+                  "selfShanten": 0,
+                  "maxOpponentTenpaiProb": 0.15,
+                  "scorePosition": "even",
+                  "turn": 8
+                },
+                "offenseWeight": 1,
+                "defenseWeight": 1
+              },
+              "defenseScore": -0.135,
+              "defenseReasoning": "attack. attack-default. maxTenpai-0.15. low-safety-0.55. no-safety-reason. no-special-signal. defense-score--0.135"
+            }
+          }
+        ]
+      },
+      "validation": {
+        "passed": true,
+        "failures": []
+      },
+      "suggestedReviewFocus": "判断当前 AI 打 1万 是否比期望字牌更合理",
+      "reviewStatus": "pending",
+      "reviewConclusion": ""
+    }
+  ]
+}

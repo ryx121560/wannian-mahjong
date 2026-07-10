@@ -11,6 +11,7 @@
     "test:rules": "node scripts/benchmark-runner.mjs",
     "generate:l2-ai": "node scripts/generate-l2-ai-cases.mjs",
     "test:strong-ai": "node scripts/strong-ai-regression.mjs",
+    "export:kong-zhichan-review": "node scripts/export-strong-ai-kong-zhichan-cases.mjs",
     "verify:browser-rules": "node scripts/build-browser-rule-engine.mjs && node scripts/verify-browser-rule-engine.mjs",
     "verify:strong-ai": "node scripts/build-browser-strong-rule-ai.mjs && node scripts/verify-browser-strong-rule-ai.mjs",
     "verify:recommendation": "node scripts/build-browser-recommendation-engine.mjs && node scripts/verify-browser-recommendation-engine.mjs",

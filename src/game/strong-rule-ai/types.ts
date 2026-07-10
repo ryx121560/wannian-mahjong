@@ -19,10 +19,12 @@ export interface CandidateScore {
   metadata: {
     shantenBefore: number;
     shantenAfter: number;
+    isTenpaiAfter?: boolean;
     expectedBaseScore: number;
     effectiveCount: number;
     isDalanRoute: boolean;
     kongOpportunity: boolean;
+    breaksKongCore?: boolean;
     dragonComboBreak?: boolean;
     destroyedStructureType?: StructurePenaltyResult['destroyedStructure']['type'];
     breaksPair?: boolean;
