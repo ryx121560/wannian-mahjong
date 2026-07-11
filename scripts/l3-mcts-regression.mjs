@@ -206,6 +206,40 @@ if (tenpaiPairRegressionSummary.finalAction !== actionText({ action: 'discard', 
   failures.push(`mcts-tenpai-no-break-pair-001: expected keep-tenpai discard 2筒, actual ${tenpaiPairRegressionSummary.finalAction}`);
 }
 
+const lowVisibleRiskContext = {
+  turn: 56,
+  player: 0,
+  phase: 'recommendation',
+  timeLimitMs: 10000,
+  scores: [100, 100, 100, 100],
+  dealer: 0,
+  wallRemaining: 50,
+  discards: [['tiao1'], ['wan9'], ['tong9'], ['dong']],
+  melds: [],
+  handSummary: ['wan5', 'wan6', 'wan7', 'tong6', 'tong7', 'tong9', 'tong9', 'tong9', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao8', 'tiao9'],
+  opponentThreats: [
+    { player: 1, tenpaiRisk: 0.7, dalanRisk: 0.2, honorRisk: 0.2 },
+    { player: 2, tenpaiRisk: 0.65, dalanRisk: 0.2, honorRisk: 0.2 },
+    { player: 3, tenpaiRisk: 0.68, dalanRisk: 0.2, honorRisk: 0.2 },
+  ],
+  strongRuleAction: actionText({ action: 'discard', tile: 'tiao7', tileLabel: '7条' }),
+  candidates: [
+    { id: 'discard:tiao7', action: 'discard', tile: 'tiao7', tileLabel: '7条', legal: true, baseScore: 8, shantenAfter: 2, route: 'norm', breaksRoute: true, defenseRisk: 0.2, dealInRisk: 0.62, kongRisk: 0, waitCount: 2, waitRemaining: 4, isStrongRuleChoice: true },
+    { id: 'discard:tiao1', action: 'discard', tile: 'tiao1', tileLabel: '1条', legal: true, baseScore: 4, shantenAfter: 2, route: 'norm', breaksRoute: true, publicSeenCount: 1, defenseRisk: 0.2, dealInRisk: 0.62, kongRisk: 0, waitCount: 2, waitRemaining: 4 },
+  ],
+};
+const lowVisibleRiskSummary = engine.decideWithMcts(lowVisibleRiskContext);
+extraCases += 1;
+const lowVisibleRiskCandidate = (lowVisibleRiskSummary.candidates || []).find((candidate) => candidate.action === actionText({ action: 'discard', tile: 'tiao1', tileLabel: '1条' }));
+if (!lowVisibleRiskCandidate) {
+  failures.push('mcts-low-visible-risk-label-001: missing 1条 candidate in summary');
+} else if (lowVisibleRiskCandidate.mainRisk === '放炮风险较高') {
+  failures.push('mcts-low-visible-risk-label-001: low visible 1条 must not be labeled as high deal-in risk');
+}
+if (lowVisibleRiskCandidate && !String(lowVisibleRiskCandidate.mainRisk || '').includes('低牌')) {
+  failures.push(`mcts-low-visible-risk-label-001: expected low-tile risk explanation, actual ${lowVisibleRiskCandidate.mainRisk}`);
+}
+
 try { fs.unlinkSync(tempPath); } catch {}
 
 const expectedDistribution = raw.distribution || {};
@@ -217,4 +251,4 @@ const totalCases = raw.cases.length + extraCases;
 const pass = totalCases - failures.length;
 const rate = totalCases ? pass / totalCases : 0;
 console.log(JSON.stringify({ total: totalCases, pass, fail: failures.length, passRate: Number((rate * 100).toFixed(2)), distribution: byCategory, extraCases, failures: failures.slice(0, 30) }, null, 2));
-if (raw.cases.length !== 150 || extraCases !== 3 || failures.length > 0) process.exit(1);
+if (raw.cases.length !== 150 || extraCases !== 4 || failures.length > 0) process.exit(1);
