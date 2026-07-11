@@ -157,6 +157,12 @@ const runtimeChecks = [
 const winAuditBlock = runtimeHtml.slice(runtimeHtml.indexOf('function winAuditSnapshot'), runtimeHtml.indexOf('// -- AI --'));
 assertCase('stage7-runtime-win-audit-no-free-current-log', !/\bcurrentLog\b/.test(winAuditBlock), 'win audit must not reference free currentLog');
 assertCase('stage7-runtime-win-audit-complete-response-hand', winAuditBlock.includes('function auditWinHand') && winAuditBlock.includes('RULE_ENGINE.canWin(ruleTiles(auditHand)'), 'win audit must verify complete response hand');
+assertCase('stage7-runtime-no-normal-scorebar-dom', !runtimeHtml.includes('id="scorebar"'), '普通对局不得保留上方常驻积分栏 DOM');
+assertCase('stage7-runtime-no-normal-scorebar-css', !runtimeHtml.includes('#scorebar'), '普通对局不得保留上方常驻积分栏样式');
+assertCase('stage7-runtime-no-update-scorebar', !runtimeHtml.includes('function updateScorebar'), '普通对局不得保留常驻积分栏刷新函数');
+assertCase('stage7-runtime-settlement-message-top', /#msg\{[^}]*top:10px/.test(runtimeHtml), '删除上方积分栏后结算提示应回到顶部位置');
+assertCase('stage7-runtime-no-locked-best-candidate-score', !runtimeHtml.includes('maxCandidateScore+10'), '真人推荐不得用固定加分锁死旧规则候选');
+assertCase('stage7-runtime-unified-final-not-raw-bestidx', !runtimeHtml.includes("createUnifiedDecisionResult(hand,0,{finalIdx:bestIdx"), '真人推荐统一决策不得沿用复核前 bestIdx');
 for (const [id, needle] of runtimeChecks) {
   assertCase(id, runtimeHtml.includes(needle), `运行时缺少 ${needle}`);
 }

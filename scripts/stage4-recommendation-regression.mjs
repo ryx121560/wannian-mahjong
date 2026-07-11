@@ -405,8 +405,8 @@ if (!runtimeHtml.includes('sortedCandidateViews') || !runtimeHtml.includes('cand
 if (!runtimeHtml.includes('candDetails.forEach(function(d)') || runtimeHtml.includes('bestCands.forEach(function(ci')) {
   failures.push('stage4-runtime: furo transition scoring must be generated for all discard candidates');
 }
-if (!runtimeHtml.includes('bestCandidateView.totalScore=maxCandidateScore+10')) {
-  failures.push('stage4-runtime: final recommendation is not promoted to the top of candidate display ranking');
+if (!runtimeHtml.includes('if(a.tile===finalKey&&b.tile!==finalKey)return -1') || runtimeHtml.includes('bestCandidateView.totalScore=maxCandidateScore+10')) {
+  failures.push('stage4-runtime: final recommendation should be ranked first without fixed score promotion');
 }
 if (!runtimeHtml.includes('function furoTransitionCoreReason') || !runtimeHtml.includes('furoTransitionReason:furoTransitionReason')) {
   failures.push('stage4-runtime: furo transition explanation is not passed as hand-level recommendation context');

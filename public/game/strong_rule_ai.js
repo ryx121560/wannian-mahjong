@@ -1102,11 +1102,13 @@ function makeDecision(state, config) {
         const speed = (0, speed_evaluator_1.evaluateSpeed)(hand, melds, tile, speedContext);
         const handValue = (0, hand_value_evaluator_1.evaluateHandValue)(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
         const afterTenpai = (0, rules_1.checkTenpai)(afterHand, melds);
+        const normalizedShantenAfter = afterTenpai.isTenpai ? 0 : speed.shantenAfter;
         const waitQuality = tenpai.isTenpai ? (0, wait_quality_evaluator_1.evaluateWaitQuality)(afterHand, melds, afterTenpai) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
         const dalanImpact = (0, dalan_router_1.evaluateDalanImpact)(hand, melds, tile, dalanRoute);
         const defense = evaluateDefense(tile);
         const structure = (0, structure_penalty_1.evaluateStructurePenalty)(hand, melds, tile);
         const dragonComboBreak = (0, structure_penalty_1.breaksDragonCombo)(hand, tile);
+        const windComboBreak = (0, structure_penalty_1.breaksWindCombo)(hand, tile);
         const breaksPair = hand.filter((item) => item === tile).length >= 2;
         const isolatedPriority = (0, structure_penalty_1.isolatedDiscardPriority)(hand, tile);
         const mixedRoute = mixedRouteDiscardAdjustment(hand, tile, mixedRouteBase);
@@ -1122,7 +1124,7 @@ function makeDecision(state, config) {
             positionAdjustment: enabled(merged, 'position', (0, utils_1.roundScore)(posScore)),
             structurePenalty: enabled(merged, 'structure', structure.penalty),
         };
-        const regressionPenalty = shantenRegressionPenalty(speed.shantenBefore, speed.shantenAfter, defense.state.state);
+        const regressionPenalty = shantenRegressionPenalty(speed.shantenBefore, normalizedShantenAfter, defense.state.state);
         const totalScore = (0, utils_1.roundScore)(breakdown.speedScore * finalWeights.speed
             + breakdown.handValueScore * finalWeights.handValue
             + breakdown.waitQualityScore * finalWeights.waitQuality
@@ -1139,7 +1141,7 @@ function makeDecision(state, config) {
             breakdown,
             metadata: {
                 shantenBefore: speed.shantenBefore,
-                shantenAfter: speed.shantenAfter,
+                shantenAfter: normalizedShantenAfter,
                 isTenpaiAfter: afterTenpai.isTenpai,
                 expectedBaseScore: handValue.expectedBaseScore,
                 effectiveCount: speed.effectiveCount,
@@ -1147,6 +1149,7 @@ function makeDecision(state, config) {
                 kongOpportunity: kongZhichan.kongZhichanScore > 0,
                 breaksKongCore: breaksConcealedKongCore(hand, tile, kongZhichan.kongZhichanScore > 0),
                 dragonComboBreak,
+                windComboBreak,
                 destroyedStructureType: structure.destroyedStructure.type,
                 breaksPair,
                 mixedRoute,
@@ -2023,10 +2026,12 @@ function evaluateSpeed(hand, melds, discardTile, context) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.breaksDragonCombo = breaksDragonCombo;
+exports.breaksWindCombo = breaksWindCombo;
 exports.isolatedDiscardPriority = isolatedDiscardPriority;
 exports.evaluateStructurePenalty = evaluateStructurePenalty;
 const rules_1 = require("../rules");
 const DRAGON_TILES = new Set(['zhong', 'fa', 'bai']);
+const WIND_TILES = new Set(['dong', 'nan', 'xi', 'bei']);
 function isDragon(tile) {
     return DRAGON_TILES.has(tile);
 }
@@ -2058,6 +2063,18 @@ function breaksDragonCombo(hand, discardTile) {
     const before = dragonKinds(hand);
     return dragonKinds(hand.filter((tile) => tile !== discardTile)) < before;
 }
+function breaksWindCombo(hand, discardTile) {
+    if (!WIND_TILES.has(discardTile))
+        return false;
+    const counts = (0, rules_1.countTiles)(hand);
+    if ((counts.get(discardTile) || 0) !== 1)
+        return false;
+    const windKinds = [...WIND_TILES].filter((tile) => (counts.get(tile) || 0) > 0).length;
+    if (windKinds < 2)
+        return false;
+    const afterKinds = [...WIND_TILES].filter((tile) => tile !== discardTile && (counts.get(tile) || 0) > 0).length;
+    return afterKinds < windKinds;
+}
 function isolatedDiscardPriority(hand, discardTile) {
     const counts = (0, rules_1.countTiles)(hand);
     const count = counts.get(discardTile) || 0;
@@ -2087,6 +2104,8 @@ function evaluateStructurePenalty(hand, _melds, discardTile) {
     const count = counts.get(discardTile) || 0;
     if (breaksDragonCombo(hand, discardTile))
         return { penalty: -1.2, destroyedStructure: { type: 'dazi', description: 'breaks dragon combo' } };
+    if (breaksWindCombo(hand, discardTile))
+        return { penalty: -2.6, destroyedStructure: { type: 'dazi', description: 'breaks wind combo' } };
     if (count >= 4)
         return { penalty: -10.0, destroyedStructure: { type: 'mianzi', description: 'breaks concealed kong' } };
     if (count >= 3)

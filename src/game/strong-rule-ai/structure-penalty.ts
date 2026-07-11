@@ -2,6 +2,7 @@ import { countTiles, isHonor, isNumberTile, tileSuit, tileValue } from '../rules
 import type { Meld, StructurePenaltyResult, Tile } from './types';
 
 const DRAGON_TILES = new Set<Tile>(['zhong', 'fa', 'bai']);
+const WIND_TILES = new Set<Tile>(['dong', 'nan', 'xi', 'bei']);
 
 function isDragon(tile: Tile): boolean {
   return DRAGON_TILES.has(tile);
@@ -31,6 +32,16 @@ export function breaksDragonCombo(hand: Tile[], discardTile: Tile): boolean {
   return dragonKinds(hand.filter((tile) => tile !== discardTile)) < before;
 }
 
+export function breaksWindCombo(hand: Tile[], discardTile: Tile): boolean {
+  if (!WIND_TILES.has(discardTile)) return false;
+  const counts = countTiles(hand);
+  if ((counts.get(discardTile) || 0) !== 1) return false;
+  const windKinds = [...WIND_TILES].filter((tile) => (counts.get(tile) || 0) > 0).length;
+  if (windKinds < 2) return false;
+  const afterKinds = [...WIND_TILES].filter((tile) => tile !== discardTile && (counts.get(tile) || 0) > 0).length;
+  return afterKinds < windKinds;
+}
+
 export function isolatedDiscardPriority(hand: Tile[], discardTile: Tile): number {
   const counts = countTiles(hand);
   const count = counts.get(discardTile) || 0;
@@ -53,6 +64,7 @@ export function evaluateStructurePenalty(hand: Tile[], _melds: Meld[], discardTi
   const counts = countTiles(hand);
   const count = counts.get(discardTile) || 0;
   if (breaksDragonCombo(hand, discardTile)) return { penalty: -1.2, destroyedStructure: { type: 'dazi', description: 'breaks dragon combo' } };
+  if (breaksWindCombo(hand, discardTile)) return { penalty: -2.6, destroyedStructure: { type: 'dazi', description: 'breaks wind combo' } };
   if (count >= 4) return { penalty: -10.0, destroyedStructure: { type: 'mianzi', description: 'breaks concealed kong' } };
   if (count >= 3) return { penalty: -1.0, destroyedStructure: { type: 'mianzi', description: 'breaks triplet' } };
   if (isNumberTile(discardTile)) {

@@ -6,7 +6,7 @@ import { evaluateHandValue } from './hand-value-evaluator';
 import { detectPhase, getPhaseWeights } from './phase-detector';
 import { analyzePosition } from './position-adjuster';
 import { evaluateSpeed } from './speed-evaluator';
-import { breaksDragonCombo, evaluateStructurePenalty, isolatedDiscardPriority } from './structure-penalty';
+import { breaksDragonCombo, breaksWindCombo, evaluateStructurePenalty, isolatedDiscardPriority } from './structure-penalty';
 import type { AIDecision, CandidateScore, DecisionConfig, DimensionKey, StrongAIGameState, Tile } from './types';
 import { DEFAULT_DIMENSIONS, getPlayerHand, getPlayerMelds, removeOne, roundScore, tileLabel, uniqueDiscards } from './utils';
 import { evaluateWaitQuality } from './wait-quality-evaluator';
@@ -235,11 +235,13 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
     const speed = evaluateSpeed(hand, melds, tile, speedContext);
     const handValue = evaluateHandValue(afterHand, melds, state.scores || [0, 0, 0, 0], currentPlayer);
     const afterTenpai = checkTenpai(afterHand, melds);
+    const normalizedShantenAfter = afterTenpai.isTenpai ? 0 : speed.shantenAfter;
     const waitQuality = tenpai.isTenpai ? evaluateWaitQuality(afterHand, melds, afterTenpai) : { waitQualityScore: 0, waitType: 'not-tenpai', bestWait: null };
     const dalanImpact = evaluateDalanImpact(hand, melds, tile, dalanRoute);
     const defense = evaluateDefense(tile);
     const structure = evaluateStructurePenalty(hand, melds, tile);
     const dragonComboBreak = breaksDragonCombo(hand, tile);
+    const windComboBreak = breaksWindCombo(hand, tile);
     const breaksPair = hand.filter((item) => item === tile).length >= 2;
     const isolatedPriority = isolatedDiscardPriority(hand, tile);
     const mixedRoute = mixedRouteDiscardAdjustment(hand, tile, mixedRouteBase);
@@ -255,7 +257,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
       positionAdjustment: enabled(merged, 'position', roundScore(posScore)),
       structurePenalty: enabled(merged, 'structure', structure.penalty),
     };
-    const regressionPenalty = shantenRegressionPenalty(speed.shantenBefore, speed.shantenAfter, defense.state.state);
+    const regressionPenalty = shantenRegressionPenalty(speed.shantenBefore, normalizedShantenAfter, defense.state.state);
     const totalScore = roundScore(
       breakdown.speedScore * finalWeights.speed
       + breakdown.handValueScore * finalWeights.handValue
@@ -274,7 +276,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
       breakdown,
       metadata: {
         shantenBefore: speed.shantenBefore,
-        shantenAfter: speed.shantenAfter,
+        shantenAfter: normalizedShantenAfter,
         isTenpaiAfter: afterTenpai.isTenpai,
         expectedBaseScore: handValue.expectedBaseScore,
         effectiveCount: speed.effectiveCount,
@@ -282,6 +284,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
         kongOpportunity: kongZhichan.kongZhichanScore > 0,
         breaksKongCore: breaksConcealedKongCore(hand, tile, kongZhichan.kongZhichanScore > 0),
         dragonComboBreak,
+        windComboBreak,
         destroyedStructureType: structure.destroyedStructure.type,
         breaksPair,
         mixedRoute,

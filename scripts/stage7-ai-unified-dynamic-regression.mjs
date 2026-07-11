@@ -129,10 +129,123 @@ cases.push({
   },
 });
 
+cases.push({
+  id: 'stage7-ai-discard-sequence-core-protection-056',
+  turn: 56,
+  player: 0,
+  hand: ['wan5', 'wan6', 'wan7', 'tong6', 'tong7', 'tong9', 'tong9', 'tong9', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao8', 'tiao9'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['wan1', 'tong1', 'bei'],
+    ['wan2', 'tong2', 'dong'],
+    ['wan3', 'tong3', 'nan'],
+    ['wan4', 'tong4', 'xi'],
+  ],
+  melds: [],
+  wallRemaining: 50,
+  expected: {
+    forbiddenFinalTiles: ['tiao7'],
+    requiredCandidateTiles: ['tiao1', 'tiao3', 'tiao5', 'tiao7'],
+  },
+});
+
+cases.push({
+  id: 'stage7-ai-pong-tenpai-zero-shanten-001',
+  turn: 43,
+  player: 2,
+  hand: ['tong4', 'tong5', 'tong7', 'wan7', 'wan7'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['wan1', 'tong9', 'nan'],
+    ['tong1', 'dong', 'wan2'],
+    ['tiao1', 'xi', 'tong2'],
+    ['wan3', 'bei', 'tong3'],
+  ],
+  melds: [{ player: 2, tile: 'tong3', count: 3, type: 'peng' }],
+  wallRemaining: 44,
+  expected: {
+    allowedFinalTiles: ['tong4', 'tong7'],
+    forbiddenFinalTiles: ['tong5', 'wan7'],
+    requiredCandidateTiles: ['tong4', 'tong7'],
+    maxShantenAfter: 0,
+    forbiddenAnomalies: ['shanten-regression', 'candidate-score-conflict'],
+    needsReview: false,
+  },
+});
+
+cases.push({
+  id: 'stage7-recommendation-mixed-route-model-adoption-001',
+  turn: 12,
+  player: 0,
+  hand: ['wan1', 'wan1', 'wan3', 'wan4', 'wan6', 'wan7', 'wan7', 'wan9', 'tiao3', 'tiao7', 'dong', 'nan', 'xi', 'zhong'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['tong9'],
+    ['tong1'],
+    ['tiao9'],
+    ['bei'],
+  ],
+  melds: [],
+  wallRemaining: 68,
+  expected: {
+    allowedFinalTiles: ['tiao3', 'tiao7'],
+    forbiddenFinalTiles: ['zhong', 'dong', 'nan', 'xi', 'wan1', 'wan3', 'wan4', 'wan6', 'wan7', 'wan9'],
+    requiredCandidateTiles: ['tiao3', 'tiao7'],
+    requiredMetadata: { mixedRouteType: 'mixed-strong' },
+  },
+});
+
+cases.push({
+  id: 'stage7-recommendation-isolated-tiebreak-local-defense-001',
+  turn: 10,
+  player: 0,
+  hand: ['wan2', 'wan4', 'wan5', 'wan9', 'tong5', 'tong2', 'tiao5', 'tiao6', 'tiao6', 'tiao8', 'fa', 'fa', 'bei', 'nan'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['wan1'],
+    ['tiao2'],
+    ['dong'],
+    ['xi'],
+  ],
+  melds: [],
+  wallRemaining: 70,
+  expected: {
+    forbiddenFinalTiles: ['tong5'],
+    requiredCandidateTiles: ['tong2', 'tong5'],
+    rankBefore: [['tong2', 'tong5']],
+    maxShantenAfter: 4,
+  },
+});
+
+cases.push({
+  id: 'stage7-recommendation-wind-taatsu-threat-attribution-001',
+  turn: 34,
+  player: 0,
+  hand: ['wan4', 'wan5', 'wan7', 'tong5', 'tong7', 'tiao5', 'tiao6', 'tiao6', 'tiao8', 'tiao9', 'fa', 'fa', 'nan', 'bei'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['wan1', 'tong1'],
+    ['tiao1', 'zhong'],
+    ['bei', 'wan2'],
+    ['dong', 'zhong'],
+  ],
+  melds: [{ player: 3, tile: 'bai', count: 3, type: 'peng' }],
+  wallRemaining: 58,
+  expected: {
+    forbiddenFinalTiles: ['nan', 'bei'],
+    requiredCandidateTiles: ['nan', 'bei', 'tong5', 'tong7'],
+  },
+});
+
 function makeState(scene) {
+  const melds = [[], [], [], []];
+  for (const meld of scene.melds || []) {
+    const player = Number.isInteger(meld.player) ? meld.player : scene.player;
+    melds[player].push({ type: meld.type || 'peng', tiles: Array.from({ length: meld.count || 3 }, () => meld.tile) });
+  }
   return {
     hand: scene.hand,
-    melds: [[], [], [], []],
+    melds,
     discards: scene.discards,
     scores: scene.scores,
     turn: scene.turn,
@@ -169,6 +282,8 @@ function candidateViews(decision) {
     breaksMeld: (candidate.breakdown?.structurePenalty || 0) <= -6,
     breaksPair: !!candidate.metadata?.dragonComboBreak,
     breaksTaatsu: (candidate.breakdown?.structurePenalty || 0) < 0,
+    windComboBreak: !!candidate.metadata?.windComboBreak,
+    dragonComboBreak: !!candidate.metadata?.dragonComboBreak,
     mixedRouteType: candidate.metadata?.mixedRoute?.type || null,
     mixedRouteReason: candidate.metadata?.mixedRoute?.reason || null,
   }));
@@ -302,6 +417,13 @@ function compareScene(scene) {
       const routeType = aiChosen?.mixedRouteType || decision.metadata?.mixedRoute?.type || null;
       if (routeType !== scene.expected.requiredMetadata.mixedRouteType) {
         mismatches.push(`mixedRouteType ${routeType || 'none'} != ${scene.expected.requiredMetadata.mixedRouteType}`);
+      }
+    }
+    for (const pair of scene.expected.rankBefore || []) {
+      const firstRank = views.findIndex((candidate) => candidate.tile === pair[0]);
+      const secondRank = views.findIndex((candidate) => candidate.tile === pair[1]);
+      if (firstRank < 0 || secondRank < 0 || firstRank > secondRank) {
+        mismatches.push(`expected ${pair[0]} ranked before ${pair[1]}`);
       }
     }
     const anomalyCodes = [];

@@ -26,6 +26,7 @@ export interface CandidateScore {
     kongOpportunity: boolean;
     breaksKongCore?: boolean;
     dragonComboBreak?: boolean;
+    windComboBreak?: boolean;
     destroyedStructureType?: StructurePenaltyResult['destroyedStructure']['type'];
     breaksPair?: boolean;
     mixedRoute?: {

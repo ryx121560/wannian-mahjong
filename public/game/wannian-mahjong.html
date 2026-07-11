@@ -18,8 +18,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 .btn-n{background:#2980b9}.btn-n:hover{background:#3498db}
 
 .btn-eye{background:#555;color:#fff}.btn-eye.on{background:#e67e22}
-#scorebar{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.78);color:#ffdf70;padding:7px 18px;border-radius:8px;font-size:14px;line-height:1.35;text-align:center;border:1px solid rgba(212,160,23,0.45);box-shadow:0 3px 14px rgba(0,0,0,0.32);z-index:25;pointer-events:none;font-weight:bold;min-width:420px;max-width:90vw}
-#msg{position:fixed;top:54px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:gold;padding:10px 24px;border-radius:10px;font-size:15px;display:none;max-width:90vw;white-space:normal;line-height:1.55;text-align:center;border:1px solid rgba(212,160,23,0.4);box-shadow:0 4px 18px rgba(0,0,0,0.35);z-index:20}
+#msg{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:gold;padding:10px 24px;border-radius:10px;font-size:15px;display:none;max-width:90vw;white-space:normal;line-height:1.55;text-align:center;border:1px solid rgba(212,160,23,0.4);box-shadow:0 4px 18px rgba(0,0,0,0.35);z-index:20}
 #suggest{position:fixed;top:100px;width:480px;max-height:calc(100vh - 140px);overflow-y:auto;background:rgba(0,0,0,0.85);color:#ccc;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7;pointer-events:auto;display:none;border:1px solid #4a752c}
 #suggest h3{margin:0 0 8px;color:#e8b830;font-size:15px;text-align:center}
 #suggest .rec{background:rgba(232,184,48,0.15);padding:6px 10px;border-radius:6px;margin-bottom:8px;text-align:center;font-size:17px;color:gold}
@@ -86,7 +85,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="btn-n" id="bt-export" title="导出游戏记录到JSON文件">导出记录</button><button class="btn-n" id="bt-selfplay" title="AI自弈训练">自弈</button><button class="btn-n" id="bt-speed" title="切换自弈速度" style="display:none">快速</button>
 </div>
 </div>
-<div id="scorebar"></div>
 <div id="msg"></div>
 <div id="rules-panel">
 <h3>当前规则</h3>
@@ -369,7 +367,6 @@ function gameSetTimeout(fn,d,...a){return window.setTimeout(fn,_selfPlay.running
 function setSelfPlayScorebarVisible(visible){
   const scorebar=document.getElementById('sp-scorebar');
   if(scorebar)scorebar.style.display=visible&&ENABLE_SELFPLAY_UI?'block':'none';
-  updateScorebar();
 }
 function setSelfPlayUiState(){
   const selfplayBtn=document.getElementById('bt-selfplay');
@@ -378,22 +375,6 @@ function setSelfPlayUiState(){
   if(selfplayBtn)selfplayBtn.style.display=ENABLE_SELFPLAY_UI?'inline':'none';
   if(speedBtn)speedBtn.style.display=ENABLE_SELFPLAY_UI&&_selfPlay.running?'inline':'none';
   if(status)status.style.display=ENABLE_SELFPLAY_UI&&_selfPlay.running?'block':'none';
-}
-function updateScorebar(){
-  const scorebar=document.getElementById('scorebar');
-  if(!scorebar)return;
-  if(_selfPlay&&_selfPlay.running){
-    scorebar.style.display='none';
-    return;
-  }
-  const source=GS&&Array.isArray(GS.players)&&GS.players.length===4?GS.players.map(function(player){return {name:player.name,score:player.score};}):[
-    {name:'你',score:scores[0]},
-    {name:'AI下家',score:scores[1]},
-    {name:'AI对家',score:scores[2]},
-    {name:'AI上家',score:scores[3]}
-  ];
-  scorebar.textContent=source.map(function(player){return player.name+':'+player.score;}).join(' | ');
-  scorebar.style.display='block';
 }
 const AI_HAND_META=new WeakMap();
 function setAiHandMeta(hand,key,value){
@@ -1355,7 +1336,7 @@ async function saveScores() {
 }
 
 // game logic
-function _spUpdateScore(){try{updateScorebar();var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
+function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -1647,7 +1628,6 @@ function persistSettledScores(){
     if(_selfPlay.running)document.getElementById('sp-info').textContent=notice;
     else alert(notice+'。');
   }
-  updateScorebar();
   saveScores();
   return bankrupt;
 }
@@ -4521,31 +4501,36 @@ function updateSuggestion(){
   }
   const selectedTile=getSelectedTile();
   const candidateViews=candDetails.map(function(detail){return candidateViewFromDetail(detail,hand,candScores,0);});
-  const sortedCandidateViews=candidateViews.slice().sort(function(a,b){
-    const scoreGap=(b.totalScore||0)-(a.totalScore||0);
-    if(Math.abs(scoreGap)>0.001)return scoreGap;
-    return candidateNumber(a.shantenAfter,99)-candidateNumber(b.shantenAfter,99);
-  });
-  const bestKey=tkey(hand[bestIdx]);
-  const bestCandidateView=candidateViews.find(function(item){return item.tile===bestKey;});
-  if(bestCandidateView){
-    const maxCandidateScore=Math.max.apply(null,candidateViews.map(function(item){return Number(item.totalScore||0);}));
-    if(Number.isFinite(maxCandidateScore)&&bestCandidateView.totalScore<=maxCandidateScore)bestCandidateView.totalScore=maxCandidateScore+10;
-  }
-  sortedCandidateViews.sort(function(a,b){
-    const scoreGap=(b.totalScore||0)-(a.totalScore||0);
-    if(Math.abs(scoreGap)>0.001)return scoreGap;
-    return candidateNumber(a.shantenAfter,99)-candidateNumber(b.shantenAfter,99);
-  });
-  const systemRecommendation=sortedCandidateViews.find(function(item){return item.tile===bestKey;})||sortedCandidateViews[0]||null;
-  const furoTransitionReason=furoTransitionCoreReason(hand,bestIdx,0);
+  let finalIdx=bestIdx;
+  let finalKey=tkey(hand[finalIdx]);
   let mctsSummary=null;
   try{
-    const strongAction=systemRecommendation?'打'+systemRecommendation.tileLabel:null;
+    const ruleCandidateView=candidateViews.find(function(item){return item.tile===finalKey;})||candidateViews[0]||null;
+    const strongAction=ruleCandidateView?'打'+ruleCandidateView.tileLabel:null;
     const mctsCandidates=candDetails.map(function(detail){return mctsCandidateFromDiscardDetail(detail,hand,0,strongAction,candScores);});
-    if(mctsCandidates.length)mctsSummary=MCTS_ENHANCEMENT.decideWithMcts(mctsDecisionContext(0,'recommendation',mctsCandidates,strongAction,hand.map(tkey)));
+    if(mctsCandidates.length){
+      mctsSummary=MCTS_ENHANCEMENT.decideWithMcts(mctsDecisionContext(0,'recommendation',mctsCandidates,strongAction,hand.map(tkey)));
+      const mctsFinal=mctsSummaryFinalCandidate(mctsSummary,mctsCandidates);
+      if(mctsFinal){
+        const parts=String(mctsFinal.id||'').split(':');
+        const parsedIdx=Number(parts[1]);
+        if(Number.isFinite(parsedIdx)&&hand[parsedIdx]){
+          finalIdx=parsedIdx;
+          finalKey=tkey(hand[finalIdx]);
+        }
+      }
+    }
   }catch(error){console.warn('[mcts-enhancement] discard recommendation fallback',error);}
-  const unifiedDecision=createUnifiedDecisionResult(hand,0,{finalIdx:bestIdx,source:'recommendation',reason:'真人推荐入口复用阶段七统一决策结果',extra:{mctsSummary:mctsSummary},record:false});
+  const sortedCandidateViews=candidateViews.slice().sort(function(a,b){
+    if(a.tile===finalKey&&b.tile!==finalKey)return -1;
+    if(b.tile===finalKey&&a.tile!==finalKey)return 1;
+    const scoreGap=(b.totalScore||0)-(a.totalScore||0);
+    if(Math.abs(scoreGap)>0.001)return scoreGap;
+    return candidateNumber(a.shantenAfter,99)-candidateNumber(b.shantenAfter,99);
+  });
+  const systemRecommendation=sortedCandidateViews.find(function(item){return item.tile===finalKey;})||sortedCandidateViews[0]||null;
+  const furoTransitionReason=furoTransitionCoreReason(hand,finalIdx,0);
+  const unifiedDecision=createUnifiedDecisionResult(hand,0,{finalIdx:finalIdx,source:'recommendation',reason:'真人推荐入口采用阶段七统一复核后的最终候选',extra:{mctsSummary:mctsSummary},record:false});
   if(GS._recommendation){
     GS._recommendation.selectedTileKey=selectedTile?tkey(selectedTile):null;
     GS._recommendation.unifiedDecision=unifiedDecision;
