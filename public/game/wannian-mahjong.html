@@ -18,7 +18,8 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 .btn-n{background:#2980b9}.btn-n:hover{background:#3498db}
 
 .btn-eye{background:#555;color:#fff}.btn-eye.on{background:#e67e22}
-#msg{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:gold;padding:10px 24px;border-radius:10px;font-size:15px;display:none;max-width:90vw;white-space:normal;line-height:1.55;text-align:center;border:1px solid rgba(212,160,23,0.4);box-shadow:0 4px 18px rgba(0,0,0,0.35);z-index:20}
+#scorebar{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.78);color:#ffdf70;padding:7px 18px;border-radius:8px;font-size:14px;line-height:1.35;text-align:center;border:1px solid rgba(212,160,23,0.45);box-shadow:0 3px 14px rgba(0,0,0,0.32);z-index:25;pointer-events:none;font-weight:bold;min-width:420px;max-width:90vw}
+#msg{position:fixed;top:54px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:gold;padding:10px 24px;border-radius:10px;font-size:15px;display:none;max-width:90vw;white-space:normal;line-height:1.55;text-align:center;border:1px solid rgba(212,160,23,0.4);box-shadow:0 4px 18px rgba(0,0,0,0.35);z-index:20}
 #suggest{position:fixed;top:100px;width:480px;max-height:calc(100vh - 140px);overflow-y:auto;background:rgba(0,0,0,0.85);color:#ccc;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7;pointer-events:auto;display:none;border:1px solid #4a752c}
 #suggest h3{margin:0 0 8px;color:#e8b830;font-size:15px;text-align:center}
 #suggest .rec{background:rgba(232,184,48,0.15);padding:6px 10px;border-radius:6px;margin-bottom:8px;text-align:center;font-size:17px;color:gold}
@@ -85,6 +86,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="btn-n" id="bt-export" title="导出游戏记录到JSON文件">导出记录</button><button class="btn-n" id="bt-selfplay" title="AI自弈训练">自弈</button><button class="btn-n" id="bt-speed" title="切换自弈速度" style="display:none">快速</button>
 </div>
 </div>
+<div id="scorebar"></div>
 <div id="msg"></div>
 <div id="rules-panel">
 <h3>当前规则</h3>
@@ -362,10 +364,36 @@ let totalGamesPlayed = 0;
 let _selfPlay={running:false,count:0,fast:true,audit:{invalidWins:0,suspiciousWins:0,failures:[]}};
 let _sessionInitialized=false;
 let _sessionResumeScheduled=false;
+const ENABLE_SELFPLAY_UI=new URLSearchParams(window.location.search).get('selfplay')==='1';
 function gameSetTimeout(fn,d,...a){return window.setTimeout(fn,_selfPlay.running&&_selfPlay.fast&&d>100?1:d,...a);}
 function setSelfPlayScorebarVisible(visible){
   const scorebar=document.getElementById('sp-scorebar');
-  if(scorebar)scorebar.style.display=visible?'block':'none';
+  if(scorebar)scorebar.style.display=visible&&ENABLE_SELFPLAY_UI?'block':'none';
+  updateScorebar();
+}
+function setSelfPlayUiState(){
+  const selfplayBtn=document.getElementById('bt-selfplay');
+  const speedBtn=document.getElementById('bt-speed');
+  const status=document.getElementById('sp-status');
+  if(selfplayBtn)selfplayBtn.style.display=ENABLE_SELFPLAY_UI?'inline':'none';
+  if(speedBtn)speedBtn.style.display=ENABLE_SELFPLAY_UI&&_selfPlay.running?'inline':'none';
+  if(status)status.style.display=ENABLE_SELFPLAY_UI&&_selfPlay.running?'block':'none';
+}
+function updateScorebar(){
+  const scorebar=document.getElementById('scorebar');
+  if(!scorebar)return;
+  if(_selfPlay&&_selfPlay.running){
+    scorebar.style.display='none';
+    return;
+  }
+  const source=GS&&Array.isArray(GS.players)&&GS.players.length===4?GS.players.map(function(player){return {name:player.name,score:player.score};}):[
+    {name:'你',score:scores[0]},
+    {name:'AI下家',score:scores[1]},
+    {name:'AI对家',score:scores[2]},
+    {name:'AI上家',score:scores[3]}
+  ];
+  scorebar.textContent=source.map(function(player){return player.name+':'+player.score;}).join(' | ');
+  scorebar.style.display='block';
 }
 const AI_HAND_META=new WeakMap();
 function setAiHandMeta(hand,key,value){
@@ -484,8 +512,7 @@ function enterIdleState(reason){
   document.getElementById('suggest').style.display='none';
   document.getElementById('msg').style.display='none';
   document.getElementById('bt-selfplay').textContent='自弈';
-  document.getElementById('bt-speed').style.display='none';
-  document.getElementById('sp-status').style.display='none';
+  setSelfPlayUiState();
   setSelfPlayScorebarVisible(false);
   setMsg('点击「新游戏」开始');
   render();updateBtns();_spUpdateScore();
@@ -578,8 +605,7 @@ function restoreGameSession(snapshot){
   _sessionResumeScheduled=false;
   configureAiLearning(_selfPlay.running);
   document.getElementById('bt-selfplay').textContent=_selfPlay.running?'停止':'自弈';
-  document.getElementById('bt-speed').style.display=_selfPlay.running?'inline':'none';
-  document.getElementById('sp-status').style.display=_selfPlay.running?'block':'none';
+  setSelfPlayUiState();
   setSelfPlayScorebarVisible(_selfPlay.running);
   restoredPhaseMessage();
   render();updateBtns();_spUpdateScore();
@@ -1329,7 +1355,7 @@ async function saveScores() {
 }
 
 // game logic
-function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
+function _spUpdateScore(){try{updateScorebar();var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -1621,6 +1647,7 @@ function persistSettledScores(){
     if(_selfPlay.running)document.getElementById('sp-info').textContent=notice;
     else alert(notice+'。');
   }
+  updateScorebar();
   saveScores();
   return bankrupt;
 }
@@ -1807,6 +1834,7 @@ function applyWin(winner,wt){
     if(_selfPlay.running){
       _selfPlay.running=false;configureAiLearning(false);
       document.getElementById('bt-selfplay').textContent='自弈';
+      setSelfPlayUiState();
       document.getElementById('sp-info').textContent='自弈停止：胡牌最终复核失败';
     }
     setMsg('胡牌最终复核失败，已阻止结算');
@@ -2427,7 +2455,7 @@ function evaluateDiscardCandidates(hand,playerIdx,options){
     const fixedMelds=aiFixedMeldCount(playerIdx)+(options.extraMeld&&options.extraMeld.tile?1:0);
     const waitKeys=(top.p==='norm'||top.p==='7p')?listWaitsForMeldCount(sub,playerIdx,fixedMelds,tkey(hand[i])):[];
     const displayShanten=waitKeys.length>0?Math.min(top.v,0):top.v;
-    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:displayShanten,path:top.p,routes:routes,waits:waitKeys,breaksMeld:aiBreaksMeld(hand,i),breaksPair:aiBreaksPair(hand,i),breaksTaatsu:aiBreaksTaatsu(hand,i),dragonComboBreak:aiBreaksDragonCombo(hand,i),isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,i)});
+    details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:displayShanten,path:top.p,routes:routes,waits:waitKeys,breaksMeld:aiBreaksMeld(hand,i),breaksPair:aiBreaksPair(hand,i),breaksTaatsu:aiBreaksTaatsu(hand,i),windComboBreak:aiBreaksWindCombo(hand,i),dragonComboBreak:aiBreaksDragonCombo(hand,i),isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,i)});
     if(displayShanten<bestShanten){bestShanten=displayShanten;bestCands=[i];bestPaths=[top.p];}
     else if(displayShanten===bestShanten){bestCands.push(i);bestPaths.push(top.p);}
   }
@@ -2464,6 +2492,14 @@ function aiBreaksTaatsu(h,idx){
     return !!group&&sub.some(function(x){return x.t==='honor'&&group.includes(x.s)&&x.s!==t.s;});
   }
   return false;
+}
+
+function aiBreaksWindCombo(h,idx){
+  const t=h[idx];
+  if(!t||t.t!=='honor'||!['dong','nan','xi','bei'].includes(t.s))return false;
+  if(h.filter(function(x){return teq(x,t);}).length!==1)return false;
+  const sub=h.filter(function(_,j){return j!==idx;});
+  return sub.some(function(x){return x.t==='honor'&&['dong','nan','xi','bei'].includes(x.s)&&x.s!==t.s;});
 }
 
 function aiDragonKinds(h){
@@ -2618,7 +2654,7 @@ function mctsCandidateFromDiscardDetail(detail,hand,playerIdx,strongActionText,c
   const mixedInfo=mixedStrongDiscardInfo(hand,tile);
   const waitInfo=aiWaitInfoAfterDiscard(detail.sub||hand.filter(function(_,j){return j!==detail.idx;}),playerIdx,route,tile);
   const base=(scoreInfo?scoreInfo.sc:0)-(detail.s||0)*2+(waitInfo.remaining||0)*0.25;
-  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak),breaksPair:!!detail.breaksPair,dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,mixedRouteType:mixedInfo.type,mixedRouteReason:mixedInfo.reason,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
+  const action={id:'discard:'+detail.idx+':'+key,action:'discard',tile:key,tileLabel:lbl(tile),legal:true,baseScore:base,shantenAfter:detail.s,route:route,breaksRoute:!!(detail.breaksMeld||detail.breaksPair||detail.breaksTaatsu||detail.dragonComboBreak||detail.windComboBreak),coreSequenceBreak:!!detail.breaksMeld,breaksPair:!!detail.breaksPair,windComboBreak:!!detail.windComboBreak,dragonComboBreak:!!detail.dragonComboBreak,isolatedDiscardPriority:detail.isolatedDiscardPriority||0,publicSeenCount:visibleTileCount(tile),mixedRouteType:mixedInfo.type,mixedRouteReason:mixedInfo.reason,defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:route==='dalan'||route==='quanzheng'||route==='banzheng'?2:0,waitCount:waitInfo.count,waitRemaining:waitInfo.remaining};
   action.isStrongRuleChoice=mctsActionText(action)===strongActionText;
   return action;
 }
@@ -2757,8 +2793,13 @@ function finalDecisionGuardHasClearDefense(decisionLog,candidate){
   return false;
 }
 
+function candidateNumber(value,defaultValue){
+  const number=Number(value);
+  return Number.isFinite(number)?number:defaultValue;
+}
+
 function finalDecisionGuardSort(a,b){
-  const shantenDiff=Number(a.shantenAfter||99)-Number(b.shantenAfter||99);
+  const shantenDiff=candidateNumber(a.shantenAfter,99)-candidateNumber(b.shantenAfter,99);
   if(shantenDiff)return shantenDiff;
   const breakDiff=finalDecisionGuardBreakRank(a)-finalDecisionGuardBreakRank(b);
   if(breakDiff)return breakDiff;
@@ -2772,13 +2813,13 @@ function finalDecisionGuard(hand,playerIdx,idx,source,reason,extra){
   const candidates=initialLog.candidates||[];
   const selected=candidates.find(function(candidate){return candidate.idx===idx;})||candidates.find(function(candidate){return candidate.tile===initialLog.discard;})||null;
   if(!selected||!candidates.length)return {idx:idx,source:source,reason:reason,extra:extra,decisionLog:initialLog,triggered:false};
-  const bestShanten=Math.min.apply(null,candidates.map(function(candidate){return Number(candidate.shantenAfter||99);}));
-  const bestCandidates=candidates.filter(function(candidate){return Number(candidate.shantenAfter||99)===bestShanten;});
-  const hasTenpaiCandidate=bestCandidates.some(function(candidate){return Number(candidate.shantenAfter||99)<=0;});
+  const bestShanten=Math.min.apply(null,candidates.map(function(candidate){return candidateNumber(candidate.shantenAfter,99);}));
+  const bestCandidates=candidates.filter(function(candidate){return candidateNumber(candidate.shantenAfter,99)===bestShanten;});
+  const hasTenpaiCandidate=bestCandidates.some(function(candidate){return candidateNumber(candidate.shantenAfter,99)<=0;});
   const selectedBreakRank=finalDecisionGuardBreakRank(selected);
   const blocked=[];
-  if(Number(selected.shantenAfter||99)>bestShanten+1)blocked.push('shanten-regression');
-  if(hasTenpaiCandidate&&Number(selected.shantenAfter||99)>bestShanten)blocked.push('abandons-tenpai');
+  if(candidateNumber(selected.shantenAfter,99)>bestShanten+1)blocked.push('shanten-regression');
+  if(hasTenpaiCandidate&&candidateNumber(selected.shantenAfter,99)>bestShanten)blocked.push('abandons-tenpai');
   if(selected.dragonComboBreak)blocked.push('breaks-complete-dragon-combo');
   if(selected.breaksPair)blocked.push('breaks-pair');
   if((selectedBreakRank>=3||blocked.length>0)&&!finalDecisionGuardHasClearDefense(initialLog,selected)){
@@ -2934,7 +2975,7 @@ async function aiChooseDiscard(hand,playerIdx){
         const route=aiRouteSummaryForPlayer(sub,playerIdx);
         const tile=hand[strongChoice.idx];
         const dragonComboBreak=aiBreaksDragonCombo(hand,strongChoice.idx);
-        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx)||dragonComboBreak,breaksPair:aiBreaksPair(hand,strongChoice.idx),dragonComboBreak:dragonComboBreak,isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,strongChoice.idx),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
+        const action={id:'discard:'+strongChoice.idx+':'+tkey(tile),action:'discard',tile:tkey(tile),tileLabel:lbl(tile),legal:true,baseScore:-(route.v||0)*2,shantenAfter:route.v,route:route.p,breaksRoute:aiBreaksMeld(hand,strongChoice.idx)||aiBreaksPair(hand,strongChoice.idx)||aiBreaksTaatsu(hand,strongChoice.idx)||dragonComboBreak||aiBreaksWindCombo(hand,strongChoice.idx),coreSequenceBreak:aiBreaksMeld(hand,strongChoice.idx),breaksPair:aiBreaksPair(hand,strongChoice.idx),windComboBreak:aiBreaksWindCombo(hand,strongChoice.idx),dragonComboBreak:dragonComboBreak,isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,strongChoice.idx),publicSeenCount:visibleTileCount(tile),defenseRisk:Math.max(0,1-Math.min(1,defenseScore(tile,playerIdx)/8)),dealInRisk:Math.max(0,Math.min(1,dangerLevel(playerIdx)/5)),kongRisk:0,scoreImpact:0,isStrongRuleChoice:true};
         mctsCandidates.push(action);
       }
       const context=mctsDecisionContext(playerIdx,'discarding',mctsCandidates,strongAction,hand.map(tkey));
@@ -3317,7 +3358,7 @@ async function aiChooseDiscard(hand,playerIdx){
         if(hand[i].t==='honor')sc+=AI_STRATEGY.safety.honor;
         else if(hand[i].v===1||hand[i].v===9)sc+=AI_STRATEGY.safety.terminal;
         const candidateShanten=combinedShanten(hand.filter(function(_,j){return j!==i;}));
-        const structure=(breaksMeld(hand,i)?2:0)+(breaksPair(hand,i)?1:0);
+        const structure=(breaksMeld(hand,i)?2:0)+(breaksPair(hand,i)?1:0)+(aiBreaksWindCombo(hand,i)?2:0);
         if(sc>safest||(sc===safest&&candidateShanten<safestShanten)||(sc===safest&&candidateShanten===safestShanten&&structure<safestStructure)){
           safest=sc;safestIdx=i;safestShanten=candidateShanten;safestStructure=structure;
         }
@@ -4167,7 +4208,7 @@ function candidateViewFromDetail(detail,hand,candScores,playerIdx){
     kongZhichanScore:detail.path==='quanzheng'||detail.path==='banzheng'?0.6:0,
     dalanRouteScore:detail.path==='dalan'?1:0,
     defenseScore:defenseScore(tile,0),
-    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0)+(detail.dragonComboBreak?-6:0)+(detail.isolatedDiscardPriority||0)*0.25+(scoreInfo&&scoreInfo.furoTransitionAdj<0?scoreInfo.furoTransitionAdj:0),
+    structurePenalty:(detail.breaksMeld?-4:0)+(detail.breaksPair?-3:0)+(detail.breaksTaatsu?-2:0)+(detail.windComboBreak?-5:0)+(detail.dragonComboBreak?-6:0)+(detail.isolatedDiscardPriority||0)*0.25+(scoreInfo&&scoreInfo.furoTransitionAdj<0?scoreInfo.furoTransitionAdj:0),
     edgeVisibleAdj:scoreInfo?scoreInfo.edgeVisibleAdj||0:0,
     edgeVisibleReason:scoreInfo&&scoreInfo.edgeVisibleAdj>0?lbl(tile)+'为边张孤张，关键连接牌已公开消耗，伸展价值下降。':'',
     furoTransitionAdj:scoreInfo?scoreInfo.furoTransitionAdj||0:0,
@@ -4178,6 +4219,7 @@ function candidateViewFromDetail(detail,hand,candScores,playerIdx){
     breaksMeld:!!detail.breaksMeld,
     breaksPair:!!detail.breaksPair,
     breaksTaatsu:!!detail.breaksTaatsu,
+    windComboBreak:!!detail.windComboBreak,
     dragonComboBreak:!!detail.dragonComboBreak,
     isolatedDiscardPriority:detail.isolatedDiscardPriority||0
   };
@@ -4348,11 +4390,11 @@ function updateSuggestion(){
       const mixedRouteAdj=mixedInfo.adjustment||0;
       let singleHonorAdj=0;
       const singleHonorDiscard=aiUnprotectedSingleHonor(hand,ci);
-      const recommendationDefenseScores=candDetails.map(function(item){return defenseScore(hand[item.idx],0);});
+      const recommendationDefenseScores=bestCands.map(function(candidateIdx){return defenseScore(hand[candidateIdx],0);});
       const recommendationDefenseDiff=Math.max(...recommendationDefenseScores)-Math.min(...recommendationDefenseScores);
       const isolatedAdj=aiCanUseIsolatedTieBreak(0,danger,phase,bestShanten,recommendationDefenseDiff)?aiIsolatedDiscardPriority(hand,ci)*0.25:0;
       const edgeVisibleAdj=visibleEdgeIsolatedAdj(hand,ci,0);
-      const structureAdj=(d.breaksMeld?-10:0)+(d.breaksTaatsu?-4:0)+(d.breaksPair?-3:0);
+      const structureAdj=(d.breaksMeld?-10:0)+(d.breaksTaatsu?-4:0)+(d.windComboBreak?-8:0)+(d.breaksPair?-3:0);
       const furoTransitionAdj=furoTransitionStructureScore(hand,ci,0);
       q+=dragonAdj+isolatedAdj+edgeVisibleAdj+structureAdj+furoTransitionAdj+mixedRouteAdj;
       let suitAdj=0;
@@ -4482,7 +4524,7 @@ function updateSuggestion(){
   const sortedCandidateViews=candidateViews.slice().sort(function(a,b){
     const scoreGap=(b.totalScore||0)-(a.totalScore||0);
     if(Math.abs(scoreGap)>0.001)return scoreGap;
-    return (a.shantenAfter||0)-(b.shantenAfter||0);
+    return candidateNumber(a.shantenAfter,99)-candidateNumber(b.shantenAfter,99);
   });
   const bestKey=tkey(hand[bestIdx]);
   const bestCandidateView=candidateViews.find(function(item){return item.tile===bestKey;});
@@ -4493,7 +4535,7 @@ function updateSuggestion(){
   sortedCandidateViews.sort(function(a,b){
     const scoreGap=(b.totalScore||0)-(a.totalScore||0);
     if(Math.abs(scoreGap)>0.001)return scoreGap;
-    return (a.shantenAfter||0)-(b.shantenAfter||0);
+    return candidateNumber(a.shantenAfter,99)-candidateNumber(b.shantenAfter,99);
   });
   const systemRecommendation=sortedCandidateViews.find(function(item){return item.tile===bestKey;})||sortedCandidateViews[0]||null;
   const furoTransitionReason=furoTransitionCoreReason(hand,bestIdx,0);
@@ -4530,8 +4572,7 @@ function toggleSelfPlay(){
     configureAiLearning(false);
 
     document.getElementById('bt-selfplay').textContent='自弈';
-    document.getElementById('bt-speed').style.display='none';
-    document.getElementById('sp-status').style.display='none';
+    setSelfPlayUiState();
     setSelfPlayScorebarVisible(false);
     
     GS._noRender=false;GS._selfPlay=false;
@@ -4560,17 +4601,16 @@ function toggleSelfPlay(){
 
   try{var _mlp=null;try{var _d=localStorage.getItem("rl_model");if(_d){_mlp=GPUMlp.deserialize(_d);}}catch(e){console.warn('[SP] model load failed',e);}if(!_mlp)_mlp=new GPUMlp();_selfPlay.trainer=new RLTrainer(_mlp);_selfPlay.trainer.lr=0.001;console.log('[SP] trainer OK');}catch(e){console.warn('[SP] trainer init:',e.message);}
   document.getElementById('bt-selfplay').textContent='停止';
-  document.getElementById('bt-speed').style.display='inline';
-  document.getElementById('sp-status').style.display='block';
+  setSelfPlayUiState();
   setSelfPlayScorebarVisible(true);
   _selfPlay.count=totalGamesPlayed;
-  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);document.getElementById('sp-status').style.display='block';
+  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);setSelfPlayUiState();
   startSelfPlayGame();
 }
 function startSelfPlayGame(){
   if(!_selfPlay.running)return;
   _selfPlay.count++;
-  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);document.getElementById('sp-status').style.display='block';
+  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);setSelfPlayUiState();
   try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;}catch(e){console.warn('[selfplay] score render failed',e);}
   GS._selfPlay=true;
   // 如果当前没有游戏在进行，则开新局；否则继续当前局，但所有玩家转为AI

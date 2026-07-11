@@ -21,6 +21,7 @@ export interface MctsCandidate {
   isStrongRuleChoice?: boolean;
   dragonComboBreak?: boolean;
   isolatedDiscardPriority?: number;
+  publicSeenCount?: number;
   mixedRouteType?: 'mixed-strong' | string | null;
   mixedRouteReason?: string | null;
   modelFeatures?: {
@@ -311,12 +312,26 @@ function tenpaiRegressionAdjustment(candidate: MctsCandidate, context: MctsDecis
   return breaksPairAfterTenpai(candidate, context) ? -24 : 0;
 }
 
+function tileNumber(tile?: string): number | null {
+  const match = /^(wan|tong|tiao)([1-9])$/.exec(tile || '');
+  return match ? Number(match[2]) : null;
+}
+
+function isLowVisibleTile(candidate: MctsCandidate): boolean {
+  const value = tileNumber(candidate.tile);
+  return value !== null && value <= 4 && Number(candidate.publicSeenCount || 0) > 0;
+}
+
 function mainRisk(candidate: MctsCandidate, context: MctsDecisionContext): string {
   if (!candidate.legal) return '非法动作';
   if (hasInvalidReadyWait(candidate)) return '没有合法待牌';
   if (breaksPairAfterTenpai(candidate, context)) return '听牌后拆将退听';
   if (candidate.action === 'kong' && clampRisk(candidate.kongRisk) >= 0.55) return '杠后风险较高';
   if (isHonor(candidate.tile) && candidate.action === 'kong') return '风牌/字牌杠需要谨慎';
+  if (isLowVisibleTile(candidate) && clampRisk(candidate.dealInRisk) >= 0.55) {
+    if (candidate.breaksRoute) return '低牌规则下放炮风险较低，但会破坏当前结构';
+    return '低牌且已见牌，放炮风险较低';
+  }
   if (clampRisk(candidate.dealInRisk) >= 0.55) return '放炮风险较高';
   if (clampRisk(candidate.defenseRisk) >= 0.55 || strongestThreat(context) >= 0.65) return '对手威胁较高';
   if (candidate.breaksRoute) return '可能破坏高价值路线';

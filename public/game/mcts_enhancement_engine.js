@@ -220,6 +220,14 @@ function breaksPairAfterTenpai(candidate, context) {
 function tenpaiRegressionAdjustment(candidate, context) {
     return breaksPairAfterTenpai(candidate, context) ? -24 : 0;
 }
+function tileNumber(tile) {
+    const match = /^(wan|tong|tiao)([1-9])$/.exec(tile || '');
+    return match ? Number(match[2]) : null;
+}
+function isLowVisibleTile(candidate) {
+    const value = tileNumber(candidate.tile);
+    return value !== null && value <= 4 && Number(candidate.publicSeenCount || 0) > 0;
+}
 function mainRisk(candidate, context) {
     if (!candidate.legal)
         return '非法动作';
@@ -231,6 +239,11 @@ function mainRisk(candidate, context) {
         return '杠后风险较高';
     if (isHonor(candidate.tile) && candidate.action === 'kong')
         return '风牌/字牌杠需要谨慎';
+    if (isLowVisibleTile(candidate) && clampRisk(candidate.dealInRisk) >= 0.55) {
+        if (candidate.breaksRoute)
+            return '低牌规则下放炮风险较低，但会破坏当前结构';
+        return '低牌且已见牌，放炮风险较低';
+    }
     if (clampRisk(candidate.dealInRisk) >= 0.55)
         return '放炮风险较高';
     if (clampRisk(candidate.defenseRisk) >= 0.55 || strongestThreat(context) >= 0.65)
