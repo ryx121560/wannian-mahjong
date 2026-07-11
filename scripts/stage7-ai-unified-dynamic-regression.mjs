@@ -237,6 +237,32 @@ cases.push({
   },
 });
 
+cases.push({
+  id: 'stage7-recommendation-wind-taatsu-high-threat-defense-exception-001',
+  turn: 60,
+  player: 0,
+  hand: ['wan4', 'wan5', 'wan7', 'tong5', 'tong7', 'tiao5', 'tiao6', 'tiao6', 'tiao8', 'tiao9', 'fa', 'fa', 'nan', 'bei'],
+  scores: [100, 100, 100, 100],
+  discards: [
+    ['wan1', 'tong1'],
+    ['bei', 'wan2', 'tong2', 'tiao2'],
+    ['wan3', 'tong3'],
+    ['bei', 'dong', 'zhong'],
+  ],
+  melds: [
+    { player: 1, tile: 'tong9', count: 3, type: 'peng' },
+    { player: 1, tile: 'wan9', count: 3, type: 'peng' },
+    { player: 3, tile: 'bai', count: 3, type: 'peng' },
+  ],
+  wallRemaining: 18,
+  expected: {
+    allowedFinalTiles: ['bei'],
+    forbiddenFinalTiles: ['nan'],
+    requiredCandidateTiles: ['nan', 'bei'],
+    requiredMetadata: { windComboBreak: true, defenseState: 'half-fold' },
+  },
+});
+
 function makeState(scene) {
   const melds = [[], [], [], []];
   for (const meld of scene.melds || []) {
@@ -417,6 +443,15 @@ function compareScene(scene) {
       const routeType = aiChosen?.mixedRouteType || decision.metadata?.mixedRoute?.type || null;
       if (routeType !== scene.expected.requiredMetadata.mixedRouteType) {
         mismatches.push(`mixedRouteType ${routeType || 'none'} != ${scene.expected.requiredMetadata.mixedRouteType}`);
+      }
+    }
+    if (scene.expected.requiredMetadata?.windComboBreak && !aiChosen?.windComboBreak) {
+      mismatches.push('windComboBreak metadata missing on final candidate');
+    }
+    if (scene.expected.requiredMetadata?.defenseState) {
+      const defenseState = decision.metadata?.defenseState?.state || null;
+      if (defenseState !== scene.expected.requiredMetadata.defenseState) {
+        mismatches.push(`defenseState ${defenseState || 'none'} != ${scene.expected.requiredMetadata.defenseState}`);
       }
     }
     for (const pair of scene.expected.rankBefore || []) {

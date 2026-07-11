@@ -139,6 +139,27 @@ function mixedRouteDiscardAdjustment(hand: Tile[], tile: Tile, analysis: NonNull
   return { ...analysis, adjustment: roundScore(adjustment), reason };
 }
 
+function hasMainThreatGenpai(defense: CandidateScore['metadata']['defense']): boolean {
+  if (!defense) return false;
+  const maxThreat = Math.max(...defense.opponentModels.map((opponent) => opponent.tenpaiProbability));
+  if (!Number.isFinite(maxThreat) || maxThreat < 0.75) return false;
+  const safety = Array.from(defense.safetyPerTile.values())[0];
+  if (!safety || !['safe', 'low', 'medium'].includes(safety.dangerLevel)) return false;
+  const mainThreats = new Set(
+    defense.opponentModels
+      .filter((opponent) => opponent.tenpaiProbability >= maxThreat - 0.05)
+      .map((opponent) => opponent.playerIndex),
+  );
+  return safety.reasons.some((reason) => reason.type === 'genpai'
+    && reason.perOpponent.some((item) => mainThreats.has(item.playerIndex) && item.contribution >= 0.5));
+}
+
+function windDefenseOverrideAdjustment(windComboBreak: boolean, defense: CandidateScore['metadata']['defense']): number {
+  if (!windComboBreak || !defense) return 0;
+  if (defense.state.state === 'attack') return 0;
+  return hasMainThreatGenpai(defense) ? 3.0 : 0;
+}
+
 function hasClearDefenseReason(candidate: CandidateScore): boolean {
   const defenseState = candidate.metadata.defense?.state.state;
   if (defenseState === 'full-fold') return true;
@@ -242,6 +263,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
     const structure = evaluateStructurePenalty(hand, melds, tile);
     const dragonComboBreak = breaksDragonCombo(hand, tile);
     const windComboBreak = breaksWindCombo(hand, tile);
+    const windDefenseOverride = windDefenseOverrideAdjustment(windComboBreak, defense);
     const breaksPair = hand.filter((item) => item === tile).length >= 2;
     const isolatedPriority = isolatedDiscardPriority(hand, tile);
     const mixedRoute = mixedRouteDiscardAdjustment(hand, tile, mixedRouteBase);
@@ -268,6 +290,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
       + breakdown.positionAdjustment * finalWeights.position
       + breakdown.structurePenalty * finalWeights.structure
       + (mixedRoute.adjustment || 0)
+      + windDefenseOverride
       - regressionPenalty,
     );
     return {
@@ -285,6 +308,7 @@ export function makeDecision(state: StrongAIGameState, config?: Partial<Decision
         breaksKongCore: breaksConcealedKongCore(hand, tile, kongZhichan.kongZhichanScore > 0),
         dragonComboBreak,
         windComboBreak,
+        windDefenseOverride: windDefenseOverride > 0,
         destroyedStructureType: structure.destroyedStructure.type,
         breaksPair,
         mixedRoute,

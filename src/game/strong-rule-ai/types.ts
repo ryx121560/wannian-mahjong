@@ -27,6 +27,7 @@ export interface CandidateScore {
     breaksKongCore?: boolean;
     dragonComboBreak?: boolean;
     windComboBreak?: boolean;
+    windDefenseOverride?: boolean;
     destroyedStructureType?: StructurePenaltyResult['destroyedStructure']['type'];
     breaksPair?: boolean;
     mixedRoute?: {
