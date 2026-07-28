@@ -157,10 +157,13 @@ const runtimeChecks = [
 const winAuditBlock = runtimeHtml.slice(runtimeHtml.indexOf('function winAuditSnapshot'), runtimeHtml.indexOf('// -- AI --'));
 assertCase('stage7-runtime-win-audit-no-free-current-log', !/\bcurrentLog\b/.test(winAuditBlock), 'win audit must not reference free currentLog');
 assertCase('stage7-runtime-win-audit-complete-response-hand', winAuditBlock.includes('function auditWinHand') && winAuditBlock.includes('RULE_ENGINE.canWin(ruleTiles(auditHand)'), 'win audit must verify complete response hand');
-assertCase('stage7-runtime-no-normal-scorebar-dom', !runtimeHtml.includes('id="scorebar"'), '普通对局不得保留上方常驻积分栏 DOM');
-assertCase('stage7-runtime-no-normal-scorebar-css', !runtimeHtml.includes('#scorebar'), '普通对局不得保留上方常驻积分栏样式');
-assertCase('stage7-runtime-no-update-scorebar', !runtimeHtml.includes('function updateScorebar'), '普通对局不得保留常驻积分栏刷新函数');
-assertCase('stage7-runtime-settlement-message-top', /#msg\{[^}]*top:10px/.test(runtimeHtml), '删除上方积分栏后结算提示应回到顶部位置');
+assertCase('stage7-runtime-single-normal-scorebar-dom', runtimeHtml.includes('id="scorebar"') && !runtimeHtml.includes('id="sp-scorebar"'), '普通对局必须只保留一个顶部积分栏 DOM');
+assertCase('stage7-runtime-normal-scorebar-css', /#scorebar\{[^}]*top:14px/.test(runtimeHtml) && /#scorebar\{[^}]*bottom:auto/.test(runtimeHtml) && /#scorebar\{[^}]*pointer-events:none/.test(runtimeHtml), '普通对局积分栏必须固定在顶部且不拦截操作');
+assertCase('stage7-runtime-mobile-scorebar-css', /@media \(max-width:600px\)\{#scorebar\{[^}]*top:8px/.test(runtimeHtml), '移动端积分栏必须收紧顶部安全区');
+assertCase('stage7-runtime-update-scorebar', runtimeHtml.includes('function updateScorebar') && runtimeHtml.includes('updateScorebar();'), '积分栏必须由统一刷新函数更新');
+assertCase('stage7-runtime-no-legacy-selfplay-scorebar', !runtimeHtml.includes('setSelfPlayScorebarVisible'), '不得遗留已移除的自弈顶部积分栏调用');
+assertCase('stage7-runtime-no-selfplay-player-scores', !runtimeHtml.includes('sp-score'), '自弈状态面板不得显示或写入四家玩家积分');
+assertCase('stage7-runtime-settlement-message-top', /#msg\{[^}]*top:10px/.test(runtimeHtml), '结算提示应保持在顶部位置');
 assertCase('stage7-runtime-no-locked-best-candidate-score', !runtimeHtml.includes('maxCandidateScore+10'), '真人推荐不得用固定加分锁死旧规则候选');
 assertCase('stage7-runtime-unified-final-not-raw-bestidx', !runtimeHtml.includes("createUnifiedDecisionResult(hand,0,{finalIdx:bestIdx"), '真人推荐统一决策不得沿用复核前 bestIdx');
 for (const [id, needle] of runtimeChecks) {

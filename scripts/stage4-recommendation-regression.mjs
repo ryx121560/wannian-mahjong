@@ -384,8 +384,8 @@ if (/canSelfWin\(effectiveHand\(/.test(runtimeHtml) || /canHuNormal\(effectiveHa
 if (/canSelfWin\(effectiveHand\(p\)\)/.test(runtimeHtml) || /canSelfWin\(hand\)\{recordRecommendationChoice\('response','胡'\)/.test(runtimeHtml)) {
   failures.push('stage4-runtime: self draw win check still omits winTile at call site');
 }
-if (!runtimeHtml.includes("canHuNormal(testHand,false,preMelds,winTile,'自摸')")) {
-  failures.push('stage4-runtime: wait enumeration does not pass winTile');
+if (!runtimeHtml.includes("canHuNormal(testHand,false,ruleMelds,winTile,'自摸')")) {
+  failures.push('stage4-runtime: wait enumeration does not pass real meld context and winTile');
 }
 if (!runtimeHtml.includes('function formatWinSettlementText') || !runtimeHtml.includes('displayText:formatWinSettlementText')) {
   failures.push('stage4-runtime: settled win result is not persisted with full score deltas');
