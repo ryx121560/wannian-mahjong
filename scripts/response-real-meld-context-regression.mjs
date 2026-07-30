@@ -42,6 +42,9 @@ function createResponseRuntime(melds) {
     GS: {
       cur: 2,
       lastDiscard: 'zhong',
+      lastDiscardP: 2,
+      turn: 107,
+      passRecords: [],
       players: [
         { human: true, hand: ['nan', 'xi', 'xi', 'bei'], melds },
         { human: false, hand: [], melds: [] },
@@ -66,7 +69,7 @@ function createResponseRuntime(melds) {
     console: { log: () => {}, error: () => {} }
   };
   vm.createContext(context);
-  for (const name of ['normalizedRuleMelds', 'ruleMeldsForPlayer', 'canHuNormal', 'checkResponses']) {
+  for (const name of ['ruleTiles', 'normalizedRuleMelds', 'ruleMeldsFromPlayer', 'canHuNormal', 'canWinAfterPassForState', 'canPongChk', 'canKongChk', 'resolveDiscardResponses', 'checkResponses']) {
     vm.runInContext(extractFunction(name), context, { filename: `runtime-${name}.js` });
   }
   return { context, events };
@@ -113,7 +116,7 @@ function runFinalAudit(melds) {
     console: { error: (...args) => failures.push(args), warn: () => {} }
   };
   vm.createContext(context);
-  for (const name of ['ruleMeldsForPlayer', 'concealedHand', 'selfPlayAudit', 'auditWinHand', 'winAuditSnapshot', 'auditFinalWinBeforeSettlement']) {
+  for (const name of ['ruleMeldsFromPlayer', 'ruleMeldsForPlayer', 'concealedHand', 'selfPlayAudit', 'auditWinHand', 'winAuditSnapshot', 'auditFinalWinBeforeSettlement']) {
     vm.runInContext(extractFunction(name), context, { filename: `audit-${name}.js` });
   }
   return { result: context.auditFinalWinBeforeSettlement(0, '点炮'), audit: context._selfPlay.audit, failures };
@@ -157,7 +160,7 @@ assert.equal(finalAudit.result.ok, false, 'final audit must still block a forced
 assert.equal(finalAudit.audit.invalidWins, 1, 'final audit must record invalidWins for a forced false win');
 assert.equal(finalAudit.failures.length, 1, 'final audit must emit one invalid-win log');
 
-assert.match(html, /const ruleMelds=ruleMeldsForPlayer\(i\);[\s\S]*canHuNormal\(handOnly,false,ruleMelds,t\)/, 'response win classification must receive real melds');
+assert.match(html, /const ruleMelds=ruleMeldsFromPlayer\(player\);[\s\S]*canHuNormal\(handWithDiscard,false,ruleMelds,discard,'点炮'\)/, 'response win classification must receive real melds');
 assert.doesNotMatch(html, /canHuNormal\(handOnly,false,preMl,t\)/, 'response win classification must not receive a meld count');
 assert.doesNotMatch(html, /function ruleMeldsByCount\(/, 'rule classification must not synthesize meld tiles from a count');
 assert.doesNotMatch(html, /function listWaitsForMeldCount\(/, 'wait enumeration must not classify with a meld count');

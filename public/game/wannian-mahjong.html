@@ -280,14 +280,14 @@ function kt(k){
   return {k,t:'num',s:sk,v:v};
 }
 function ruleTiles(hand){return hand.map(tkey);}
-function ruleMeldsForPlayer(playerIdx){
-  const player=GS.players[playerIdx]||{};
+function ruleMeldsFromPlayer(player){
   return (player.melds||[]).map(function(m){
     const tile=tkey(m.tile);
     const type=m.count===4?'mingGang':'peng';
     return {type:type,tiles:m.count===4?[tile,tile,tile,tile]:[tile,tile,tile],fromPlayer:m.fromPlayer};
   });
 }
+function ruleMeldsForPlayer(playerIdx){return ruleMeldsFromPlayer(GS.players[playerIdx]||{});}
 function ruleMeldsWithExtra(playerIdx,extraMeld){
   const melds=ruleMeldsForPlayer(playerIdx);
   if(!extraMeld||!extraMeld.tile)return melds;
@@ -327,12 +327,13 @@ function recordPass(playerIdx,tile){
   if(!Array.isArray(GS.passRecords))GS.passRecords=[];
   GS.passRecords.push({player:playerIdx,tile:tkey(tile),round:currentPassRound()});
 }
-function canWinAfterPassRuntime(playerIdx,tile){
+function canWinAfterPassForState(state,playerIdx,tile){
   if(playerIdx<0||!tile)return true;
-  const input={passRecords:GS.passRecords||[],player:playerIdx,tile:tkey(tile),round:currentPassRound()};
+  const input={passRecords:(state&&state.passRecords)||[],player:playerIdx,tile:tkey(tile),round:(state&&state.turn)||0};
   if(RULE_ENGINE&&typeof RULE_ENGINE.canWinAfterPass==='function')return RULE_ENGINE.canWinAfterPass(input);
   return !input.passRecords.some(function(record){return record.player===input.player&&record.tile===input.tile&&record.round===input.round;});
 }
+function canWinAfterPassRuntime(playerIdx,tile){return canWinAfterPassForState(GS,playerIdx,tile);}
 
 // game state
 let GS={wall:[],players:[],discards:[],lastDiscard:null,lastDiscardP:-1,cur:0,phase:'idle',
@@ -569,6 +570,8 @@ function restoreGameSession(snapshot){
   }
   clearGameTimers();
   Object.assign(GS,restored.state);
+  const responseRevalidation=revalidateRestoredResponseState(GS);
+  if(responseRevalidation.applied)console.info('[session snapshot] response-revalidated reason='+responseRevalidation.reason);
   for(let i=0;i<4;i++){
     if(GS.players[i]){
       GS.players[i].lastDrawnTile=null;
@@ -1465,6 +1468,60 @@ function canHuNormal(hand,useWild,preMelds,winTile,winType){
   return false;
 }
 
+// Resolve discard responses from live state without UI, timers, or persistence side effects.
+function resolveDiscardResponses(state){
+  const players=(state&&Array.isArray(state.players))?state.players:[];
+  const discard=state&&state.lastDiscard;
+  const discarder=state&&state.lastDiscardP;
+  if(!discard||!Number.isInteger(discarder)||discarder<0||discarder>=players.length){
+    return {responses:[],responder:-1,kind:'calls',canP:false,canK:false,canW:false,reason:'missing-discard-context'};
+  }
+  const responses=[];
+  for(let i=0;i<players.length;i++){
+    if(i===discarder)continue;
+    const player=players[i]||{};
+    const hand=Array.isArray(player.hand)?player.hand:[];
+    const ruleMelds=ruleMeldsFromPlayer(player);
+    const handWithDiscard=[...hand,discard];
+    const huCheck=canHuNormal(handWithDiscard,false,ruleMelds,discard,'点炮');
+    const canWin=!!huCheck&&meetsThresh(handWithDiscard,discard,'点炮')&&canWinAfterPassForState(state,i,discard);
+    responses.push({p:i,cw:canWin,cp:canPongChk(hand,discard),ck:canKongChk(hand,discard)});
+  }
+  const winners=responses.filter(function(response){return response.cw;});
+  if(winners.length){
+    let responder=null;
+    for(let offset=1;offset<players.length;offset++){
+      const playerIdx=(discarder+offset)%players.length;
+      if(winners.some(function(response){return response.p===playerIdx;})){responder=playerIdx;break;}
+    }
+    if(responder===null)responder=winners[0].p;
+    return {responses:responses,responder:responder,kind:'win',canP:false,canK:false,canW:true,reason:'legal-win-response'};
+  }
+  const humanCall=responses.find(function(response){return players[response.p]&&players[response.p].human&&(response.cp||response.ck);});
+  return {
+    responses:responses,
+    responder:humanCall?humanCall.p:-1,
+    kind:'calls',
+    canP:!!(humanCall&&humanCall.cp),
+    canK:!!(humanCall&&humanCall.ck),
+    canW:false,
+    reason:humanCall?'legal-human-call-response':'no-human-response'
+  };
+}
+
+function revalidateRestoredResponseState(state){
+  if(!state||state.phase!=='responding')return {applied:false,reason:'not-responding'};
+  const previousWin=!!state.canW&&state._responseKind==='win';
+  const resolved=resolveDiscardResponses(state);
+  state.canP=resolved.canP;
+  state.canK=resolved.canK;
+  state.canW=resolved.canW;
+  state._resp=resolved.kind==='calls'?resolved.responses:null;
+  state._respP=resolved.responder;
+  state._responseKind=resolved.kind;
+  return {applied:true,reason:previousWin&&!resolved.canW?'stale-win-cleared':resolved.reason};
+}
+
 function st(k){
   if('DNXBHFW'.includes(k))return {k,t:'honor',s:{D:'dong',N:'nan',X:'xi',B:'bei',H:'zhong',F:'fa',W:'bai'}[k],v:0};
   const m={w:'wan',t:'tong',j:'tiao'};
@@ -1546,45 +1603,19 @@ function doDiscard(selectedTile){
 }
 
 function checkResponses(){
-  const t=GS.lastDiscard;
-  const resp=[];
-  for(let i=0;i<4;i++){
-    if(i===GS.cur)continue;
-    const p=GS.players[i];
-    const ruleMelds=ruleMeldsForPlayer(i);
-    const handOnly=[...GS.players[i].hand,t];
-    const huCheck=canHuNormal(handOnly,false,ruleMelds,t);
-    const passesThreshold=meetsThresh(handOnly,t);
-    const passesOverwater=canWinAfterPassRuntime(i,t);
-    const canWin=!!huCheck&&passesThreshold&&passesOverwater;
-    if(i===0&&!canWin){
-      console.log('[hu-check] player0 cannot win on discard',{
-        tile:t?tkey(t):null,
-        hand:handOnly.map(function(x){return tkey(x);}),
-        huCheck:huCheck,
-        passesThreshold:passesThreshold,
-        passesOverwater:passesOverwater,
-        melds:ruleMelds
-      });
-    }
-    resp.push({p:i,cw:canWin,cp:canPongChk(p.hand,t),ck:canKongChk(p.hand,t)});
-  }
-  const wr=resp.filter(r=>r.cw);
-  if(wr.length>0){
-    let pk=null;
-    for(let i=(GS.cur+1)%4;i!==GS.cur;i=(i+1)%4){if(wr.some(r=>r.p===i)){pk=i;break;}}
-    if(pk===null)pk=wr[0].p;
-    GS.phase='responding';GS._respP=pk;GS._resp=null;GS._responseKind='win';
-    GS.canP=false;GS.canK=false;GS.canW=true;
+  const resolved=resolveDiscardResponses(GS);
+  const resp=resolved.responses;
+  GS.phase='responding';GS._respP=resolved.responder;GS._resp=resolved.kind==='calls'?resp:null;GS._responseKind=resolved.kind;
+  GS.canP=resolved.canP;GS.canK=resolved.canK;GS.canW=resolved.canW;
+  if(resolved.kind==='win'){
+    const pk=resolved.responder;
     if(GS.players[pk].human){setMsg('可以胡，请仔细阅读推荐后选择');render();updateBtns();updateSuggestion();
       saveGameSnapshot('human-win-response');
     }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){aiRespond([{p:pk,cw:true,cp:false,ck:false}]);}},500);}
     return;
   }
-  GS.phase='responding';GS._resp=resp;GS._responseKind='calls';GS.canP=GS.canK=GS.canW=false;GS._respP=-1;
-  const hr=resp.find(r=>GS.players[r.p].human);
-  if(hr&&(hr.cp||hr.ck)){
-    GS.canP=hr.cp;GS.canK=hr.ck;GS.canW=false;GS._respP=hr.p;
+  const hr=resolved.responder>=0?resp.find(function(response){return response.p===resolved.responder;}):null;
+  if(hr){
     setMsg(`可以${hr.cp?'碰/杠':'杠'}，请仔细阅读推荐后选择`);render();updateBtns();
     updateSuggestion();saveGameSnapshot('human-call-response');
   }else{updateBtns();saveGameSnapshot('ai-call-response');aiRespond(resp);}
