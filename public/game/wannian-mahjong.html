@@ -67,7 +67,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-log-panel th{background:rgba(74,117,44,0.3);color:#9f9}
 #ai-log-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
    </style>
-<style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}#sp-scorebar{display:none;position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.7);color:#ffcc00;padding:8px 16px;font-size:14px;text-align:center;z-index:200;pointer-events:none;font-weight:bold}</style></head>
+<style>#scorebar{position:fixed;top:14px;left:50%;bottom:auto;transform:translateX(-50%);max-width:calc(100vw - 24px);background:rgba(0,0,0,0.78);color:#ffcc00;padding:7px 14px;border:1px solid rgba(212,160,23,0.45);border-radius:6px;font-size:14px;line-height:1.35;text-align:center;z-index:90;pointer-events:none;font-weight:bold;font-variant-numeric:tabular-nums}@media (max-width:600px){#scorebar{top:8px;max-width:calc(100vw - 16px);padding:5px 9px;font-size:12px;line-height:1.3}}#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}</style></head>
 <body>
 <canvas id="c"></canvas>
 <div id="ui">
@@ -110,8 +110,8 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="close" id="bt-ai-log-export">导出AI日志</button>
 <button class="close" id="bt-ai-log-close">关闭</button>
 </div>
-<div id="sp-scorebar"></div>
-<div id="sp-status"><b>⚡ 自弈训练中</b><br>已完成: <span id="sp-count">0</span> 局<br><span id="sp-score" style="color:#ffcc00"></span><br><span id="sp-info" style="color:#aaa"></span><br><canvas id="sp-chart" width="220" height="50" style="background:#0a1a0a;border:2px solid #1a4a1a;border-radius:6px;margin-top:4px"></canvas></div>
+<div id="scorebar" aria-live="polite"></div>
+<div id="sp-status"><b>⚡ 自弈训练中</b><br>已完成: <span id="sp-count">0</span> 局<br><span id="sp-info" style="color:#aaa"></span><br><canvas id="sp-chart" width="220" height="50" style="background:#0a1a0a;border:2px solid #1a4a1a;border-radius:6px;margin-top:4px"></canvas></div>
 <div id="suggest"><h3>AI 出牌建议</h3><div id="suggest-body"></div></div>
 
 <script src="session_snapshot.js"></script>
@@ -280,22 +280,23 @@ function kt(k){
   return {k,t:'num',s:sk,v:v};
 }
 function ruleTiles(hand){return hand.map(tkey);}
-function ruleMeldsByCount(count){
-  const melds=[];
-  for(let i=0;i<(count||0);i++)melds.push({type:'peng',tiles:['dong','dong','dong']});
-  return melds;
-}
-function ruleMeldsForPlayer(playerIdx){
-  const player=GS.players[playerIdx]||{};
+function ruleMeldsFromPlayer(player){
   return (player.melds||[]).map(function(m){
     const tile=tkey(m.tile);
     const type=m.count===4?'mingGang':'peng';
     return {type:type,tiles:m.count===4?[tile,tile,tile,tile]:[tile,tile,tile],fromPlayer:m.fromPlayer};
   });
 }
-function normalizedRuleMelds(preMelds){
-  if(Array.isArray(preMelds))return preMelds;
-  return ruleMeldsByCount(preMelds||0);
+function ruleMeldsForPlayer(playerIdx){return ruleMeldsFromPlayer(GS.players[playerIdx]||{});}
+function ruleMeldsWithExtra(playerIdx,extraMeld){
+  const melds=ruleMeldsForPlayer(playerIdx);
+  if(!extraMeld||!extraMeld.tile)return melds;
+  const tile=tkey(extraMeld.tile);
+  const count=extraMeld.count===4?4:3;
+  return melds.concat([{type:count===4?'mingGang':'peng',tiles:Array(count).fill(tile)}]);
+}
+function normalizedRuleMelds(melds){
+  return Array.isArray(melds)?melds:[];
 }
 function ruleWinMethod(wt){
   if(wt==='点炮')return '点炮';
@@ -326,12 +327,13 @@ function recordPass(playerIdx,tile){
   if(!Array.isArray(GS.passRecords))GS.passRecords=[];
   GS.passRecords.push({player:playerIdx,tile:tkey(tile),round:currentPassRound()});
 }
-function canWinAfterPassRuntime(playerIdx,tile){
+function canWinAfterPassForState(state,playerIdx,tile){
   if(playerIdx<0||!tile)return true;
-  const input={passRecords:GS.passRecords||[],player:playerIdx,tile:tkey(tile),round:currentPassRound()};
+  const input={passRecords:(state&&state.passRecords)||[],player:playerIdx,tile:tkey(tile),round:(state&&state.turn)||0};
   if(RULE_ENGINE&&typeof RULE_ENGINE.canWinAfterPass==='function')return RULE_ENGINE.canWinAfterPass(input);
   return !input.passRecords.some(function(record){return record.player===input.player&&record.tile===input.tile&&record.round===input.round;});
 }
+function canWinAfterPassRuntime(playerIdx,tile){return canWinAfterPassForState(GS,playerIdx,tile);}
 
 // game state
 let GS={wall:[],players:[],discards:[],lastDiscard:null,lastDiscardP:-1,cur:0,phase:'idle',
@@ -364,10 +366,6 @@ let _sessionInitialized=false;
 let _sessionResumeScheduled=false;
 const ENABLE_SELFPLAY_UI=new URLSearchParams(window.location.search).get('selfplay')==='1';
 function gameSetTimeout(fn,d,...a){return window.setTimeout(fn,_selfPlay.running&&_selfPlay.fast&&d>100?1:d,...a);}
-function setSelfPlayScorebarVisible(visible){
-  const scorebar=document.getElementById('sp-scorebar');
-  if(scorebar)scorebar.style.display=visible&&ENABLE_SELFPLAY_UI?'block':'none';
-}
 function setSelfPlayUiState(){
   const selfplayBtn=document.getElementById('bt-selfplay');
   const speedBtn=document.getElementById('bt-speed');
@@ -494,7 +492,6 @@ function enterIdleState(reason){
   document.getElementById('msg').style.display='none';
   document.getElementById('bt-selfplay').textContent='自弈';
   setSelfPlayUiState();
-  setSelfPlayScorebarVisible(false);
   setMsg('点击「新游戏」开始');
   render();updateBtns();_spUpdateScore();
   console.info('[session snapshot] idle reason='+reason);
@@ -573,6 +570,8 @@ function restoreGameSession(snapshot){
   }
   clearGameTimers();
   Object.assign(GS,restored.state);
+  const responseRevalidation=revalidateRestoredResponseState(GS);
+  if(responseRevalidation.applied)console.info('[session snapshot] response-revalidated reason='+responseRevalidation.reason);
   for(let i=0;i<4;i++){
     if(GS.players[i]){
       GS.players[i].lastDrawnTile=null;
@@ -587,7 +586,6 @@ function restoreGameSession(snapshot){
   configureAiLearning(_selfPlay.running);
   document.getElementById('bt-selfplay').textContent=_selfPlay.running?'停止':'自弈';
   setSelfPlayUiState();
-  setSelfPlayScorebarVisible(_selfPlay.running);
   restoredPhaseMessage();
   render();updateBtns();_spUpdateScore();
   if(GS.players[GS.cur]&&GS.players[GS.cur].human&&(GS.phase==='discarding'||GS.phase==='responding'))updateSuggestion();
@@ -1336,7 +1334,13 @@ async function saveScores() {
 }
 
 // game logic
-function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;if(_selfPlay.running)document.getElementById('sp-scorebar').textContent=_sps;}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
+function updateScorebar(extra){
+  const scorebar=document.getElementById('scorebar');
+  if(!scorebar)return;
+  const current=Array.isArray(GS.players)&&GS.players.length===4?GS.players.map(function(player){return player.name+':'+player.score;}):['你:'+scores[0],'AI下家:'+scores[1],'AI对家:'+scores[2],'AI上家:'+scores[3]];
+  scorebar.textContent=current.join(' | ')+(extra?' | '+extra:'');
+}
+function _spUpdateScore(){try{updateScorebar();}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -1348,6 +1352,7 @@ function _spUpdateScore(){try{var _sps=GS.players.map(function(p){return p.name+
     createPlayer('AI对家',false,scores[2]),
     createPlayer('AI上家',false,scores[3])
   ];
+  updateScorebar();
   GS.discards=[];GS.lastDiscard=null;GS.lastDiscardP=-1;clearSelectedTile();
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
@@ -1463,6 +1468,60 @@ function canHuNormal(hand,useWild,preMelds,winTile,winType){
   return false;
 }
 
+// Resolve discard responses from live state without UI, timers, or persistence side effects.
+function resolveDiscardResponses(state){
+  const players=(state&&Array.isArray(state.players))?state.players:[];
+  const discard=state&&state.lastDiscard;
+  const discarder=state&&state.lastDiscardP;
+  if(!discard||!Number.isInteger(discarder)||discarder<0||discarder>=players.length){
+    return {responses:[],responder:-1,kind:'calls',canP:false,canK:false,canW:false,reason:'missing-discard-context'};
+  }
+  const responses=[];
+  for(let i=0;i<players.length;i++){
+    if(i===discarder)continue;
+    const player=players[i]||{};
+    const hand=Array.isArray(player.hand)?player.hand:[];
+    const ruleMelds=ruleMeldsFromPlayer(player);
+    const handWithDiscard=[...hand,discard];
+    const huCheck=canHuNormal(handWithDiscard,false,ruleMelds,discard,'点炮');
+    const canWin=!!huCheck&&meetsThresh(handWithDiscard,discard,'点炮')&&canWinAfterPassForState(state,i,discard);
+    responses.push({p:i,cw:canWin,cp:canPongChk(hand,discard),ck:canKongChk(hand,discard)});
+  }
+  const winners=responses.filter(function(response){return response.cw;});
+  if(winners.length){
+    let responder=null;
+    for(let offset=1;offset<players.length;offset++){
+      const playerIdx=(discarder+offset)%players.length;
+      if(winners.some(function(response){return response.p===playerIdx;})){responder=playerIdx;break;}
+    }
+    if(responder===null)responder=winners[0].p;
+    return {responses:responses,responder:responder,kind:'win',canP:false,canK:false,canW:true,reason:'legal-win-response'};
+  }
+  const humanCall=responses.find(function(response){return players[response.p]&&players[response.p].human&&(response.cp||response.ck);});
+  return {
+    responses:responses,
+    responder:humanCall?humanCall.p:-1,
+    kind:'calls',
+    canP:!!(humanCall&&humanCall.cp),
+    canK:!!(humanCall&&humanCall.ck),
+    canW:false,
+    reason:humanCall?'legal-human-call-response':'no-human-response'
+  };
+}
+
+function revalidateRestoredResponseState(state){
+  if(!state||state.phase!=='responding')return {applied:false,reason:'not-responding'};
+  const previousWin=!!state.canW&&state._responseKind==='win';
+  const resolved=resolveDiscardResponses(state);
+  state.canP=resolved.canP;
+  state.canK=resolved.canK;
+  state.canW=resolved.canW;
+  state._resp=resolved.kind==='calls'?resolved.responses:null;
+  state._respP=resolved.responder;
+  state._responseKind=resolved.kind;
+  return {applied:true,reason:previousWin&&!resolved.canW?'stale-win-cleared':resolved.reason};
+}
+
 function st(k){
   if('DNXBHFW'.includes(k))return {k,t:'honor',s:{D:'dong',N:'nan',X:'xi',B:'bei',H:'zhong',F:'fa',W:'bai'}[k],v:0};
   const m={w:'wan',t:'tong',j:'tiao'};
@@ -1544,45 +1603,19 @@ function doDiscard(selectedTile){
 }
 
 function checkResponses(){
-  const t=GS.lastDiscard;
-  const resp=[];
-  for(let i=0;i<4;i++){
-    if(i===GS.cur)continue;
-    const p=GS.players[i];
-    const preMl=(GS.players[i].melds||[]).filter(m=>m.count>=3).length;
-    const handOnly=[...GS.players[i].hand,t];
-    const huCheck=canHuNormal(handOnly,false,preMl,t);
-    const passesThreshold=meetsThresh(handOnly,t);
-    const passesOverwater=canWinAfterPassRuntime(i,t);
-    const canWin=!!huCheck&&passesThreshold&&passesOverwater;
-    if(i===0&&!canWin){
-      console.log('[hu-check] player0 cannot win on discard',{
-        tile:t?tkey(t):null,
-        hand:handOnly.map(function(x){return tkey(x);}),
-        huCheck:huCheck,
-        passesThreshold:passesThreshold,
-        passesOverwater:passesOverwater,
-        preMelds:preMl
-      });
-    }
-    resp.push({p:i,cw:canWin,cp:canPongChk(p.hand,t),ck:canKongChk(p.hand,t)});
-  }
-  const wr=resp.filter(r=>r.cw);
-  if(wr.length>0){
-    let pk=null;
-    for(let i=(GS.cur+1)%4;i!==GS.cur;i=(i+1)%4){if(wr.some(r=>r.p===i)){pk=i;break;}}
-    if(pk===null)pk=wr[0].p;
-    GS.phase='responding';GS._respP=pk;GS._resp=null;GS._responseKind='win';
-    GS.canP=false;GS.canK=false;GS.canW=true;
+  const resolved=resolveDiscardResponses(GS);
+  const resp=resolved.responses;
+  GS.phase='responding';GS._respP=resolved.responder;GS._resp=resolved.kind==='calls'?resp:null;GS._responseKind=resolved.kind;
+  GS.canP=resolved.canP;GS.canK=resolved.canK;GS.canW=resolved.canW;
+  if(resolved.kind==='win'){
+    const pk=resolved.responder;
     if(GS.players[pk].human){setMsg('可以胡，请仔细阅读推荐后选择');render();updateBtns();updateSuggestion();
       saveGameSnapshot('human-win-response');
     }else{saveGameSnapshot('ai-win-response');clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.phase==='responding'&&GS._respP===pk){aiRespond([{p:pk,cw:true,cp:false,ck:false}]);}},500);}
     return;
   }
-  GS.phase='responding';GS._resp=resp;GS._responseKind='calls';GS.canP=GS.canK=GS.canW=false;GS._respP=-1;
-  const hr=resp.find(r=>GS.players[r.p].human);
-  if(hr&&(hr.cp||hr.ck)){
-    GS.canP=hr.cp;GS.canK=hr.ck;GS.canW=false;GS._respP=hr.p;
+  const hr=resolved.responder>=0?resp.find(function(response){return response.p===resolved.responder;}):null;
+  if(hr){
     setMsg(`可以${hr.cp?'碰/杠':'杠'}，请仔细阅读推荐后选择`);render();updateBtns();
     updateSuggestion();saveGameSnapshot('human-call-response');
   }else{updateBtns();saveGameSnapshot('ai-call-response');aiRespond(resp);}
@@ -1651,7 +1684,8 @@ function drawGame(){
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'draw-settled');
   _spOnGameEnd(-1);
   GS._preWinScores=GS.players.map(function(p){return p.score;});
-  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | 流局';document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');updateScorebar(_deltas+' | 流局');document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  updateScorebar(bankrupt>=0?'流局，积分已重置':'流局');
   setMsg('荒牌流局');showWinDlg('流局','荒牌',0);
 }
 // -- pong/kong --
@@ -1865,7 +1899,8 @@ function applyWin(winner,wt){
   GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,classifyWin(eh)+'('+wt+')',pts)};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
-  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';document.getElementById('sp-score').textContent=_deltas;document.getElementById('sp-scorebar').textContent=_deltas+' | '+_info;document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';updateScorebar(_deltas+' | '+_info);document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  updateScorebar(bankrupt>=0?resultTitle+' 积分已重置':resultTitle);
   render();
   const h=classifyWin(eh);
   showWinDlg(`${GS.players[winner].name}胡了！`,`${h}(${wt})`,pts);
@@ -1989,13 +2024,12 @@ function evaluateAiSelfKong(p,kongInfo){
   const before=aiBestShantenForPlayer(preDrawHand,p);
   const removedCount=kongInfo.type==='add'?1:4;
   const afterHand=removeTilesForSelfKong(hand,t,removedCount);
-  const extraMeld=kongInfo.type==='concealed'?{tile:t}:null;
+  const extraMeld=kongInfo.type==='concealed'?{tile:t,count:4}:null;
   const afterRoute=aiRouteSummaryForPlayer(afterHand,p,extraMeld);
   const after=afterRoute.v;
   const rawAfter=calcShanten(afterHand);
-  const fixedMelds=aiFixedMeldCount(p);
-  const waitBefore=listWaitsForMeldCount(preDrawHand,p,fixedMelds,tkey(t));
-  const waitAfter=listWaitsForMeldCount(afterHand,p,fixedMelds+(kongInfo.type==='concealed'?1:0),tkey(t));
+  const waitBefore=listWaitsWithMelds(preDrawHand,p,ruleMeldsForPlayer(p),tkey(t));
+  const waitAfter=listWaitsWithMelds(afterHand,p,ruleMeldsWithExtra(p,extraMeld),tkey(t));
   const waitShape=AI_RULE_CORE.compareWaitShape(waitBefore,waitAfter);
   const lostWaits=waitShape.lostWaits;
   const waitShapePreserved=waitShape.preserved;
@@ -2432,8 +2466,8 @@ function evaluateDiscardCandidates(hand,playerIdx,options){
     ];
     routes.sort(compareAiRoutes);
     const top=routes[0];
-    const fixedMelds=aiFixedMeldCount(playerIdx)+(options.extraMeld&&options.extraMeld.tile?1:0);
-    const waitKeys=(top.p==='norm'||top.p==='7p')?listWaitsForMeldCount(sub,playerIdx,fixedMelds,tkey(hand[i])):[];
+    const ruleMelds=ruleMeldsWithExtra(playerIdx,options.extraMeld);
+    const waitKeys=(top.p==='norm'||top.p==='7p')?listWaitsWithMelds(sub,playerIdx,ruleMelds,tkey(hand[i])):[];
     const displayShanten=waitKeys.length>0?Math.min(top.v,0):top.v;
     details.push({tile:hand[i],idx:i,sub:sub,sN:routeValues.norm,s7:routeValues['7p'],sD:routeValues.dalan,sZ:routeValues.quanzheng,sBZ:routeValues.banzheng,s:displayShanten,path:top.p,routes:routes,waits:waitKeys,breaksMeld:aiBreaksMeld(hand,i),breaksPair:aiBreaksPair(hand,i),breaksTaatsu:aiBreaksTaatsu(hand,i),windComboBreak:aiBreaksWindCombo(hand,i),dragonComboBreak:aiBreaksDragonCombo(hand,i),isolatedDiscardPriority:aiIsolatedDiscardPriority(hand,i)});
     if(displayShanten<bestShanten){bestShanten=displayShanten;bestCands=[i];bestPaths=[top.p];}
@@ -3560,9 +3594,8 @@ function aiRespond(resp){
     const hand=simAfterPongKong(GS.players[r.p].hand,t,3);
     const kongEval=calledMeldShanten(hand,r.p,t);
     const postShanten=kongEval.adjusted;
-    const meldCount=aiFixedMeldCount(r.p);
-    const waitBefore=listWaitsForMeldCount(GS.players[r.p].hand,r.p,meldCount);
-    const waitAfter=listWaitsForMeldCount(hand,r.p,meldCount+1,tkey(t));
+    const waitBefore=listWaitsWithMelds(GS.players[r.p].hand,r.p,ruleMeldsForPlayer(r.p));
+    const waitAfter=listWaitsWithMelds(hand,r.p,ruleMeldsWithExtra(r.p,{tile:t,count:4}),tkey(t));
     const waitShape=AI_RULE_CORE.compareWaitShape(waitBefore,waitAfter);
     const lostWaits=waitShape.lostWaits;
     const waitShapePreserved=waitShape.preserved;
@@ -3775,21 +3808,22 @@ function countWaits(hand,playerIdx){
   return listWaits(hand,playerIdx).length;
 }
 
-function listWaitsForMeldCount(hand,playerIdx,preMelds,unavailableTileKey){
+function listWaitsWithMelds(hand,playerIdx,melds,unavailableTileKey){
+  const ruleMelds=normalizedRuleMelds(melds);
   const result=[];
   for(const k of ALL_KEYS){
     if(k===unavailableTileKey||aiRemainingCountForWait(k,playerIdx,hand)<=0)continue;
     const testHand=[...hand,kt(k)];
     const winTile=kt(k);
-    const win=canHuNormal(testHand,false,preMelds,winTile,'自摸');
+    const win=canHuNormal(testHand,false,ruleMelds,winTile,'自摸');
     if(win&&win.win)result.push(k);
   }
   return result;
 }
 
-// Wait enumeration uses concealed tiles plus the number of fixed melds.
+// Wait enumeration only classifies concrete meld tiles from the live game state.
 function listWaits(hand,playerIdx){
-  return listWaitsForMeldCount(hand,playerIdx,aiFixedMeldCount(playerIdx));
+  return listWaitsWithMelds(hand,playerIdx,ruleMeldsForPlayer(playerIdx));
 }
 
 // 搭子质量评估：数牌相邻对越多越高分，两面>嵌张>边张
@@ -4173,7 +4207,7 @@ function candidateViewFromDetail(detail,hand,candScores,playerIdx){
   const tile=hand[detail.idx]||detail.tile;
   const key=tkey(tile);
   const scoreInfo=candScores&&candScores[detail.idx]?candScores[detail.idx]:null;
-  const waitKeys=detail.s===0?listWaitsForMeldCount(detail.sub||[],playerIdx,aiFixedMeldCount(playerIdx),key):(detail.waits||[]);
+  const waitKeys=detail.s===0?listWaitsWithMelds(detail.sub||[],playerIdx,ruleMeldsForPlayer(playerIdx),key):(detail.waits||[]);
   const waitTiles=waitKeys.map(function(k){return {tile:k,label:lbl(kt(k)),remaining:aiRemainingCountForWait(k,playerIdx,detail.sub||[],tile)};});
   const waitRemaining=waitTiles.reduce(function(sum,item){return sum+Math.max(0,item.remaining||0);},0);
   return {
@@ -4558,7 +4592,6 @@ function toggleSelfPlay(){
 
     document.getElementById('bt-selfplay').textContent='自弈';
     setSelfPlayUiState();
-    setSelfPlayScorebarVisible(false);
     
     GS._noRender=false;GS._selfPlay=false;
     // 清除所有待处理的AI定时器，防止残留回调污染人类玩家状态
@@ -4587,16 +4620,15 @@ function toggleSelfPlay(){
   try{var _mlp=null;try{var _d=localStorage.getItem("rl_model");if(_d){_mlp=GPUMlp.deserialize(_d);}}catch(e){console.warn('[SP] model load failed',e);}if(!_mlp)_mlp=new GPUMlp();_selfPlay.trainer=new RLTrainer(_mlp);_selfPlay.trainer.lr=0.001;console.log('[SP] trainer OK');}catch(e){console.warn('[SP] trainer init:',e.message);}
   document.getElementById('bt-selfplay').textContent='停止';
   setSelfPlayUiState();
-  setSelfPlayScorebarVisible(true);
   _selfPlay.count=totalGamesPlayed;
-  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);setSelfPlayUiState();
+  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayUiState();
   startSelfPlayGame();
 }
 function startSelfPlayGame(){
   if(!_selfPlay.running)return;
   _selfPlay.count++;
-  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayScorebarVisible(true);setSelfPlayUiState();
-  try{var _sps=GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');document.getElementById('sp-score').textContent=_sps;}catch(e){console.warn('[selfplay] score render failed',e);}
+  document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayUiState();
+  try{updateScorebar();}catch(e){console.warn('[selfplay] score render failed',e);}
   GS._selfPlay=true;
   // 如果当前没有游戏在进行，则开新局；否则继续当前局，但所有玩家转为AI
   if(!GS.players||GS.players.length===0||GS.phase==='idle'||GS.phase==='ended'){
@@ -4750,7 +4782,7 @@ async function _spOnGameEnd(winner){console.log("[SP] _spOnGameEnd winner="+winn
   try{var r=_selfPlay.useGPU&&_selfPlay.trainer.mlp&&_selfPlay.trainer.mlp.device?await _selfPlay.trainer.trainMiniBatchGPU():_selfPlay.trainer.trainMiniBatch();}catch(e){console.warn('[SP] GPU err:',e.message);try{r=_selfPlay.trainer.trainMiniBatch();}catch(e2){r=null;}}
   if(r&&r.loss<10){
     _selfPlay.lastLoss=r.loss;
-    document.getElementById("sp-score").textContent="loss="+r.loss.toFixed(4);
+    document.getElementById("sp-info").textContent="训练损失: "+r.loss.toFixed(4);
     _selfPlay.lossHistory=_selfPlay.lossHistory||[];_selfPlay.lossHistory.push(r.loss);
 
     // 多步训练：当前局数据训练 3 次，加快收敛

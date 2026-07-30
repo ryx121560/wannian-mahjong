@@ -29,7 +29,9 @@
     "compare:stage6-selfplay-metrics": "node scripts/compare-stage6-selfplay-metrics.mjs",
     "selfplay:smoke": "node scripts/selfplay-smoke.mjs",
     "test:stage7-recommendation": "node scripts/stage7-recommendation-regression.mjs",
-    "test:stage7-ai-unified": "node scripts/stage7-ai-unified-dynamic-regression.mjs"
+    "test:stage7-ai-unified": "node scripts/stage7-ai-unified-dynamic-regression.mjs",
+    "test:response-real-meld-context": "node scripts/response-real-meld-context-regression.mjs",
+    "test:response-restore-revalidation": "node scripts/response-restore-revalidation-regression.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",
