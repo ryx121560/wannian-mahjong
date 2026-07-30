@@ -7,7 +7,8 @@
     "predev": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs",
     "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/clean-next-cache.mjs",
     "build": "next build",
-    "start": "node scripts/next-with-port.mjs start",
+    "start": "node scripts/start-production-game.mjs",
+    "start:production": "node scripts/start-production-game.mjs",
     "test:rules": "node scripts/benchmark-runner.mjs",
     "generate:l2-ai": "node scripts/generate-l2-ai-cases.mjs",
     "test:strong-ai": "node scripts/strong-ai-regression.mjs",
@@ -31,7 +32,10 @@
     "test:stage7-recommendation": "node scripts/stage7-recommendation-regression.mjs",
     "test:stage7-ai-unified": "node scripts/stage7-ai-unified-dynamic-regression.mjs",
     "test:response-real-meld-context": "node scripts/response-real-meld-context-regression.mjs",
-    "test:response-restore-revalidation": "node scripts/response-restore-revalidation-regression.mjs"
+    "test:response-restore-revalidation": "node scripts/response-restore-revalidation-regression.mjs",
+    "test:rl-weights-path": "node scripts/rl-weights-path-regression.mjs",
+    "test:production-launch": "node scripts/production-launch-regression.mjs",
+    "test:production-port-window": "node scripts/production-port-window-regression.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",

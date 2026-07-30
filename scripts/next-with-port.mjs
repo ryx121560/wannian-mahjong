@@ -37,7 +37,7 @@ function canListen(port, host) {
 }
 
 async function findPort() {
-  const maxOffset = Number.isInteger(portWindow) && portWindow > 0 ? portWindow : 10;
+  const maxOffset = Number.isInteger(portWindow) && portWindow >= 0 ? portWindow : 10;
   for (let offset = 0; offset <= maxOffset; offset += 1) {
     const port = preferredPort + offset;
     if (port > 65535) break;
