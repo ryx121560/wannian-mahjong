@@ -8,7 +8,7 @@
 body{background:#1a3c1a;overflow:hidden}
 canvas{display:block;margin:100px auto 0;border:12px solid #8b4513;border-radius:16px}
 #ui{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:200px}
-#bar{background:rgba(0,0,0,0.75);color:#fff;padding:8px 24px;border-radius:8px;font-size:15px;margin-bottom:10px;pointer-events:auto}
+#bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);max-height:76px;overflow-y:auto;overflow-wrap:anywhere;background:rgba(0,0,0,0.78);color:#ffcc00;padding:8px 18px;border:1px solid rgba(212,160,23,0.45);border-radius:8px;font-size:14px;line-height:1.45;text-align:center;z-index:90;pointer-events:none;font-variant-numeric:tabular-nums}
 #btns{display:flex;gap:10px;pointer-events:auto}
 button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;color:#fff}
 .btn-d{background:#4a752c}.btn-d:hover{background:#5a9a3c}.btn-d:disabled{background:#555;color:#aaa}
@@ -18,7 +18,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 .btn-n{background:#2980b9}.btn-n:hover{background:#3498db}
 
 .btn-eye{background:#555;color:#fff}.btn-eye.on{background:#e67e22}
-#msg{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:gold;padding:10px 24px;border-radius:10px;font-size:15px;display:none;max-width:90vw;white-space:normal;line-height:1.55;text-align:center;border:1px solid rgba(212,160,23,0.4);box-shadow:0 4px 18px rgba(0,0,0,0.35);z-index:20}
 #suggest{position:fixed;top:100px;width:480px;max-height:calc(100vh - 140px);overflow-y:auto;background:rgba(0,0,0,0.85);color:#ccc;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7;pointer-events:auto;display:none;border:1px solid #4a752c}
 #suggest h3{margin:0 0 8px;color:#e8b830;font-size:15px;text-align:center}
 #suggest .rec{background:rgba(232,184,48,0.15);padding:6px 10px;border-radius:6px;margin-bottom:8px;text-align:center;font-size:17px;color:gold}
@@ -66,12 +65,13 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-log-panel th,#ai-log-panel td{border:1px solid #444;padding:3px 5px;text-align:center;font-size:12px}
 #ai-log-panel th{background:rgba(74,117,44,0.3);color:#9f9}
 #ai-log-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
+@media (max-width:600px){#bar{top:8px;max-width:calc(100vw - 16px);padding:6px 10px;font-size:12px;line-height:1.35}}
    </style>
-<style>#scorebar{position:fixed;top:14px;left:50%;bottom:auto;transform:translateX(-50%);max-width:calc(100vw - 24px);background:rgba(0,0,0,0.78);color:#ffcc00;padding:7px 14px;border:1px solid rgba(212,160,23,0.45);border-radius:6px;font-size:14px;line-height:1.35;text-align:center;z-index:90;pointer-events:none;font-weight:bold;font-variant-numeric:tabular-nums}@media (max-width:600px){#scorebar{top:8px;max-width:calc(100vw - 16px);padding:5px 9px;font-size:12px;line-height:1.3}}#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}</style></head>
+<style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}</style></head>
 <body>
 <canvas id="c"></canvas>
 <div id="ui">
-<div id="bar">点击「新游戏」开始</div>
+<div id="bar" aria-live="polite">点击「新游戏」开始</div>
 <div id="btns">
 <button class="btn-a" id="bt-pong">碰</button>
 <button class="btn-a" id="bt-kong">杠</button>
@@ -85,7 +85,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="btn-n" id="bt-export" title="导出游戏记录到JSON文件">导出记录</button><button class="btn-n" id="bt-selfplay" title="AI自弈训练">自弈</button><button class="btn-n" id="bt-speed" title="切换自弈速度" style="display:none">快速</button>
 </div>
 </div>
-<div id="msg"></div>
 <div id="rules-panel">
 <h3>当前规则</h3>
 <ul>
@@ -110,7 +109,6 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="close" id="bt-ai-log-export">导出AI日志</button>
 <button class="close" id="bt-ai-log-close">关闭</button>
 </div>
-<div id="scorebar" aria-live="polite"></div>
 <div id="sp-status"><b>⚡ 自弈训练中</b><br>已完成: <span id="sp-count">0</span> 局<br><span id="sp-info" style="color:#aaa"></span><br><canvas id="sp-chart" width="220" height="50" style="background:#0a1a0a;border:2px solid #1a4a1a;border-radius:6px;margin-top:4px"></canvas></div>
 <div id="suggest"><h3>AI 出牌建议</h3><div id="suggest-body"></div></div>
 
@@ -678,11 +676,10 @@ function enterIdleState(reason){
   });
   clearAllDrawMarkers();
   document.getElementById('suggest').style.display='none';
-  document.getElementById('msg').style.display='none';
   document.getElementById('bt-selfplay').textContent='自弈';
   setSelfPlayUiState();
   setMsg('点击「新游戏」开始');
-  render();updateBtns();_spUpdateScore();
+  render();updateBtns();
   console.info('[session snapshot] idle reason='+reason);
 }
 
@@ -690,21 +687,17 @@ function restoredPhaseMessage(){
   const player=GS.players[GS.cur];
   if(GS.phase==='ended'){
     const title=GS._lastResult&&GS._lastResult.title?GS._lastResult.title:'上一局已结束';
-    setMsg(title+'，请点击“新游戏”');
-    const message=document.getElementById('msg');
-    message.style.display='block';
     if(GS._lastResult&&GS._lastResult.displayText){
-      message.textContent=GS._lastResult.displayText;
+      setMsg(GS._lastResult.displayText+'，请点击“新游戏”');
       return;
     }
     if(GS._lastResult&&GS._lastResult.huType&&GS._lastResult.type){
-      message.textContent=formatWinSettlementText(title,GS._lastResult.huType+'('+GS._lastResult.type+')',GS._lastResult.pts||0);
+      setMsg(formatWinSettlementText(title,GS._lastResult.huType+'('+GS._lastResult.type+')',GS._lastResult.pts||0)+'，请点击“新游戏”');
       return;
     }
-    message.textContent=title+' | '+GS.players.map(function(p){return p.name+':'+p.score;}).join(' | ');
+    setMsg(title+'，请点击“新游戏”');
     return;
   }
-  document.getElementById('msg').style.display='none';
   if(GS.phase==='drawing')setMsg(player.name+'的回合');
   else if(GS.phase==='discarding')setMsg(player.human?'选择要打出的牌'+(GS.newDrawnTile?'（新摸的牌在最右边）':''):player.name+'准备出牌');
   else if(GS.phase==='responding'){
@@ -778,7 +771,7 @@ function restoreGameSession(snapshot){
   document.getElementById('bt-selfplay').textContent=_selfPlay.running?'停止':'自弈';
   setSelfPlayUiState();
   restoredPhaseMessage();
-  render();updateBtns();_spUpdateScore();
+  render();updateBtns();
   if(GS.players[GS.cur]&&GS.players[GS.cur].human&&(GS.phase==='discarding'||GS.phase==='responding'))updateSuggestion();
   else document.getElementById('suggest').style.display='none';
   console.info('[session snapshot] restored phase='+GS.phase+' turn='+GS.turn+' savedAt='+restored.savedAt);
@@ -792,10 +785,9 @@ async function initializeGameSession(){
   try{await loadTileImages();}catch(error){console.warn('[session snapshot] tile image load warning',error);}
   scores=await loadScores();
   const loaded=GAME_SESSION.load(localStorage);
-  if(loaded.ok&&restoreGameSession(loaded.snapshot)){_spInitScore();return;}
+  if(loaded.ok&&restoreGameSession(loaded.snapshot))return;
   if(!loaded.missing)console.warn('[session snapshot] invalidated error='+loaded.reason);
   enterIdleState(loaded.reason||'snapshot-missing');
-  _spInitScore();
 }
 
 // === 游戏日志系统（localStorage，保留最近1局） ===
@@ -1300,7 +1292,7 @@ function roundRect(ctx,x,y,w,h,r,strokeOnly){
   ctx.quadraticCurveTo(x,y,x+r,y);
   ctx.closePath();
   if(strokeOnly)ctx.stroke();else ctx.fill();
-}_spUpdateScore();
+}
 
 function render(){
   ctx.clearRect(0,0,W,H);
@@ -1525,13 +1517,7 @@ async function saveScores() {
 }
 
 // game logic
-function updateScorebar(extra){
-  const scorebar=document.getElementById('scorebar');
-  if(!scorebar)return;
-  const current=Array.isArray(GS.players)&&GS.players.length===4?GS.players.map(function(player){return player.name+':'+player.score;}):['你:'+scores[0],'AI下家:'+scores[1],'AI对家:'+scores[2],'AI上家:'+scores[3]];
-  scorebar.textContent=current.join(' | ')+(extra?' | '+extra:'');
-}
-function _spUpdateScore(){try{updateScorebar();}catch(e){console.warn('[selfplay] score update failed',e);}}function _spInitScore(){gameSetTimeout(function(){try{_spUpdateScore();}catch(e){console.warn('[selfplay] score init failed',e);}},100);}function newGame(){
+function newGame(){
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -1543,7 +1529,6 @@ function _spUpdateScore(){try{updateScorebar();}catch(e){console.warn('[selfplay
     createPlayer('AI对家',false,scores[2]),
     createPlayer('AI上家',false,scores[3])
   ];
-  updateScorebar();
   GS.discards=[];GS.lastDiscard=null;GS.lastDiscardP=-1;clearSelectedTile();
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};GS._kongResources=[];GS._kongActionWindow=null;
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
@@ -1908,9 +1893,10 @@ function drawGame(){
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'draw-settled');
   _spOnGameEnd(-1);
   GS._preWinScores=GS.players.map(function(p){return p.score;});
-  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');updateScorebar(_deltas+' | 流局');document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
-  updateScorebar(bankrupt>=0?'流局，积分已重置':'流局');
-  setMsg('荒牌流局');showWinDlg('流局','荒牌',0);
+  const drawSummary=formatWinSettlementText(GS._lastResult.title,'荒牌',0);
+  setMsg(drawSummary);
+  if(_selfPlay.running){document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  showWinDlg('流局','荒牌',0);
 }
 // -- pong/kong --
 function canPongChk(h,t){return RULE_ENGINE.canPeng(ruleTiles(h),tkey(t));}
@@ -1990,7 +1976,7 @@ function completePageKongSettlement(owner,action,result){
   const actionKind=pageKongActionLabel(action.kind);
   logEvent(owner,'杠开',null,{actionKind:actionKind,outcome:result.resolution.outcome,decompositionSignature:result.resolution.evaluation.decomposition&&result.resolution.evaluation.decomposition.signature,handTypes:settlement.handTypes,payments:settlement.payments});
   const gain=settlement.delta[owner];
-  GS._lastResult={title:GS.players[owner].name+'杠开胡了！',type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,winner:owner,kongAction:action.kind,kongOutcome:result.resolution.outcome};
+  GS._lastResult={title:GS.players[owner].name+'杠开胡了！',type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,winner:owner,kongAction:action.kind,kongOutcome:result.resolution.outcome,displayText:formatWinSettlementText(GS.players[owner].name+'杠开胡了！',actionKind+'('+result.resolution.outcome+')',gain)};
   finalizeRecommendationSummary();
   renderFinalRecommendationPanel();
   if(window.RL&&RL.useRL){
@@ -2004,15 +1990,13 @@ function completePageKongSettlement(owner,action,result){
   saveGameLog({winner:owner,winnerName:GS.players[owner].name,type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,scores:GS.players.map(function(player){return {name:player.name,score:player.score};})});
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'kong-settled');
   _spOnGameEnd(owner);
+  setMsg(GS._lastResult.displayText);
   if(_selfPlay.running){
-    const deltas=GS.players.map(function(player,index){const delta=player.score-GS._preWinScores[index];return player.name+':'+player.score+'('+(delta>=0?'+':'')+delta+')';}).join(' | ');
     const summary=GS.players[owner].name+'杠开!'+actionKind;
-    updateScorebar(deltas+' | '+summary);
     document.getElementById('sp-info').textContent=summary;
     gameSetTimeout(function(){startSelfPlayGame();},10);
     return true;
   }
-  updateScorebar(formatWinSettlementText(GS.players[owner].name+'杠开胡了！',actionKind+'('+result.resolution.outcome+')',gain));
   render();showWinDlg(GS.players[owner].name+'杠开胡了！',actionKind,gain);
   return true;
 }
@@ -2238,17 +2222,15 @@ function applyWin(winner,wt){
   GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,classifyWin(eh)+'('+wt+')',pts)};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
-  if(_selfPlay.running){const _deltas=GS.players.map(function(p,i){var d=p.score-GS._preWinScores[i];var sign=d>=0?'+':'';return p.name+':'+p.score+'('+sign+d+')';}).join(' | ');const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';updateScorebar(_deltas+' | '+_info);document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
-  updateScorebar(bankrupt>=0?resultTitle+' 积分已重置':resultTitle);
+  setMsg(GS._lastResult.displayText);
+  if(_selfPlay.running){const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
   render();
   const h=classifyWin(eh);
   showWinDlg(`${GS.players[winner].name}胡了！`,`${h}(${wt})`,pts);
 }
 
 function showWinDlg(title,type,pts){
-  const msg=document.getElementById('msg');
-  msg.style.display='block';
-  msg.textContent=formatWinSettlementText(title,type,pts);
+  setMsg(formatWinSettlementText(title,type,pts));
 }
 
 function formatWinSettlementText(title,type,pts){
@@ -4266,7 +4248,7 @@ function updateBtns(){
   document.getElementById('bt-win').disabled=!(GS.canW&&r)&&!(h&&GS.canWS&&GS.phase==='discarding');
   document.getElementById('bt-pass').disabled=!((GS.phase==='responding')&&((GS.canP&&r)||(GS.canK&&r)||(GS.canW&&r)));
 }
-function setMsg(m){document.getElementById('bar').textContent=m;}
+function setMsg(m){const text=typeof m==='string'?m.trim():'';document.getElementById('bar').textContent=text||'当前对局状态更新中';}
 
 // events
 canvas.addEventListener('click',(e)=>{
@@ -4302,7 +4284,7 @@ document.getElementById('bt-pass').onclick=()=>{
   GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;
   nextTurn();
 };
-document.getElementById('bt-new').onclick=()=>{GS._kc={};newGame();_spUpdateScore();_spInitScore();};
+document.getElementById('bt-new').onclick=()=>{GS._kc={};newGame();};
 document.getElementById('bt-rules').onclick=()=>{document.getElementById('rules-panel').style.display='block';};
 document.getElementById('bt-rules-close').onclick=()=>{document.getElementById('rules-panel').style.display='none';};
 document.getElementById('bt-ai-settings').onclick=()=>{renderAiSettingsPanel();document.getElementById('ai-settings-panel').style.display='block';};
@@ -4967,11 +4949,11 @@ function startSelfPlayGame(){
   if(!_selfPlay.running)return;
   _selfPlay.count++;
   document.getElementById('sp-count').textContent=_selfPlay.count;setSelfPlayUiState();
-  try{updateScorebar();}catch(e){console.warn('[selfplay] score render failed',e);}
+  setMsg('自弈进行中，第'+_selfPlay.count+'局');
   GS._selfPlay=true;
   // 如果当前没有游戏在进行，则开新局；否则继续当前局，但所有玩家转为AI
   if(!GS.players||GS.players.length===0||GS.phase==='idle'||GS.phase==='ended'){
-    newGame();_spUpdateScore();_spInitScore();
+    newGame();
   }
   // 将所有人类玩家转为AI
   for(let i=0;i<4;i++){

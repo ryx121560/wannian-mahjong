@@ -390,8 +390,8 @@ if (!runtimeHtml.includes("canHuNormal(testHand,false,ruleMelds,winTile,'自摸'
 if (!runtimeHtml.includes('function formatWinSettlementText') || !runtimeHtml.includes('displayText:formatWinSettlementText')) {
   failures.push('stage4-runtime: settled win result is not persisted with full score deltas');
 }
-if (!/GS\._lastResult\.displayText[\s\S]{0,220}message\.textContent=GS\._lastResult\.displayText/.test(runtimeHtml)) {
-  failures.push('stage4-runtime: restored ended game does not show full settlement details');
+if (!/GS\._lastResult\.displayText[\s\S]{0,220}setMsg\(GS\._lastResult\.displayText/.test(runtimeHtml)) {
+  failures.push('stage4-runtime: restored ended game does not retain full settlement details in the status bar');
 }
 if (!runtimeHtml.includes('furoTransitionStructureScore') || !runtimeHtml.includes('furoTransitionAdj')) {
   failures.push('stage4-runtime: furo transition 3445 structure protection is missing from recommendation scoring');
