@@ -5,9 +5,11 @@ export * from './meld-validator';
 export * from './hand-evaluator';
 export * from './score-calculator';
 export * from './wildcard-resolver';
+export * from './kong-resource';
 
 import { canPeng, canAnGang, canMingGang } from './meld-validator';
 import { canWin } from './hand-evaluator';
+import { canUseDeferredForcedRun, classifyDiscardKongClaim, resolveDiscardWinner } from './kong-resource';
 import type { GameState, LegalAction } from './types';
 
 export function getLegalActions(state: GameState, playerId: number): LegalAction[] {
@@ -19,12 +21,27 @@ export function getLegalActions(state: GameState, playerId: number): LegalAction
     if (canWin(player.hand, { winType: '自摸', melds: player.melds || [] }).canWin) actions.add('selfWin');
     if (canAnGang(player.hand).length) actions.add('concealedKong');
     for (const meld of player.melds || []) if (canMingGang(player.hand, [meld], meld.tiles[0])) actions.add('addedKong');
+    if (canUseDeferredForcedRun(state, playerId)) actions.add('deferredForcedRunKong');
   }
   if (state.phase === 'responding' && state.lastDiscard && state.lastDiscardPlayer !== playerId) {
+    const winner = resolveDiscardWinner(state);
+    if (winner != null) {
+      if (winner === playerId) actions.add('win');
+      actions.add('pass');
+      return Array.from(actions);
+    }
     const handWithDiscard = player.hand.concat(state.lastDiscard);
     if (canWin(handWithDiscard, { winTile: state.lastDiscard, winType: '点炮', melds: player.melds || [] }).canWin) actions.add('win');
     if (canPeng(player.hand, state.lastDiscard)) actions.add('pong');
-    if (player.hand.filter((tile) => tile === state.lastDiscard).length >= 3) actions.add('openKong');
+    const kongClaim = classifyDiscardKongClaim({
+      hand: player.hand,
+      melds: player.melds || [],
+      discardTile: state.lastDiscard,
+      owner: playerId,
+      discardPlayer: state.lastDiscardPlayer,
+    });
+    if (kongClaim.kind === 'directChisel') actions.add('directChisel');
+    if (kongClaim.kind === 'forcedRunImmediate') actions.add('forcedRunKong');
     actions.add('pass');
   }
   return Array.from(actions);

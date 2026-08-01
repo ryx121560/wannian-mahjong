@@ -6,7 +6,7 @@ export type HonorTile = WindTile | ArrowTile;
 export type Tile = `${NumberSuit}${number}` | HonorTile;
 export type Mod3Group = 147 | 258 | 369 | 0;
 
-export type MeldType = 'peng' | 'mingGang' | 'anGang' | 'zhiChan';
+export type MeldType = 'peng' | 'mingGang' | 'anGang' | 'zhiChan' | 'chi';
 export interface Meld {
   type: MeldType;
   tiles: [Tile, Tile, Tile, Tile?];
@@ -28,7 +28,31 @@ export type HandType =
 
 export type WinMethod = '自摸' | '点炮' | '抢杠' | '杠开' | '连杠' | '天胡' | '地胡';
 export type HandRoute = 'normal' | 'sevenPairs' | 'dalan' | 'banzhengzong' | 'quanzhengzong' | 'allHonor';
-export type LegalAction = 'win' | 'selfWin' | 'pong' | 'openKong' | 'concealedKong' | 'addedKong' | 'pass' | 'discard';
+export type LegalAction =
+  | 'win'
+  | 'selfWin'
+  | 'pong'
+  | 'openKong'
+  | 'concealedKong'
+  | 'addedKong'
+  | 'directChisel'
+  | 'forcedRunKong'
+  | 'deferredForcedRunKong'
+  | 'pass'
+  | 'discard';
+
+export type KongResourceStatus = 'active' | 'consumed' | 'invalidated';
+export interface KongResource {
+  owner: number;
+  tile: Tile;
+  pongMeld: Meld;
+  source: 'pong';
+  status: KongResourceStatus;
+}
+
+export type KongClaimKind = 'directChisel' | 'forcedRunImmediate' | 'forcedRunDeferred' | 'chainKong';
+export type KongDrawOutcome = 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiFakeWin' | 'forcedRunFailureDiscard' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin';
+export type KongWinEvent = Extract<KongDrawOutcome, 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiFakeWin' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin'>;
 
 export interface GameState {
   hand?: Tile[];
@@ -45,6 +69,7 @@ export interface GameState {
   lastDiscard?: Tile;
   lastDiscardPlayer?: number;
   newDrawnTile?: Tile;
+  kongResources?: KongResource[];
 }
 
 export interface WinContext {
@@ -71,7 +96,69 @@ export interface HandClassification {
   baseScore: number;
   route: HandRoute | null;
   isDalan: boolean;
+  decompositionSignature: string;
+  selectedDecomposition?: HandDecomposition;
 }
+
+export interface HandDecomposition {
+  pair: [Tile, Tile];
+  groups: Tile[][];
+  signature: string;
+  resourceUse?: {
+    sourceTile: Tile;
+    role: 'pair' | 'group';
+    asTile: Tile;
+  };
+  fakeWinRemainder?: Tile;
+}
+
+export interface KongResourceEvaluationInput {
+  owner: number;
+  resource: KongResource;
+  preKongHand: Tile[];
+  hand: Tile[];
+  melds: Meld[];
+  allowFakeWinRemainder: boolean;
+}
+
+export interface KongResourceEvaluationResult {
+  canComplete: boolean;
+  reason: string;
+  decomposition?: HandDecomposition;
+  witnesses?: HandDecomposition[];
+  classification?: HandClassification;
+}
+
+export interface BaseKongDrawInput {
+  kind: Exclude<KongClaimKind, 'chainKong'>;
+  owner: number;
+  resource: KongResource;
+  preKongHand: Tile[];
+  handAfterKong: Tile[];
+  melds: Meld[];
+  drawTile: Tile;
+}
+
+export interface ChainKongDeclarationInput {
+  owner: number;
+  resource: KongResource;
+  preKongHand: Tile[];
+  initialHandAfterKong: Tile[];
+  initialMelds: Meld[];
+  firstDrawTile: Tile;
+  secondKongTile: Tile;
+  secondKongMeld: Meld;
+  handBeforeKong: Tile[];
+}
+
+export interface ChainKongDrawInput extends ChainKongDeclarationInput {
+  kind: 'chainKong';
+  handAfterKong: Tile[];
+  melds: Meld[];
+  drawTile: Tile;
+}
+
+export type KongDrawResolutionInput = BaseKongDrawInput | ChainKongDrawInput;
 
 export interface ShantenResult {
   shanten: number;
@@ -119,4 +206,30 @@ export interface SettlementResult {
   baseScore?: number;
   points: number;
   reason: string;
+}
+
+export interface KongSettlementInput {
+  action: KongDrawResolutionInput;
+  winner: number;
+  scores: number[];
+  pointKongPlayer?: number;
+}
+
+export interface KongSettlementResult {
+  before: number[];
+  after: number[];
+  delta: number[];
+  payments: number[];
+  winner: number;
+  event: KongWinEvent;
+  handTypes: HandType[];
+  multiplier: number;
+  capped: boolean;
+}
+
+export interface KongResourceSettlementInput {
+  action: KongSettlementInput['action'];
+  winner: KongSettlementInput['winner'];
+  scores: KongSettlementInput['scores'];
+  pointKongPlayer?: KongSettlementInput['pointKongPlayer'];
 }

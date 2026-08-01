@@ -1,7 +1,8 @@
 import { baseScoreForHandType, classifyHand, getPrimaryHandType } from './hand-evaluator';
+import { resolveKongDraw } from './kong-resource';
 import { DEFAULT_RULES } from './rule-config';
 import { isArrow, isHonor, tileSuit } from './tile-utils';
-import type { HandType, Meld, MeldType, SettlementInput, SettlementResult, Tile, WinMethod } from './types';
+import type { HandType, KongResourceSettlementInput, KongSettlementInput, KongSettlementResult, KongWinEvent, Meld, MeldType, SettlementInput, SettlementResult, Tile, WinMethod } from './types';
 
 export function applyCap(scorePerPlayer: number[], cap = DEFAULT_RULES.capAmount): number[] {
   return scorePerPlayer.map((score) => Math.min(score, cap));
@@ -59,6 +60,67 @@ export function calculateScore(params: {
     for (let i = 0; i < 4; i += 1) if (i !== params.currentPlayer) scorePerPlayer[i] = cappedScore;
   }
   return { scorePerPlayer, winnerGain: scorePerPlayer.reduce((sum, item) => sum + item, 0), capped };
+}
+
+function multiplierForHandTypes(handTypes: HandType[]): number {
+  return handTypes.reduce((product, handType) => product * baseScoreForHandType(handType), 1);
+}
+
+function basePaymentsForKongEvent(event: KongWinEvent, winner: number, pointKongPlayer?: number): number[] {
+  const payments = [0, 0, 0, 0];
+  if (event === 'forcedRunGangKaiFakeWin') {
+    for (let playerId = 0; playerId < payments.length; playerId += 1) if (playerId !== winner) payments[playerId] = 2;
+    return payments;
+  }
+  if (pointKongPlayer == null || pointKongPlayer === winner) throw new Error('pointKongPlayer required for direct chisel kong settlement');
+  const isTrue = event === 'directChiselTrueWin' || event === 'directChiselChainTrueWin';
+  const isChain = event === 'directChiselChainTrueWin' || event === 'directChiselChainFakeWin';
+  const pointKongBase = isChain ? (isTrue ? 16 : 8) : (isTrue ? 8 : 4);
+  const otherBase = isChain ? (isTrue ? 8 : 4) : (isTrue ? 4 : 2);
+  for (let playerId = 0; playerId < payments.length; playerId += 1) {
+    if (playerId === winner) continue;
+    payments[playerId] = playerId === pointKongPlayer ? pointKongBase : otherBase;
+  }
+  return payments;
+}
+
+export function scoreKongSettlement(input: KongSettlementInput): KongSettlementResult {
+  const resolution = resolveKongDraw(input.action);
+  if (resolution.outcome === 'forcedRunFailureDiscard') {
+    throw new Error('failed forced run cannot settle');
+  }
+  const evaluation = resolution.evaluation;
+  if (!evaluation.canComplete || !evaluation.classification || !evaluation.decomposition) {
+    throw new Error('completed kong resource evaluation required for settlement');
+  }
+  if (evaluation.classification.selectedDecomposition?.signature !== evaluation.decomposition.signature) {
+    throw new Error('kong resource classification must bind the selected decomposition');
+  }
+  const event = resolution.outcome;
+  const before = input.scores.slice();
+  const multiplier = multiplierForHandTypes(evaluation.classification.handTypes);
+  const rawPayments = basePaymentsForKongEvent(event, input.winner, input.pointKongPlayer)
+    .map((payment) => payment * multiplier);
+  const payments = applyCap(rawPayments);
+  const after = before.slice();
+  const winnerGain = payments.reduce((total, payment) => total + payment, 0);
+  after[input.winner] += winnerGain;
+  for (let playerId = 0; playerId < after.length; playerId += 1) after[playerId] -= payments[playerId];
+  return {
+    before,
+    after,
+    delta: after.map((score, index) => score - before[index]),
+    payments,
+    winner: input.winner,
+    event,
+    handTypes: evaluation.classification.handTypes,
+    multiplier,
+    capped: rawPayments.some((payment) => payment > DEFAULT_RULES.capAmount),
+  };
+}
+
+export function scoreKongResourceSettlement(input: KongResourceSettlementInput): KongSettlementResult {
+  return scoreKongSettlement(input);
 }
 
 function pointsFor(hand: Tile[], winType: WinMethod): number {
