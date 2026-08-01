@@ -8,7 +8,7 @@
 body{background:#1a3c1a;overflow:hidden}
 canvas{display:block;margin:100px auto 0;border:12px solid #8b4513;border-radius:16px}
 #ui{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:200px}
-#bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);max-height:76px;overflow-y:auto;overflow-wrap:anywhere;background:rgba(0,0,0,0.78);color:#ffcc00;padding:8px 18px;border:1px solid rgba(212,160,23,0.45);border-radius:8px;font-size:14px;line-height:1.45;text-align:center;z-index:90;pointer-events:none;font-variant-numeric:tabular-nums}
+#bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);box-sizing:border-box;width:min(520px,calc(100vw - 24px));max-width:calc(100vw - 24px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:rgba(0,0,0,0.78);color:#ffcc00;padding:8px 18px;border:1px solid rgba(212,160,23,0.45);border-radius:8px;font-size:14px;line-height:1.45;text-align:center;z-index:90;pointer-events:none;font-variant-numeric:tabular-nums}
 #btns{display:flex;gap:10px;pointer-events:auto}
 button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;color:#fff}
 .btn-d{background:#4a752c}.btn-d:hover{background:#5a9a3c}.btn-d:disabled{background:#555;color:#aaa}
@@ -65,13 +65,13 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-log-panel th,#ai-log-panel td{border:1px solid #444;padding:3px 5px;text-align:center;font-size:12px}
 #ai-log-panel th{background:rgba(74,117,44,0.3);color:#9f9}
 #ai-log-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
-@media (max-width:600px){#bar{top:8px;max-width:calc(100vw - 16px);padding:6px 10px;font-size:12px;line-height:1.35}}
+@media (max-width:600px){#bar{top:8px;box-sizing:border-box;width:calc(100vw - 16px);max-width:calc(100vw - 16px);padding:6px 10px;font-size:12px;line-height:1.35}}
    </style>
 <style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}</style></head>
 <body>
 <canvas id="c"></canvas>
 <div id="ui">
-<div id="bar" aria-live="polite">点击「新游戏」开始</div>
+<div id="bar" aria-live="polite">当前积分加载中</div>
 <div id="btns">
 <button class="btn-a" id="bt-pong">碰</button>
 <button class="btn-a" id="bt-kong">杠</button>
@@ -1295,6 +1295,7 @@ function roundRect(ctx,x,y,w,h,r,strokeOnly){
 }
 
 function render(){
+  updateTopScoreBar();
   ctx.clearRect(0,0,W,H);
   // green felt
   const rg=ctx.createRadialGradient(W/2,H/2,50,W/2,H/2,700);
@@ -4248,7 +4249,19 @@ function updateBtns(){
   document.getElementById('bt-win').disabled=!(GS.canW&&r)&&!(h&&GS.canWS&&GS.phase==='discarding');
   document.getElementById('bt-pass').disabled=!((GS.phase==='responding')&&((GS.canP&&r)||(GS.canK&&r)||(GS.canW&&r)));
 }
-function setMsg(m){const text=typeof m==='string'?m.trim():'';document.getElementById('bar').textContent=text||'当前对局状态更新中';}
+function updateTopScoreBar(){
+  const players=typeof GS!=='undefined'&&Array.isArray(GS.players)?GS.players:[];
+  const labels=['你','AI下家','AI对家','AI上家'];
+  const text=labels.map(function(label,index){
+    const player=players[index];
+    const name=player&&typeof player.name==='string'&&player.name.trim()?player.name.trim():label;
+    const score=player&&Number.isFinite(player.score)?player.score:'-';
+    return name+':'+score;
+  }).join(' | ');
+  document.getElementById('bar').textContent=text;
+}
+
+function setMsg(m){GS._statusMessage=typeof m==='string'?m.trim():'';updateTopScoreBar();}
 
 // events
 canvas.addEventListener('click',(e)=>{
