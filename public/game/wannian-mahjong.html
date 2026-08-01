@@ -6,9 +6,9 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1a3c1a;overflow:hidden}
-canvas{display:block;margin:100px auto 0;border:12px solid #8b4513;border-radius:16px}
+canvas{display:block;margin:112px auto 0;border:12px solid #8b4513;border-radius:16px}
 #ui{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:200px}
-#bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);box-sizing:border-box;width:min(520px,calc(100vw - 24px));max-width:calc(100vw - 24px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:rgba(0,0,0,0.78);color:#ffcc00;padding:8px 18px;border:1px solid rgba(212,160,23,0.45);border-radius:8px;font-size:14px;line-height:1.45;text-align:center;z-index:90;pointer-events:none;font-variant-numeric:tabular-nums}
+#bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);box-sizing:border-box;width:min(520px,calc(100vw - 24px));max-width:calc(100vw - 24px);overflow:hidden;white-space:pre-line;min-height:60px;background:rgba(0,0,0,0.78);color:#ffcc00;padding:8px 18px;border:1px solid rgba(212,160,23,0.45);border-radius:8px;font-size:14px;line-height:1.45;text-align:center;z-index:90;pointer-events:none;font-variant-numeric:tabular-nums}
 #btns{display:flex;gap:10px;pointer-events:auto}
 button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;color:#fff}
 .btn-d{background:#4a752c}.btn-d:hover{background:#5a9a3c}.btn-d:disabled{background:#555;color:#aaa}
@@ -18,7 +18,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 .btn-n{background:#2980b9}.btn-n:hover{background:#3498db}
 
 .btn-eye{background:#555;color:#fff}.btn-eye.on{background:#e67e22}
-#suggest{position:fixed;top:100px;width:480px;max-height:calc(100vh - 140px);overflow-y:auto;background:rgba(0,0,0,0.85);color:#ccc;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7;pointer-events:auto;display:none;border:1px solid #4a752c}
+#suggest{position:fixed;top:112px;width:480px;max-height:calc(100vh - 152px);overflow-y:auto;background:rgba(0,0,0,0.85);color:#ccc;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.7;pointer-events:auto;display:none;border:1px solid #4a752c}
 #suggest h3{margin:0 0 8px;color:#e8b830;font-size:15px;text-align:center}
 #suggest .rec{background:rgba(232,184,48,0.15);padding:6px 10px;border-radius:6px;margin-bottom:8px;text-align:center;font-size:17px;color:gold}
 #suggest .rec span{font-weight:bold;color:#fff}
@@ -65,7 +65,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-log-panel th,#ai-log-panel td{border:1px solid #444;padding:3px 5px;text-align:center;font-size:12px}
 #ai-log-panel th{background:rgba(74,117,44,0.3);color:#9f9}
 #ai-log-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
-@media (max-width:600px){#bar{top:8px;box-sizing:border-box;width:calc(100vw - 16px);max-width:calc(100vw - 16px);padding:6px 10px;font-size:12px;line-height:1.35}}
+@media (max-width:600px){#bar{top:8px;box-sizing:border-box;width:calc(100vw - 16px);max-width:calc(100vw - 16px);min-height:48px;padding:6px 10px;font-size:12px;line-height:1.35}}
    </style>
 <style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}</style></head>
 <body>
@@ -1890,7 +1890,7 @@ function drawGame(){
   }
   // 每局结束保存RL权重
   window.RL&&RL.saveAll();
-  GS._lastResult={title:bankrupt>=0?'流局，积分已重置':'荒牌流局',type:'流局',pts:0,bankrupt:bankrupt};
+  GS._lastResult={title:bankrupt>=0?'流局，积分已重置':'荒牌流局',type:'流局',pts:0,bankrupt:bankrupt,scoreDeltas:[0,0,0,0]};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'draw-settled');
   _spOnGameEnd(-1);
   GS._preWinScores=GS.players.map(function(p){return p.score;});
@@ -1977,7 +1977,7 @@ function completePageKongSettlement(owner,action,result){
   const actionKind=pageKongActionLabel(action.kind);
   logEvent(owner,'杠开',null,{actionKind:actionKind,outcome:result.resolution.outcome,decompositionSignature:result.resolution.evaluation.decomposition&&result.resolution.evaluation.decomposition.signature,handTypes:settlement.handTypes,payments:settlement.payments});
   const gain=settlement.delta[owner];
-  GS._lastResult={title:GS.players[owner].name+'杠开胡了！',type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,winner:owner,kongAction:action.kind,kongOutcome:result.resolution.outcome,displayText:formatWinSettlementText(GS.players[owner].name+'杠开胡了！',actionKind+'('+result.resolution.outcome+')',gain)};
+  GS._lastResult={title:GS.players[owner].name+'杠开胡了！',type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,winner:owner,kongAction:action.kind,kongOutcome:result.resolution.outcome,scoreDeltas:settlement.delta.slice(),displayText:formatWinSettlementText(GS.players[owner].name+'杠开胡了！',actionKind+'('+result.resolution.outcome+')',gain)};
   finalizeRecommendationSummary();
   renderFinalRecommendationPanel();
   if(window.RL&&RL.useRL){
@@ -2194,6 +2194,7 @@ function applyWin(winner,wt){
     GS.players[winner].score+=pts*3;
     for(let i=0;i<4;i++)if(i!==winner)GS.players[i].score-=pts;
   }
+  const settlementScoreDeltas=captureSettlementScoreDeltas(GS._preWinScores,GS.players);
   logEvent(winner,'胡牌['+wt+']',null);
   finalizeRecommendationSummary();
   saveGameLog({winner:winner,winnerName:GS.players[winner].name,type:wt,
@@ -2220,7 +2221,7 @@ function applyWin(winner,wt){
   // 每局结束保存RL权重
   window.RL&&RL.saveAll();
   const resultTitle=GS.players[winner].name+'胡了！';
-  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,classifyWin(eh)+'('+wt+')',pts)};
+  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt,scoreDeltas:settlementScoreDeltas,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,classifyWin(eh)+'('+wt+')',pts)};
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
   setMsg(GS._lastResult.displayText);
@@ -4249,6 +4250,21 @@ function updateBtns(){
   document.getElementById('bt-win').disabled=!(GS.canW&&r)&&!(h&&GS.canWS&&GS.phase==='discarding');
   document.getElementById('bt-pass').disabled=!((GS.phase==='responding')&&((GS.canP&&r)||(GS.canK&&r)||(GS.canW&&r)));
 }
+function captureSettlementScoreDeltas(beforeScores,players){
+  if(!Array.isArray(beforeScores)||!Array.isArray(players)||beforeScores.length!==4||players.length!==4)return [];
+  return players.map(function(player,index){return player&&Number.isFinite(player.score)&&Number.isFinite(beforeScores[index])?player.score-beforeScores[index]:NaN;});
+}
+function formatTopSettlementSummary(lastResult,players){
+  if(!lastResult||!Array.isArray(lastResult.scoreDeltas)||lastResult.scoreDeltas.length!==4||!lastResult.scoreDeltas.every(Number.isFinite))return '';
+  const resultType=typeof lastResult.type==='string'?lastResult.type:'';
+  const winner=Number.isInteger(lastResult.winner)&&players[lastResult.winner]?players[lastResult.winner]:null;
+  const winnerName=winner&&typeof winner.name==='string'&&winner.name.trim()?winner.name.trim():'玩家';
+  const handType=typeof lastResult.huType==='string'&&lastResult.huType?lastResult.huType:'胡牌';
+  const resultLabel=resultType==='流局'||resultType==='draw'?'上局：流局':'上局：'+winnerName+' '+handType+'('+resultType+')';
+  const deltaLabels=['你','下家','对家','上家'];
+  const deltaText=lastResult.scoreDeltas.map(function(delta,index){return deltaLabels[index]+(delta>=0?'+':'')+delta;}).join(' | ');
+  return resultLabel+' | '+deltaText;
+}
 function updateTopScoreBar(){
   const players=typeof GS!=='undefined'&&Array.isArray(GS.players)?GS.players:[];
   const labels=['你','AI下家','AI对家','AI上家'];
@@ -4258,7 +4274,8 @@ function updateTopScoreBar(){
     const score=player&&Number.isFinite(player.score)?player.score:'-';
     return name+':'+score;
   }).join(' | ');
-  document.getElementById('bar').textContent=text;
+  const summary=formatTopSettlementSummary(typeof GS!=='undefined'?GS._lastResult:null,players);
+  document.getElementById('bar').textContent=summary?text+'\n'+summary:text;
 }
 
 function setMsg(m){GS._statusMessage=typeof m==='string'?m.trim():'';updateTopScoreBar();}
