@@ -6,6 +6,8 @@
   const PHASES = Object.freeze(['idle', 'drawing', 'discarding', 'responding', 'ended']);
   const RESPONSE_KINDS = Object.freeze([null, 'win', 'calls']);
   const HONORS = Object.freeze(['dong', 'nan', 'xi', 'bei', 'zhong', 'fa', 'bai']);
+  const KONG_RESOURCE_STATUSES = Object.freeze(['active', 'consumed', 'invalidated']);
+  const KONG_CLAIM_KINDS = Object.freeze(['directChisel', 'forcedRunImmediate', 'forcedRunDeferred', 'chainKong']);
 
   function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -33,7 +35,35 @@
     return isObject(meld)
       && isTileKey(meld.tile)
       && Number.isInteger(meld.count)
-      && (meld.count === 3 || meld.count === 4);
+      && (meld.count === 3 || meld.count === 4)
+      && (meld.fromPlayer === undefined || isPlayerIndex(meld.fromPlayer, false));
+  }
+
+  function validateRuleMeld(meld) {
+    return isObject(meld)
+      && typeof meld.type === 'string'
+      && isTileArray(meld.tiles)
+      && (meld.tiles.length === 3 || meld.tiles.length === 4)
+      && meld.tiles.every(function (tile) { return tile === meld.tiles[0]; });
+  }
+
+  function validateKongResource(resource) {
+    return isObject(resource)
+      && isPlayerIndex(resource.owner, false)
+      && isTileKey(resource.tile)
+      && resource.source === 'pong'
+      && KONG_RESOURCE_STATUSES.includes(resource.status)
+      && validateRuleMeld(resource.pongMeld)
+      && resource.pongMeld.type === 'peng'
+      && resource.pongMeld.tiles.length === 3
+      && resource.pongMeld.tiles.every(function (tile) { return tile === resource.tile; });
+  }
+
+  function validateKongActionWindow(window) {
+    return window === null || (isObject(window)
+      && KONG_CLAIM_KINDS.includes(window.kind)
+      && isPlayerIndex(window.owner, false)
+      && validateKongResource(window.resource));
   }
 
   function validatePlayer(player) {
@@ -91,6 +121,8 @@
     if (snapshot.phase === 'responding' && snapshot.responseContext.kind === 'win' && snapshot.responseContext.responder < 0) return invalid('missing-win-responder');
     if (snapshot.phase !== 'responding' && (snapshot.responseContext.kind !== null || snapshot.responseContext.responses !== null || snapshot.responseContext.responder !== -1)) return invalid('stale-response-context');
     if (!isObject(snapshot.kongContext) || !isObject(snapshot.kongContext.counts) || !isObject(snapshot.kongContext.wild)) return invalid('invalid-kong-context');
+    if (snapshot.kongContext.resources !== undefined && (!Array.isArray(snapshot.kongContext.resources) || !snapshot.kongContext.resources.every(validateKongResource))) return invalid('invalid-kong-resources');
+    if (snapshot.kongContext.actionWindow !== undefined && !validateKongActionWindow(snapshot.kongContext.actionWindow)) return invalid('invalid-kong-action-window');
     if (!isObject(snapshot.modeContext) || typeof snapshot.modeContext.selfPlayRunning !== 'boolean') return invalid('invalid-mode-context');
     if (!Number.isInteger(snapshot.totalGames) || snapshot.totalGames < 0) return invalid('invalid-total-games');
     return { ok: true, reason: null };
@@ -110,7 +142,11 @@
           human: !!player.human,
           score: player.score,
           hand: mapTiles(player.hand),
-          melds: (player.melds || []).map(function (meld) { return { tile: keyOf(meld.tile), count: meld.count }; })
+          melds: (player.melds || []).map(function (meld) {
+            const serialized = { tile: keyOf(meld.tile), count: meld.count };
+            if (Number.isInteger(meld.fromPlayer)) serialized.fromPlayer = meld.fromPlayer;
+            return serialized;
+          })
         };
       }),
       discards: mapTiles(state.discards),
@@ -132,7 +168,9 @@
       },
       kongContext: {
         counts: clone(state._kc) || {},
-        wild: clone(state._hasWild) || {}
+        wild: clone(state._hasWild) || {},
+        resources: clone(state._kongResources) || [],
+        actionWindow: clone(state._kongActionWindow) || null
       },
       modeContext: {
         selfPlayRunning: !!(context && context.selfPlayRunning)
@@ -157,7 +195,11 @@
           human: player.human,
           score: player.score,
           hand: makeTiles(player.hand),
-          melds: player.melds.map(function (meld) { return { tile: tileFactory(meld.tile), count: meld.count }; })
+          melds: player.melds.map(function (meld) {
+            const restoredMeld = { tile: tileFactory(meld.tile), count: meld.count };
+            if (Number.isInteger(meld.fromPlayer)) restoredMeld.fromPlayer = meld.fromPlayer;
+            return restoredMeld;
+          })
         };
       });
       const playerDiscards = snapshot.playerDiscards.map(makeTiles);
@@ -207,6 +249,8 @@
           _responseKind: snapshot.responseContext.kind,
           _kc: clone(snapshot.kongContext.counts) || {},
           _hasWild: clone(snapshot.kongContext.wild) || {},
+          _kongResources: clone(snapshot.kongContext.resources) || [],
+          _kongActionWindow: clone(snapshot.kongContext.actionWindow) || null,
           newDrawnTile: newDrawnTile,
           newDrawnIdx: snapshot.newDrawnIdx,
           _gameLog: clone(snapshot.currentGameLog),

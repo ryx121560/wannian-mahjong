@@ -40,6 +40,7 @@ function createResponseRuntime(melds) {
   const context = {
     RULE_ENGINE: loadRules(),
     GS: {
+      phase: 'responding',
       cur: 2,
       lastDiscard: 'zhong',
       lastDiscardP: 2,
@@ -69,7 +70,7 @@ function createResponseRuntime(melds) {
     console: { log: () => {}, error: () => {} }
   };
   vm.createContext(context);
-  for (const name of ['ruleTiles', 'normalizedRuleMelds', 'ruleMeldsFromPlayer', 'canHuNormal', 'canWinAfterPassForState', 'canPongChk', 'canKongChk', 'resolveDiscardResponses', 'checkResponses']) {
+  for (const name of ['ruleTiles', 'normalizedRuleMelds', 'ruleMeldsFromPlayer', 'pageRuleState', 'canHuNormal', 'canWinAfterPassForState', 'canPongChk', 'canKongChk', 'resolveDiscardResponses', 'checkResponses']) {
     vm.runInContext(extractFunction(name), context, { filename: `runtime-${name}.js` });
   }
   return { context, events };
@@ -160,12 +161,13 @@ assert.equal(finalAudit.result.ok, false, 'final audit must still block a forced
 assert.equal(finalAudit.audit.invalidWins, 1, 'final audit must record invalidWins for a forced false win');
 assert.equal(finalAudit.failures.length, 1, 'final audit must emit one invalid-win log');
 
-assert.match(html, /const ruleMelds=ruleMeldsFromPlayer\(player\);[\s\S]*canHuNormal\(handWithDiscard,false,ruleMelds,discard,'点炮'\)/, 'response win classification must receive real melds');
+assert.match(extractFunction('resolveDiscardResponses'), /RULE_ENGINE\.getLegalActions\(pageRuleState\(state\),i\)/, 'response legality must be sourced from the rule-core action list built with real melds');
 assert.doesNotMatch(html, /canHuNormal\(handOnly,false,preMl,t\)/, 'response win classification must not receive a meld count');
 assert.doesNotMatch(html, /function ruleMeldsByCount\(/, 'rule classification must not synthesize meld tiles from a count');
 assert.doesNotMatch(html, /function listWaitsForMeldCount\(/, 'wait enumeration must not classify with a meld count');
-assert.match(html, /canHuNormal\(_test,false,ruleMeldsForPlayer\(_pi\),t,'抢杠'\)/, 'rob-kong checks must receive real meld tiles');
-assert.match(html, /canHuNormal\(concealedHand\(p\),false,ruleMeldsForPlayer\(p\),_winTileK,'杠开'\)/, 'kong-draw checks must receive real meld tiles');
+assert.match(extractFunction('doKong'), /RULE_ENGINE\.resolveRobKongWinner\(pageRuleState\(GS\),p,tkey\(GS\.lastDiscard\)\)/, 'rob-kong checks must use the core with real meld tiles');
+assert.match(extractFunction('applyInitialPageKongAction'), /preflightPageKongResolution\(/, 'kong draw must use the shared core-backed atomic preflight');
+assert.match(extractFunction('preflightPageKongResolution'), /resolvePageKongAction\(/, 'the atomic preflight must retain the core-backed settlement bridge');
 assert.match(html, /return canSelfWin\(concealedHand\(playerIdx\),winTile,winType,ruleMeldsForPlayer\(playerIdx\)\)/, 'self-draw checks must receive real meld tiles');
 assert.match(html, /canHuNormal\(testHand,false,ruleMelds,winTile,'自摸'\)/, 'wait enumeration must receive real meld tiles');
 

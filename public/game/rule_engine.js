@@ -4,10 +4,14 @@
 "./hand-evaluator": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.canFormMeldGroups = canFormMeldGroups;
+exports.decompositionSignature = decompositionSignature;
+exports.enumerateStandardDecompositions = enumerateStandardDecompositions;
 exports.checkStandardWin = checkStandardWin;
 exports.checkSevenPairs = checkSevenPairs;
 exports.checkAllWinds = checkAllWinds;
 exports.checkDalan = checkDalan;
+exports.classifyHandDecomposition = classifyHandDecomposition;
 exports.classifyHand = classifyHand;
 exports.getPrimaryHandType = getPrimaryHandType;
 exports.canWin = canWin;
@@ -110,19 +114,80 @@ function groupsOk(counts) {
     }
     return false;
 }
-function checkStandardWin(hand, melds = []) {
+function canFormMeldGroups(tiles) {
+    return groupsOk((0, tile_utils_1.countTileRecord)(tiles));
+}
+function groupCandidatesFor(tile) {
+    const candidates = [[tile, tile, tile]];
+    if ((0, tile_utils_1.isNumberTile)(tile) && (0, tile_utils_1.tileValue)(tile) <= 7) {
+        const suit = (0, tile_utils_1.tileSuit)(tile);
+        const value = (0, tile_utils_1.tileValue)(tile);
+        candidates.push([tile, `${suit}${value + 1}`, `${suit}${value + 2}`]);
+    }
+    if (tile_utils_1.WIND_TILES.includes(tile)) {
+        candidates.push(...[
+            ['dong', 'nan', 'xi'],
+            ['dong', 'nan', 'bei'],
+            ['dong', 'xi', 'bei'],
+            ['nan', 'xi', 'bei'],
+        ].filter((group) => group.includes(tile)));
+    }
+    if (tile_utils_1.ARROW_TILES.includes(tile))
+        candidates.push(['zhong', 'fa', 'bai']);
+    return candidates;
+}
+function enumerateGroups(counts) {
+    const active = (0, tile_utils_1.sortTiles)(Object.keys(counts).filter((tile) => counts[tile] > 0));
+    if (!active.length)
+        return [[]];
+    const first = active[0];
+    const decompositions = [];
+    for (const group of groupCandidatesFor(first)) {
+        const next = removeSet(counts, group);
+        if (!next)
+            continue;
+        for (const remainder of enumerateGroups(next))
+            decompositions.push([(0, tile_utils_1.sortTiles)(group), ...remainder]);
+    }
+    return decompositions;
+}
+function normalizeMelds(melds) {
+    return melds
+        .map((meld) => `${meld.type}:${(0, tile_utils_1.sortTiles)(meld.tiles.filter((tile) => !!tile)).join(',')}`)
+        .sort();
+}
+function decompositionSignature(pair, groups, melds = [], resourceUse, fakeWinRemainder) {
+    const normalizedGroups = groups.map((group) => (0, tile_utils_1.sortTiles)(group).join(',')).sort().join(';');
+    const resource = resourceUse ? `${resourceUse.sourceTile}:${resourceUse.role}:${resourceUse.asTile}` : 'none';
+    return `pair=${(0, tile_utils_1.sortTiles)(pair).join(',')}|groups=${normalizedGroups}|melds=${normalizeMelds(melds).join(';')}|resource=${resource}|remainder=${fakeWinRemainder || 'none'}`;
+}
+function enumerateStandardDecompositions(hand, melds = []) {
     const totalLength = hand.length + melds.length * 3;
     if (totalLength % 3 !== 2)
-        return { canWin: false, handType: '平胡' };
+        return [];
     const counts = (0, tile_utils_1.countTileRecord)(hand);
-    for (const tile of Object.keys(counts)) {
-        if (counts[tile] >= 2) {
-            const rest = removeSet(counts, [tile, tile]);
-            if (rest && groupsOk(rest))
-                return { canWin: true, handType: '平胡' };
+    const decompositions = [];
+    for (const tile of (0, tile_utils_1.sortTiles)(Object.keys(counts))) {
+        if (counts[tile] < 2)
+            continue;
+        const rest = removeSet(counts, [tile, tile]);
+        if (!rest)
+            continue;
+        for (const groups of enumerateGroups(rest)) {
+            const pair = [tile, tile];
+            const signature = decompositionSignature(pair, groups, melds);
+            decompositions.push({ pair, groups, signature });
         }
     }
-    return { canWin: false, handType: '平胡' };
+    return decompositions.sort((left, right) => left.signature.localeCompare(right.signature));
+}
+function hasTripletOnlyDecomposition(hand, melds) {
+    if (melds.some((meld) => !['peng', 'mingGang', 'anGang', 'zhiChan'].includes(meld.type)))
+        return false;
+    return enumerateStandardDecompositions(hand, melds).some((decomposition) => (decomposition.groups.every((group) => group[0] === group[1] && group[1] === group[2])));
+}
+function checkStandardWin(hand, melds = []) {
+    return { canWin: enumerateStandardDecompositions(hand, melds).length > 0, handType: '平胡' };
 }
 function checkSevenPairs(hand, melds = []) {
     return melds.length === 0 && isSevenPairs(hand);
@@ -161,29 +226,98 @@ function routeFor(hand, melds = []) {
         return 'normal';
     return null;
 }
+function colorHandTypes(hand, melds, dalan) {
+    if (dalan.isDalan)
+        return [];
+    const allTiles = hand.concat(melds.flatMap((meld) => meld.tiles.filter((tile) => !!tile)));
+    const suits = new Set(allTiles.filter(tile_utils_1.isNumberTile).map(tile_utils_1.tileSuit));
+    const hasHonor = allTiles.some(tile_utils_1.isHonor);
+    if (suits.size === 1 && !hasHonor)
+        return ['清一色'];
+    if (suits.size === 1 && hasHonor)
+        return ['混一色'];
+    return [];
+}
+function classifyHandDecomposition(hand, melds, decomposition) {
+    const dalan = checkDalan(hand, melds);
+    const handTypes = colorHandTypes(hand, melds, dalan);
+    const tripletsOnly = melds.every((meld) => ['peng', 'mingGang', 'anGang', 'zhiChan'].includes(meld.type))
+        && decomposition.groups.every((group) => group[0] === group[1] && group[1] === group[2]);
+    if (tripletsOnly)
+        handTypes.push('碰碰胡');
+    if (!handTypes.length)
+        handTypes.push('平胡');
+    const primaryType = handTypes.reduce((best, item) => (baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best), handTypes[0]);
+    return {
+        handTypes,
+        primaryType,
+        baseScore: handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1),
+        route: 'normal',
+        isDalan: false,
+        decompositionSignature: decomposition.signature,
+        selectedDecomposition: decomposition,
+    };
+}
+function classifyNormalHand(hand, melds, route, dalan) {
+    if (route !== 'normal' || dalan.isDalan)
+        return null;
+    const candidates = enumerateStandardDecompositions(hand, melds).map((decomposition) => {
+        const handTypes = colorHandTypes(hand, melds, dalan);
+        const tripletsOnly = melds.every((meld) => ['peng', 'mingGang', 'anGang', 'zhiChan'].includes(meld.type))
+            && decomposition.groups.every((group) => group[0] === group[1] && group[1] === group[2]);
+        if (tripletsOnly)
+            handTypes.push('碰碰胡');
+        if (!handTypes.length)
+            handTypes.push('平胡');
+        return {
+            handTypes,
+            baseScore: handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1),
+            decomposition,
+        };
+    }).sort((left, right) => (right.baseScore - left.baseScore || left.decomposition.signature.localeCompare(right.decomposition.signature)));
+    const selected = candidates[0];
+    if (!selected)
+        return null;
+    const primaryType = selected.handTypes.reduce((best, item) => (baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best), selected.handTypes[0]);
+    return {
+        handTypes: selected.handTypes,
+        primaryType,
+        baseScore: selected.baseScore,
+        route,
+        isDalan: false,
+        decompositionSignature: selected.decomposition.signature,
+        selectedDecomposition: selected.decomposition,
+    };
+}
 function classifyHand(hand, melds = [], _winTile, _winMethod) {
     const route = routeFor(hand, melds);
-    const handTypes = [];
     const dalan = checkDalan(hand, melds);
+    const normalClassification = classifyNormalHand(hand, melds, route, dalan);
+    if (normalClassification)
+        return normalClassification;
+    const handTypes = [];
     if (checkAllWinds(hand, melds))
         handTypes.push('全风向');
     if (dalan.isDalan)
         handTypes.push(dalan.handType);
     if (!dalan.isDalan && checkSevenPairs(hand, melds))
         handTypes.push('七对');
-    const suits = new Set(hand.filter(tile_utils_1.isNumberTile).map(tile_utils_1.tileSuit));
-    const hasHonor = hand.some(tile_utils_1.isHonor);
+    const allTiles = hand.concat(melds.flatMap((meld) => meld.tiles.filter((tile) => !!tile)));
+    const suits = new Set(allTiles.filter(tile_utils_1.isNumberTile).map(tile_utils_1.tileSuit));
+    const hasHonor = allTiles.some(tile_utils_1.isHonor);
     if (!dalan.isDalan && suits.size === 1 && !hasHonor)
         handTypes.push('清一色');
     if (!dalan.isDalan && suits.size === 1 && hasHonor)
         handTypes.push('混一色');
-    if (!dalan.isDalan && Array.from((0, tile_utils_1.countTiles)(hand).values()).filter((count) => count >= 3).length === 4)
+    if (!dalan.isDalan && hasTripletOnlyDecomposition(hand, melds))
         handTypes.push('碰碰胡');
     if (!handTypes.length)
         handTypes.push('平胡');
     const primaryType = handTypes.reduce((best, item) => (baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best), handTypes[0]);
     const baseScore = handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1);
-    return { handTypes, primaryType, baseScore, route, isDalan: dalan.isDalan };
+    const normalizedMelds = melds.map((meld) => `${meld.type}:${(0, tile_utils_1.sortTiles)(meld.tiles.filter((tile) => !!tile)).join(',')}`).sort();
+    const decompositionSignature = `${handTypes.slice().sort().join('+')}|${(0, tile_utils_1.sortTiles)(hand).join(',')}|${normalizedMelds.join(';')}`;
+    return { handTypes, primaryType, baseScore, route, isDalan: dalan.isDalan, decompositionSignature };
 }
 function getPrimaryHandType(hand, melds = [], winTile, winMethod) {
     return classifyHand(hand, melds, winTile, winMethod).primaryType;
@@ -395,6 +529,409 @@ function baseScoreForHandType(handType) {
 }
 
 },
+"./kong-resource": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.evaluateKongResource = evaluateKongResource;
+exports.createKongResource = createKongResource;
+exports.consumeKongResource = consumeKongResource;
+exports.invalidateKongResource = invalidateKongResource;
+exports.transitionKongResource = transitionKongResource;
+exports.classifyDiscardKongClaim = classifyDiscardKongClaim;
+exports.canUseDeferredForcedRun = canUseDeferredForcedRun;
+exports.prepareChainKongDeclaration = prepareChainKongDeclaration;
+exports.resolveKongDraw = resolveKongDraw;
+exports.resolveDiscardWinner = resolveDiscardWinner;
+exports.resolveRobKongWinner = resolveRobKongWinner;
+const tile_utils_1 = require("./tile-utils");
+const hand_evaluator_1 = require("./hand-evaluator");
+function removeTiles(hand, tile, amount) {
+    const remaining = hand.slice();
+    for (let index = 0; index < amount; index += 1) {
+        const tileIndex = remaining.indexOf(tile);
+        if (tileIndex < 0)
+            return null;
+        remaining.splice(tileIndex, 1);
+    }
+    return remaining;
+}
+function hasSameTiles(left, right) {
+    return left.length === right.length && (0, tile_utils_1.sortTiles)(left).every((tile, index) => tile === (0, tile_utils_1.sortTiles)(right)[index]);
+}
+function countTile(hand, tile) {
+    return hand.filter((item) => item === tile).length;
+}
+function removeCandidate(hand, candidate) {
+    const remaining = hand.slice();
+    for (const tile of candidate) {
+        const index = remaining.indexOf(tile);
+        if (index < 0)
+            return null;
+        remaining.splice(index, 1);
+    }
+    return remaining;
+}
+function gangMeld(tile, fromPlayer) {
+    return { type: 'mingGang', tiles: [tile, tile, tile, tile], fromPlayer };
+}
+function allMeldGroups() {
+    const groups = [];
+    for (const tile of tile_utils_1.ALL_TILE_KEYS) {
+        groups.push([tile, tile, tile]);
+        if ((0, tile_utils_1.isNumberTile)(tile) && (0, tile_utils_1.tileValue)(tile) <= 7) {
+            const suit = (0, tile_utils_1.tileSuit)(tile);
+            const value = (0, tile_utils_1.tileValue)(tile);
+            groups.push([tile, `${suit}${value + 1}`, `${suit}${value + 2}`]);
+        }
+    }
+    groups.push(['dong', 'nan', 'xi'], ['dong', 'nan', 'bei'], ['dong', 'xi', 'bei'], ['nan', 'xi', 'bei'], ['zhong', 'fa', 'bai']);
+    return groups;
+}
+const MELD_GROUPS = allMeldGroups();
+function isExactPong(meld, tile) {
+    return meld.type === 'peng' && meld.tiles.length === 3 && meld.tiles.every((item) => item === tile);
+}
+function isMatchingGang(meld, tile) {
+    return (meld.type === 'mingGang' || meld.type === 'anGang' || meld.type === 'zhiChan')
+        && meld.tiles.length === 4
+        && meld.tiles.every((item) => item === tile);
+}
+function validateResourceContext(input) {
+    const { resource } = input;
+    if (resource.status !== 'active')
+        return 'resource-not-active';
+    if (resource.owner !== input.owner)
+        return 'resource-owner-mismatch';
+    if (resource.source !== 'pong' || !isExactPong(resource.pongMeld, resource.tile))
+        return 'resource-pong-invalid';
+    if (!input.preKongHand.includes(resource.tile))
+        return 'resource-pre-kong-tile-missing';
+    if (!input.melds.some((meld) => isMatchingGang(meld, resource.tile)))
+        return 'resource-kong-meld-missing';
+    return null;
+}
+function makeDecomposition(pair, groups, melds, resourceUse, fakeWinRemainder) {
+    return {
+        pair,
+        groups: groups.map((group) => (0, tile_utils_1.sortTiles)(group)),
+        resourceUse,
+        fakeWinRemainder,
+        signature: (0, hand_evaluator_1.decompositionSignature)(pair, groups, melds, resourceUse, fakeWinRemainder),
+    };
+}
+function findResourceWitnesses(input) {
+    const expectedGroups = 4 - input.melds.length;
+    if (expectedGroups < 0)
+        return [];
+    const witnesses = new Map();
+    function buildGroups(remaining, groups, resourceUse, pair, fakeWinRemainder) {
+        if (groups.length === expectedGroups) {
+            const sortedRemainder = (0, tile_utils_1.sortTiles)(remaining);
+            if (!resourceUse)
+                return;
+            if (sortedRemainder.length === 0) {
+                const witness = makeDecomposition(pair, groups, input.melds, resourceUse, fakeWinRemainder);
+                witnesses.set(witness.signature, witness);
+                return;
+            }
+            if (input.allowFakeWinRemainder && !fakeWinRemainder && sortedRemainder.length === 1) {
+                const witness = makeDecomposition(pair, groups, input.melds, resourceUse, sortedRemainder[0]);
+                witnesses.set(witness.signature, witness);
+            }
+            return;
+        }
+        const first = (0, tile_utils_1.sortTiles)(remaining)[0];
+        if (!first)
+            return;
+        for (const group of MELD_GROUPS) {
+            if (!group.includes(first))
+                continue;
+            const next = removeCandidate(remaining, group);
+            if (!next)
+                continue;
+            buildGroups(next, groups.concat([group]), resourceUse, pair, fakeWinRemainder);
+        }
+        if (input.allowFakeWinRemainder && !fakeWinRemainder) {
+            const next = removeCandidate(remaining, [first]);
+            if (next)
+                buildGroups(next, groups, resourceUse, pair, first);
+        }
+        if (resourceUse)
+            return;
+        for (const group of MELD_GROUPS) {
+            if (!group.includes(first))
+                continue;
+            for (let resourceIndex = 0; resourceIndex < group.length; resourceIndex += 1) {
+                const physicalTiles = group.filter((_, index) => index !== resourceIndex);
+                const next = removeCandidate(remaining, physicalTiles);
+                if (!next)
+                    continue;
+                buildGroups(next, groups.concat([group]), {
+                    sourceTile: input.resource.tile,
+                    role: 'group',
+                    asTile: group[resourceIndex],
+                }, pair, fakeWinRemainder);
+            }
+        }
+    }
+    const pairTiles = (0, tile_utils_1.sortTiles)(Array.from(new Set(input.hand)));
+    for (const tile of pairTiles) {
+        const pair = [tile, tile];
+        const afterPair = removeCandidate(input.hand, pair);
+        if (!afterPair)
+            continue;
+        buildGroups(afterPair, [], undefined, pair);
+    }
+    for (const tile of pairTiles) {
+        const afterPair = removeCandidate(input.hand, [tile]);
+        if (!afterPair)
+            continue;
+        const pair = [tile, tile];
+        buildGroups(afterPair, [], {
+            sourceTile: input.resource.tile,
+            role: 'pair',
+            asTile: tile,
+        }, pair);
+    }
+    return Array.from(witnesses.values()).sort((left, right) => left.signature.localeCompare(right.signature));
+}
+function evaluateKongResource(input) {
+    const contextError = validateResourceContext(input);
+    if (contextError)
+        return { canComplete: false, reason: contextError };
+    const normal = (0, hand_evaluator_1.canWin)(input.hand, { melds: input.melds });
+    if (normal.canWin) {
+        const classification = (0, hand_evaluator_1.classifyHand)(input.hand, input.melds);
+        const witnesses = classification.selectedDecomposition ? [classification.selectedDecomposition] : [];
+        return {
+            canComplete: true,
+            reason: 'real-structure',
+            decomposition: classification.selectedDecomposition,
+            witnesses,
+            classification,
+        };
+    }
+    const witnesses = findResourceWitnesses(input);
+    if (!witnesses.length)
+        return { canComplete: false, reason: 'resource-cannot-complete-legal-structure', witnesses: [] };
+    const candidates = witnesses.map((decomposition) => ({
+        decomposition,
+        classification: (0, hand_evaluator_1.classifyHandDecomposition)(input.hand, input.melds, decomposition),
+    })).sort((left, right) => (right.classification.baseScore - left.classification.baseScore
+        || left.classification.decompositionSignature.localeCompare(right.classification.decompositionSignature)));
+    const selected = candidates[0];
+    return {
+        canComplete: true,
+        reason: 'resource-conditional-structure',
+        decomposition: selected.decomposition,
+        witnesses,
+        classification: selected.classification,
+    };
+}
+function createKongResource(input) {
+    if (!isExactPong(input.pongMeld, input.tile))
+        throw new Error('KongResource requires an exact real pong meld');
+    return { ...input, status: 'active' };
+}
+function consumeKongResource(resource) {
+    return { ...resource, status: 'consumed' };
+}
+function invalidateKongResource(resource) {
+    return { ...resource, status: 'invalidated' };
+}
+function transitionKongResource(resource, event) {
+    if (resource.status !== 'active')
+        return resource;
+    if (event.type === 'declareKong' && event.player === resource.owner)
+        return consumeKongResource(resource);
+    if (event.type === 'discard' && event.player === resource.owner && event.tile === resource.tile)
+        return invalidateKongResource(resource);
+    if (event.type === 'roundEnd')
+        return invalidateKongResource(resource);
+    return resource;
+}
+function classifyDiscardKongClaim(input) {
+    if (input.hand.filter((tile) => tile === input.discardTile).length < 3)
+        return { kind: null, canDecline: false };
+    const handAfterKong = removeTiles(input.hand, input.discardTile, 3);
+    if (!handAfterKong)
+        return { kind: null, canDecline: false };
+    const resource = createKongResource({
+        owner: input.owner,
+        tile: input.discardTile,
+        pongMeld: { type: 'peng', tiles: [input.discardTile, input.discardTile, input.discardTile], fromPlayer: input.discardPlayer },
+        source: 'pong',
+    });
+    const meldsAfterKong = input.melds.concat(gangMeld(input.discardTile, input.discardPlayer));
+    const directChiselReady = evaluateKongResource({
+        owner: input.owner,
+        resource,
+        preKongHand: input.hand,
+        hand: handAfterKong,
+        melds: meldsAfterKong,
+        allowFakeWinRemainder: false,
+    }).canComplete;
+    return { kind: directChiselReady ? 'directChisel' : 'forcedRunImmediate', canDecline: true };
+}
+function canUseDeferredForcedRun(state, playerId) {
+    var _a;
+    if (state.phase !== 'discarding' || state.currentPlayer !== playerId)
+        return false;
+    const player = ((_a = state.players) === null || _a === void 0 ? void 0 : _a[playerId]) || { hand: state.hand || [] };
+    return (state.kongResources || []).some((resource) => (resource.owner === playerId && resource.status === 'active' && player.hand.includes(resource.tile)));
+}
+function activeResourceSnapshot(resource) {
+    return { ...resource, status: 'active' };
+}
+function validateInitialKongDeclaration(input) {
+    const requiredCount = input.kind === 'forcedRunDeferred' ? 1 : 3;
+    if (input.resource.status !== 'active')
+        return 'resource-not-active-for-initial-kong';
+    if (countTile(input.preKongHand, input.resource.tile) !== requiredCount)
+        return 'pre-kong-resource-count-mismatch';
+    const expectedHandAfterKong = removeTiles(input.preKongHand, input.resource.tile, requiredCount);
+    if (!expectedHandAfterKong || !hasSameTiles(expectedHandAfterKong, input.handAfterKong))
+        return 'hand-after-kong-mismatch';
+    if (input.handAfterKong.includes(input.resource.tile))
+        return 'resource-tile-remains-after-kong';
+    if (!input.melds.some((meld) => isMatchingGang(meld, input.resource.tile)))
+        return 'declared-kong-meld-missing';
+    return null;
+}
+function validateChainKongDeclaration(input) {
+    if (input.resource.status !== 'consumed')
+        return 'initial-resource-not-consumed';
+    if (countTile(input.preKongHand, input.resource.tile) !== 3)
+        return 'initial-pre-kong-resource-count-mismatch';
+    const expectedInitialHand = removeTiles(input.preKongHand, input.resource.tile, 3);
+    if (!expectedInitialHand || !hasSameTiles(expectedInitialHand, input.initialHandAfterKong))
+        return 'initial-hand-after-kong-mismatch';
+    if (!input.initialMelds.some((meld) => isMatchingGang(meld, input.resource.tile)))
+        return 'initial-kong-meld-missing';
+    const activeResource = activeResourceSnapshot(input.resource);
+    const initialEligibility = evaluateKongResource({
+        owner: input.owner,
+        resource: activeResource,
+        preKongHand: input.preKongHand,
+        hand: input.initialHandAfterKong,
+        melds: input.initialMelds,
+        allowFakeWinRemainder: false,
+    });
+    if (!initialEligibility.canComplete)
+        return `initial-direct-chisel-invalid:${initialEligibility.reason}`;
+    if (!hasSameTiles(input.handBeforeKong, input.initialHandAfterKong.concat(input.firstDrawTile)))
+        return 'chain-hand-before-kong-mismatch';
+    if (input.secondKongTile === input.resource.tile)
+        return 'chain-kong-must-use-second-tile';
+    if (input.initialMelds.some((meld) => isMatchingGang(meld, input.secondKongTile)))
+        return 'second-kong-already-declared';
+    if (countTile(input.handBeforeKong, input.secondKongTile) !== 4)
+        return 'second-kong-tile-count-mismatch';
+    if (!isMatchingGang(input.secondKongMeld, input.secondKongTile))
+        return 'second-kong-meld-invalid';
+    return null;
+}
+function prepareChainKongDeclaration(input) {
+    const reason = validateChainKongDeclaration(input);
+    if (reason)
+        return { canDeclare: false, reason };
+    const handAfterKong = removeTiles(input.handBeforeKong, input.secondKongTile, 4);
+    if (!handAfterKong)
+        return { canDeclare: false, reason: 'chain-hand-after-kong-mismatch' };
+    return { canDeclare: true, reason: 'ok', handAfterKong, secondKongMeld: input.secondKongMeld };
+}
+function resolveKongDraw(input) {
+    if (input.kind === 'chainKong') {
+        const declaration = prepareChainKongDeclaration(input);
+        if (!declaration.canDeclare)
+            throw new Error(`invalid chain kong context: ${declaration.reason}`);
+        if (!declaration.handAfterKong || !hasSameTiles(declaration.handAfterKong, input.handAfterKong)) {
+            throw new Error('invalid chain kong context: chain-hand-after-kong-mismatch');
+        }
+        if (!input.melds.some((meld) => isMatchingGang(meld, input.resource.tile))) {
+            throw new Error('invalid chain kong context: chain-initial-kong-meld-missing');
+        }
+        if (!input.melds.some((meld) => isMatchingGang(meld, input.secondKongTile))) {
+            throw new Error('invalid chain kong context: chain-second-kong-meld-missing');
+        }
+        const handAfterDraw = input.handAfterKong.concat(input.drawTile);
+        const finalEvaluation = evaluateKongResource({
+            owner: input.owner,
+            resource: activeResourceSnapshot(input.resource),
+            preKongHand: input.preKongHand,
+            hand: handAfterDraw,
+            melds: input.melds,
+            allowFakeWinRemainder: true,
+        });
+        if (!finalEvaluation.canComplete)
+            throw new Error(`invalid chain kong draw context: ${finalEvaluation.reason}`);
+        return {
+            outcome: (0, hand_evaluator_1.canWin)(handAfterDraw, { melds: input.melds }).canWin ? 'directChiselChainTrueWin' : 'directChiselChainFakeWin',
+            mustDiscard: false,
+            evaluation: finalEvaluation,
+            resourceAfterKong: input.resource,
+        };
+    }
+    const declarationError = validateInitialKongDeclaration(input);
+    if (declarationError)
+        throw new Error(`invalid kong declaration: ${declarationError}`);
+    const context = {
+        owner: input.owner,
+        resource: input.resource,
+        preKongHand: input.preKongHand,
+        melds: input.melds,
+    };
+    const directEligibility = evaluateKongResource({ ...context, hand: input.handAfterKong, allowFakeWinRemainder: false });
+    if (input.kind === 'directChisel' && !directEligibility.canComplete) {
+        throw new Error(`invalid direct chisel context: ${directEligibility.reason}`);
+    }
+    if (input.kind === 'forcedRunImmediate' && directEligibility.canComplete) {
+        throw new Error('invalid forced run context: direct-chisel-available');
+    }
+    const handAfterDraw = input.handAfterKong.concat(input.drawTile);
+    const finalEvaluation = evaluateKongResource({ ...context, hand: handAfterDraw, allowFakeWinRemainder: true });
+    const resourceAfterKong = transitionKongResource(input.resource, { type: 'declareKong', player: input.owner });
+    if (input.kind === 'directChisel') {
+        if (!finalEvaluation.canComplete)
+            throw new Error(`invalid direct chisel draw context: ${finalEvaluation.reason}`);
+        return {
+            outcome: (0, hand_evaluator_1.canWin)(handAfterDraw, { melds: input.melds }).canWin ? 'directChiselTrueWin' : 'directChiselFakeWin',
+            mustDiscard: false,
+            evaluation: finalEvaluation,
+            resourceAfterKong,
+        };
+    }
+    if (!finalEvaluation.canComplete)
+        return { outcome: 'forcedRunFailureDiscard', mustDiscard: true, evaluation: finalEvaluation, resourceAfterKong };
+    return { outcome: 'forcedRunGangKaiFakeWin', mustDiscard: false, evaluation: finalEvaluation, resourceAfterKong };
+}
+function resolveNearestWinner(state, sourcePlayer, winTile, winType) {
+    const players = state.players || [];
+    for (let offset = 1; offset < 4; offset += 1) {
+        const playerId = (sourcePlayer + offset) % 4;
+        const player = players[playerId];
+        if (!player)
+            continue;
+        const canClaimWin = (0, hand_evaluator_1.canWin)(player.hand.concat(winTile), {
+            winTile,
+            winType,
+            melds: player.melds || state.melds[playerId] || [],
+        }).canWin;
+        if (canClaimWin)
+            return playerId;
+    }
+    return null;
+}
+function resolveDiscardWinner(state) {
+    if (state.phase !== 'responding' || !state.lastDiscard || state.lastDiscardPlayer == null)
+        return null;
+    return resolveNearestWinner(state, state.lastDiscardPlayer, state.lastDiscard, '点炮');
+}
+function resolveRobKongWinner(state, kongOwner, kongTile) {
+    return resolveNearestWinner(state, kongOwner, kongTile, '抢杠');
+}
+
+},
 "./meld-validator": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -518,8 +1055,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.applyCap = applyCap;
 exports.checkNoColor = checkNoColor;
 exports.calculateScore = calculateScore;
+exports.scoreKongSettlement = scoreKongSettlement;
+exports.scoreKongResourceSettlement = scoreKongResourceSettlement;
 exports.scoreSettlement = scoreSettlement;
 const hand_evaluator_1 = require("./hand-evaluator");
+const kong_resource_1 = require("./kong-resource");
 const rule_config_1 = require("./rule-config");
 const tile_utils_1 = require("./tile-utils");
 function applyCap(scorePerPlayer, cap = rule_config_1.DEFAULT_RULES.capAmount) {
@@ -583,6 +1123,69 @@ function calculateScore(params) {
                 scorePerPlayer[i] = cappedScore;
     }
     return { scorePerPlayer, winnerGain: scorePerPlayer.reduce((sum, item) => sum + item, 0), capped };
+}
+function multiplierForHandTypes(handTypes) {
+    return handTypes.reduce((product, handType) => product * (0, hand_evaluator_1.baseScoreForHandType)(handType), 1);
+}
+function basePaymentsForKongEvent(event, winner, pointKongPlayer) {
+    const payments = [0, 0, 0, 0];
+    if (event === 'forcedRunGangKaiFakeWin') {
+        for (let playerId = 0; playerId < payments.length; playerId += 1)
+            if (playerId !== winner)
+                payments[playerId] = 2;
+        return payments;
+    }
+    if (pointKongPlayer == null || pointKongPlayer === winner)
+        throw new Error('pointKongPlayer required for direct chisel kong settlement');
+    const isTrue = event === 'directChiselTrueWin' || event === 'directChiselChainTrueWin';
+    const isChain = event === 'directChiselChainTrueWin' || event === 'directChiselChainFakeWin';
+    const pointKongBase = isChain ? (isTrue ? 16 : 8) : (isTrue ? 8 : 4);
+    const otherBase = isChain ? (isTrue ? 8 : 4) : (isTrue ? 4 : 2);
+    for (let playerId = 0; playerId < payments.length; playerId += 1) {
+        if (playerId === winner)
+            continue;
+        payments[playerId] = playerId === pointKongPlayer ? pointKongBase : otherBase;
+    }
+    return payments;
+}
+function scoreKongSettlement(input) {
+    var _a;
+    const resolution = (0, kong_resource_1.resolveKongDraw)(input.action);
+    if (resolution.outcome === 'forcedRunFailureDiscard') {
+        throw new Error('failed forced run cannot settle');
+    }
+    const evaluation = resolution.evaluation;
+    if (!evaluation.canComplete || !evaluation.classification || !evaluation.decomposition) {
+        throw new Error('completed kong resource evaluation required for settlement');
+    }
+    if (((_a = evaluation.classification.selectedDecomposition) === null || _a === void 0 ? void 0 : _a.signature) !== evaluation.decomposition.signature) {
+        throw new Error('kong resource classification must bind the selected decomposition');
+    }
+    const event = resolution.outcome;
+    const before = input.scores.slice();
+    const multiplier = multiplierForHandTypes(evaluation.classification.handTypes);
+    const rawPayments = basePaymentsForKongEvent(event, input.winner, input.pointKongPlayer)
+        .map((payment) => payment * multiplier);
+    const payments = applyCap(rawPayments);
+    const after = before.slice();
+    const winnerGain = payments.reduce((total, payment) => total + payment, 0);
+    after[input.winner] += winnerGain;
+    for (let playerId = 0; playerId < after.length; playerId += 1)
+        after[playerId] -= payments[playerId];
+    return {
+        before,
+        after,
+        delta: after.map((score, index) => score - before[index]),
+        payments,
+        winner: input.winner,
+        event,
+        handTypes: evaluation.classification.handTypes,
+        multiplier,
+        capped: rawPayments.some((payment) => payment > rule_config_1.DEFAULT_RULES.capAmount),
+    };
+}
+function scoreKongResourceSettlement(input) {
+    return scoreKongSettlement(input);
 }
 function pointsFor(hand, winType) {
     const classification = (0, hand_evaluator_1.classifyHand)(hand);
@@ -813,8 +1416,10 @@ __exportStar(require("./meld-validator"), exports);
 __exportStar(require("./hand-evaluator"), exports);
 __exportStar(require("./score-calculator"), exports);
 __exportStar(require("./wildcard-resolver"), exports);
+__exportStar(require("./kong-resource"), exports);
 const meld_validator_1 = require("./meld-validator");
 const hand_evaluator_1 = require("./hand-evaluator");
+const kong_resource_1 = require("./kong-resource");
 function getLegalActions(state, playerId) {
     const players = state.players || [];
     const player = players[playerId] || { hand: state.hand || [], melds: [] };
@@ -828,15 +1433,33 @@ function getLegalActions(state, playerId) {
         for (const meld of player.melds || [])
             if ((0, meld_validator_1.canMingGang)(player.hand, [meld], meld.tiles[0]))
                 actions.add('addedKong');
+        if ((0, kong_resource_1.canUseDeferredForcedRun)(state, playerId))
+            actions.add('deferredForcedRunKong');
     }
     if (state.phase === 'responding' && state.lastDiscard && state.lastDiscardPlayer !== playerId) {
+        const winner = (0, kong_resource_1.resolveDiscardWinner)(state);
+        if (winner != null) {
+            if (winner === playerId)
+                actions.add('win');
+            actions.add('pass');
+            return Array.from(actions);
+        }
         const handWithDiscard = player.hand.concat(state.lastDiscard);
         if ((0, hand_evaluator_1.canWin)(handWithDiscard, { winTile: state.lastDiscard, winType: '点炮', melds: player.melds || [] }).canWin)
             actions.add('win');
         if ((0, meld_validator_1.canPeng)(player.hand, state.lastDiscard))
             actions.add('pong');
-        if (player.hand.filter((tile) => tile === state.lastDiscard).length >= 3)
-            actions.add('openKong');
+        const kongClaim = (0, kong_resource_1.classifyDiscardKongClaim)({
+            hand: player.hand,
+            melds: player.melds || [],
+            discardTile: state.lastDiscard,
+            owner: playerId,
+            discardPlayer: state.lastDiscardPlayer,
+        });
+        if (kongClaim.kind === 'directChisel')
+            actions.add('directChisel');
+        if (kongClaim.kind === 'forcedRunImmediate')
+            actions.add('forcedRunKong');
         actions.add('pass');
     }
     return Array.from(actions);
