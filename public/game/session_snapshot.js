@@ -67,6 +67,15 @@
       && validateKongResource(window.resource));
   }
 
+  function validateTopSettlement(summary) {
+    return summary === null || summary === undefined || (isObject(summary)
+      && typeof summary.type === 'string'
+      && Array.isArray(summary.scoreDeltas)
+      && summary.scoreDeltas.length === 4
+      && summary.scoreDeltas.every(Number.isFinite)
+      && Math.abs(summary.scoreDeltas.reduce(function (sum, value) { return sum + value; }, 0)) < 1e-9);
+  }
+
   function validatePlayer(player) {
     return isObject(player)
       && typeof player.name === 'string'
@@ -127,6 +136,7 @@
     if (!isObject(snapshot.modeContext) || typeof snapshot.modeContext.selfPlayRunning !== 'boolean') return invalid('invalid-mode-context');
     if (!Number.isInteger(snapshot.totalGames) || snapshot.totalGames < 0) return invalid('invalid-total-games');
     if (snapshot.gameSequence !== null && snapshot.gameSequence !== undefined && (!Number.isInteger(snapshot.gameSequence) || snapshot.gameSequence < 1)) return invalid('invalid-game-sequence');
+    if (!validateTopSettlement(snapshot.topSettlement)) return invalid('invalid-top-settlement');
     return { ok: true, reason: null };
   }
 
@@ -183,7 +193,8 @@
       currentGameLog: clone(state._gameLog),
       lastResult: clone(state._lastResult),
       totalGames: Number.isInteger(context && context.totalGames) ? context.totalGames : 0,
-      gameSequence: Number.isInteger(context && context.gameSequence) && context.gameSequence > 0 ? context.gameSequence : null
+      gameSequence: Number.isInteger(context && context.gameSequence) && context.gameSequence > 0 ? context.gameSequence : null,
+      topSettlement: clone(context && context.topSettlement) || null
     };
   }
 
@@ -234,6 +245,7 @@
         savedAt: snapshot.savedAt,
         totalGames: snapshot.totalGames,
         gameSequence: snapshot.gameSequence || null,
+        topSettlement: clone(snapshot.topSettlement) || null,
         selfPlayRunning: snapshot.modeContext.selfPlayRunning,
         state: {
           wall: makeTiles(snapshot.wall),

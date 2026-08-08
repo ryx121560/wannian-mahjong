@@ -66,6 +66,7 @@ const scoreContext = {
     ],
   },
 };
+scoreContext.currentTopSettlementSummary = () => scoreContext.topSettlement || null;
 vm.createContext(scoreContext);
 vm.runInContext(extractFunction('captureSettlementScoreDeltas'), scoreContext, { filename: 'captureSettlementScoreDeltas.js' });
 vm.runInContext(extractFunction('formatTopSettlementSummary'), scoreContext, { filename: 'formatTopSettlementSummary.js' });
@@ -93,17 +94,17 @@ scoreContext.GS = {
     { name: 'P2', score: 100 },
     { name: 'P3', score: 100 },
   ],
-  _lastResult: { type: 'discardWin', huType: 'allTriplets', winner: 0, scoreDeltas: [6, -6, 0, 0] },
 };
+scoreContext.topSettlement = { type: 'discardWin', huType: 'allTriplets', winner: 0, scoreDeltas: [6, -6, 0, 0] };
 scoreContext.updateTopScoreBar();
 assert.match(scoreContext.document.bar.textContent, /\n.*P0.*allTriplets.*discardWin.*\+6.*-6.*\+0.*\+0/, 'a structured win result must append the winner, type, and four seat deltas');
 assert.doesNotMatch(scoreContext.document.bar.textContent, /turn|response|select/i, 'the visible top bar must never include turn or response text');
 
-scoreContext.GS._lastResult = { type: 'draw', scoreDeltas: [0, 0, 0, 0] };
+scoreContext.topSettlement = { type: 'draw', scoreDeltas: [0, 0, 0, 0] };
 scoreContext.updateTopScoreBar();
 assert.match(scoreContext.document.bar.textContent, /\n.*\+0.*\+0.*\+0.*\+0/, 'a structured draw result must append the draw and four seat deltas');
 
-scoreContext.GS._lastResult = { type: 'discardWin', huType: 'allTriplets', winner: 0 };
+scoreContext.topSettlement = null;
 scoreContext.updateTopScoreBar();
 assert.doesNotMatch(scoreContext.document.bar.textContent, /\n/, 'an older snapshot without explicit settlement deltas must safely keep the totals-only view');
 
@@ -120,8 +121,8 @@ scoreContext.GS = {
     { name: 'P2', score: 100 },
     { name: 'P3', score: 100 },
   ],
-  _lastResult: { type: 'discardWin', huType: 'allTriplets', winner: 0, bankrupt: 1, scoreDeltas: bankruptcySettlementDeltas },
 };
+scoreContext.topSettlement = { type: 'discardWin', huType: 'allTriplets', winner: 0, bankrupt: 1, scoreDeltas: bankruptcySettlementDeltas };
 scoreContext.updateTopScoreBar();
 assert.match(scoreContext.document.bar.textContent, /P0:100.*P1:100.*P2:100.*P3:100[\s\S]*\+6.*-6.*\+0.*\+0/, 'a reset total must retain the frozen per-round settlement deltas in the summary');
 

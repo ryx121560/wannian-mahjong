@@ -37,6 +37,7 @@
     "test:p0-kong-resource": "node scripts/p0-kong-resource-regression.mjs",
     "test:p0-kong-page-persistence": "node scripts/p0-kong-page-persistence-regression.mjs",
     "test:p1-statusbar": "node scripts/p1-statusbar-regression.mjs",
+    "test:p1-top-settlement-persistence": "node scripts/p1-top-settlement-persistence-regression.mjs",
     "test:rl-weights-path": "node scripts/rl-weights-path-regression.mjs",
     "test:production-launch": "node scripts/production-launch-regression.mjs",
     "test:production-port-window": "node scripts/production-port-window-regression.mjs",
