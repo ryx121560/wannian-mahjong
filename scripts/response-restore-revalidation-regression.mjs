@@ -212,6 +212,6 @@ const invalidResourceRestore = runPageRestore(invalidResourceRestoreState);
 assert.equal(invalidResourceRestore.state._kongResources[0].status, 'invalidated', 'a stale resource without its retained owner tile must be invalidated after restore');
 
 assert.match(html, /function restoreGameSession\(snapshot\)[\s\S]*Object\.assign\(GS,restored\.state\);[\s\S]*revalidateRestoredResponseState\(GS\)/, 'restore path must revalidate responding snapshots after deserialization');
-assert.match(html, /function checkResponses\(\)[\s\S]*resolveDiscardResponses\(GS\)/, 'new discard response path must use the shared resolver');
+assert.match(html, /function checkResponses\(\)[\s\S]*resolveDiscardResponses\(responseResolutionState\(GS\)\)/, 'new discard response path must derive a side-effect-free responding state for the shared resolver');
 
 console.log('response restore revalidation regression: passed');

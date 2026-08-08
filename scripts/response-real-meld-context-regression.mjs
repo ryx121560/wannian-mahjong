@@ -70,7 +70,7 @@ function createResponseRuntime(melds) {
     console: { log: () => {}, error: () => {} }
   };
   vm.createContext(context);
-  for (const name of ['ruleTiles', 'normalizedRuleMelds', 'ruleMeldsFromPlayer', 'pageRuleState', 'canHuNormal', 'canWinAfterPassForState', 'canPongChk', 'canKongChk', 'resolveDiscardResponses', 'checkResponses']) {
+  for (const name of ['ruleTiles', 'normalizedRuleMelds', 'ruleMeldsFromPlayer', 'pageRuleState', 'canHuNormal', 'canWinAfterPassForState', 'canPongChk', 'canKongChk', 'responseResolutionState', 'resolveDiscardResponses', 'checkResponses']) {
     vm.runInContext(extractFunction(name), context, { filename: `runtime-${name}.js` });
   }
   return { context, events };

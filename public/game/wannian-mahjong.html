@@ -1645,6 +1645,11 @@ function canHuNormal(hand,useWild,preMelds,winTile,winType){
   return false;
 }
 
+// Build a read-only response-phase view without mutating the live game state.
+function responseResolutionState(state){
+  return Object.assign({},state,{phase:'responding'});
+}
+
 // Resolve discard responses from live state without UI, timers, or persistence side effects.
 function resolveDiscardResponses(state){
   const players=(state&&Array.isArray(state.players))?state.players:[];
@@ -1812,7 +1817,7 @@ function doDiscard(selectedTile){
 }
 
 function checkResponses(){
-  const resolved=resolveDiscardResponses(GS);
+  const resolved=resolveDiscardResponses(responseResolutionState(GS));
   const resp=resolved.responses;
   GS.phase='responding';GS._respP=resolved.responder;GS._resp=resolved.kind==='calls'?resp:null;GS._responseKind=resolved.kind;
   GS.canP=resolved.canP;GS.canK=resolved.canK;GS.canW=resolved.canW;
