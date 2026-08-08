@@ -126,6 +126,7 @@
     if (snapshot.kongContext.actionWindow !== undefined && !validateKongActionWindow(snapshot.kongContext.actionWindow)) return invalid('invalid-kong-action-window');
     if (!isObject(snapshot.modeContext) || typeof snapshot.modeContext.selfPlayRunning !== 'boolean') return invalid('invalid-mode-context');
     if (!Number.isInteger(snapshot.totalGames) || snapshot.totalGames < 0) return invalid('invalid-total-games');
+    if (snapshot.gameSequence !== null && snapshot.gameSequence !== undefined && (!Number.isInteger(snapshot.gameSequence) || snapshot.gameSequence < 1)) return invalid('invalid-game-sequence');
     return { ok: true, reason: null };
   }
 
@@ -181,7 +182,8 @@
       newDrawnIdx: Number.isInteger(state.newDrawnIdx) ? state.newDrawnIdx : -1,
       currentGameLog: clone(state._gameLog),
       lastResult: clone(state._lastResult),
-      totalGames: Number.isInteger(context && context.totalGames) ? context.totalGames : 0
+      totalGames: Number.isInteger(context && context.totalGames) ? context.totalGames : 0,
+      gameSequence: Number.isInteger(context && context.gameSequence) && context.gameSequence > 0 ? context.gameSequence : null
     };
   }
 
@@ -231,6 +233,7 @@
         status: snapshot.status,
         savedAt: snapshot.savedAt,
         totalGames: snapshot.totalGames,
+        gameSequence: snapshot.gameSequence || null,
         selfPlayRunning: snapshot.modeContext.selfPlayRunning,
         state: {
           wall: makeTiles(snapshot.wall),
@@ -257,6 +260,7 @@
           newDrawnTile: newDrawnTile,
           newDrawnIdx: snapshot.newDrawnIdx,
           _gameLog: clone(snapshot.currentGameLog),
+          _gameSequence: snapshot.gameSequence || null,
           _lastResult: clone(snapshot.lastResult),
           selectedTile: null,
           _hot: [],

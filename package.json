@@ -41,6 +41,8 @@
     "test:production-launch": "node scripts/production-launch-regression.mjs",
     "test:production-port-window": "node scripts/production-port-window-regression.mjs",
     "test:normal-concealed-kong": "node scripts/normal-concealed-kong-regression.mjs",
+    "test:p2-game-export": "node scripts/p2-game-export-regression.mjs",
+    "test:p2-game-export-e2e": "node scripts/p2-game-export-e2e-regression.mjs",
     "test:stage8-v2-normal-concealed-kong": "node scripts/stage8-v2-normal-concealed-kong-regression.mjs"
   },
   "dependencies": {

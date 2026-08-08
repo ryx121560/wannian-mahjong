@@ -631,10 +631,25 @@ function clearGameTimers(){
   GS._aiDiscardAnim=null;
 }
 
+function currentGameSequence(){
+  const value=GS._gameSequence||(GS._gameLog&&GS._gameLog.gameSequence);
+  return Number.isInteger(value)&&value>0?value:null;
+}
+
+function allocateGameSequence(storage){
+  const raw=storage.getItem(GAME_SEQUENCE_KEY);
+  const previous=raw==null||raw===''?0:Number(raw);
+  if(!Number.isInteger(previous)||previous<0)throw new Error('invalid-game-sequence');
+  const next=previous+1;
+  storage.setItem(GAME_SEQUENCE_KEY,String(next));
+  if(storage.getItem(GAME_SEQUENCE_KEY)!==String(next))throw new Error('game-sequence-write-mismatch');
+  return next;
+}
+
 function saveGameSnapshot(reason){
   if(GS.phase==='idle'||!Array.isArray(GS.players)||GS.players.length!==4)return {ok:false,skipped:true,reason:'idle-or-incomplete'};
   try{
-    const snapshot=GAME_SESSION.create(GS,{totalGames:totalGamesPlayed,selfPlayRunning:_selfPlay.running},tkey);
+    const snapshot=GAME_SESSION.create(GS,{totalGames:totalGamesPlayed,selfPlayRunning:_selfPlay.running,gameSequence:currentGameSequence()},tkey);
     const result=GAME_SESSION.save(localStorage,snapshot);
     if(!result.ok)console.error('[session snapshot] save failed reason='+reason+' error='+result.reason);
     else console.info('[session snapshot] saved reason='+reason+' phase='+GS.phase+' turn='+GS.turn);
@@ -671,7 +686,7 @@ function enterIdleState(reason){
     canP:false,canK:false,canW:false,canWS:false,
     _resp:null,_respP:-1,_responseKind:null,_hot:[],_kc:{},_hasWild:{},_kongResources:[],_kongActionWindow:null,
     newDrawnTile:null,newDrawnIdx:-1,playerDiscards:[[],[],[],[]],passRecords:[],
-    _gameLog:null,_lastResult:null,
+    _gameLog:null,_gameSequence:null,_lastResult:null,
     _recommendation:{current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null}
   });
   clearAllDrawMarkers();
@@ -752,6 +767,7 @@ function restoreGameSession(snapshot){
   }
   clearGameTimers();
   Object.assign(GS,restored.state);
+  GS._gameSequence=restored.gameSequence||((restored.state._gameLog&&restored.state._gameLog.gameSequence)||null);
   const responseRevalidation=revalidateRestoredResponseState(GS);
   if(responseRevalidation.applied)console.info('[session snapshot] response-revalidated reason='+responseRevalidation.reason);
   const kongRevalidation=revalidateRestoredKongState(GS);
@@ -792,6 +808,7 @@ async function initializeGameSession(){
 
 // === 游戏日志系统（localStorage，保留最近1局） ===
 const LOG_KEY='mahjong_gamelogs';
+const GAME_SEQUENCE_KEY='wannian_game_sequence_v1';
 function ensureRecommendationLog(){
   if(!GS._gameLog)return null;
   if(!Array.isArray(GS._gameLog.recommendationRecords))GS._gameLog.recommendationRecords=[];
@@ -885,26 +902,34 @@ function saveGameLog(result){
   try{localStorage.setItem(LOG_KEY,JSON.stringify(logs));}catch(e){console.warn('[game log] save failed',e);}
   GS._gameLog=null;
 }
-function exportGameLogs(){
+function downloadGameLogFallback(exportLogs,currentLog){
+  const text=JSON.stringify(exportLogs,null,2);
+  const blob=new Blob([text],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='万年麻将_第'+currentLog.gameSequence+'局_'+currentLog.gameId+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  gameSetTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+async function exportGameLogs(){
   let logs=[];
   try{logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');}catch(e){console.warn('[game log] read failed before export',e);alert('导出失败：读取本地游戏记录失败，请检查浏览器 localStorage 是否可用。');return;}
   const currentLog=(GS._gameLog&&GS._gameLog.events&&GS._gameLog.events.length>0)?GS._gameLog:(logs[0]||null);
   const exportLogs=currentLog?[currentLog]:[];
   if(!exportLogs.length){alert('暂无游戏记录');return;}
+  const record=exportLogs[0];
+  if(!Number.isInteger(record.gameSequence)||record.gameSequence<1){alert('导出失败：当前对局缺少稳定局号，请开始新局后再导出。');return;}
   try{
-    const text=JSON.stringify(exportLogs,null,2);
-    const blob=new Blob([text],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download='万年麻将_游戏记录_'+(new Date().toISOString().slice(0,10))+'.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    gameSetTimeout(function(){URL.revokeObjectURL(url);},1000);
+    const response=await fetch('/api/game/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schemaVersion:'wannian-game-record-export-v2',gameSequence:record.gameSequence,gameId:record.gameId,record:record})});
+    const result=await response.json();
+    if(!response.ok||!result||result.ok!==true)throw new Error(result&&result.error?result.error:'server-export-failed');
+    alert('记录已写入受控导出目录：'+result.filename);
   }catch(e){
     console.error('[game log] export failed',e);
-    alert('导出失败：生成或下载 JSON 文件失败，请查看浏览器控制台的 [game log] export failed 日志定位原因。');
+    if(confirm('服务端导出失败。是否改用浏览器下载作为降级方式？浏览器无法保证保存到受控目录。')){
+      try{downloadGameLogFallback(exportLogs,record);}catch(fallbackError){console.error('[game log] fallback download failed',fallbackError);alert('导出失败：生成或下载 JSON 文件失败，请查看浏览器控制台的 [game log] export failed 日志定位原因。');}
+    }
   }
 }
 
@@ -1519,6 +1544,8 @@ async function saveScores() {
 
 // game logic
 function newGame(){
+  let gameSequence;
+  try{gameSequence=allocateGameSequence(localStorage);}catch(error){console.error('[game log] game sequence allocation failed',error);alert('无法分配稳定局号，未开始新局。请检查浏览器存储权限。');return false;}
   clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
@@ -1533,7 +1560,7 @@ function newGame(){
   GS.discards=[];GS.lastDiscard=null;GS.lastDiscardP=-1;clearSelectedTile();
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};GS._kongResources=[];GS._kongActionWindow=null;
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
-  GS.playerDiscards=[[],[],[],[]];GS.passRecords=[];GS.turn=0;GS._lastResult=null;
+  GS.playerDiscards=[[],[],[],[]];GS.passRecords=[];GS.turn=0;GS._gameSequence=gameSequence;GS._lastResult=null;
   GS._recommendation={current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null};
   GS.dealer=Math.floor(Math.random()*4);GS.cur=GS.dealer;
 
@@ -1545,7 +1572,8 @@ function newGame(){
 
   // 初始化游戏日志
   GS._gameLog={
-    gameId:(new Date().toLocaleString()).replace(/[/:]/g,'-').replace(/\s/g,'_'),
+    gameId:'game-'+gameSequence+'-'+Date.now(),
+    gameSequence:gameSequence,
     startTime:new Date().toLocaleString(),
     players:GS.players.map(p=>p.name),
     dealer:GS.dealer,

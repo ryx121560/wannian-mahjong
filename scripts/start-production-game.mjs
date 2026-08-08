@@ -10,6 +10,23 @@ function canonicalPath(value) {
   return fs.existsSync(normalized) ? fs.realpathSync.native(normalized) : normalized;
 }
 
+function resolveApprovedExportDirectory(env) {
+  const configured = env.GAME_EXPORT_DIR;
+  if (!configured) throw new Error('GAME_EXPORT_DIR is required for production launch');
+  if (!path.isAbsolute(configured)) throw new Error('GAME_EXPORT_DIR must be an absolute path for production launch');
+  const approved = env.APPROVED_GAME_EXPORT_DIR;
+  if (!approved) throw new Error('APPROVED_GAME_EXPORT_DIR is required for production launch');
+  if (!path.isAbsolute(approved)) throw new Error('APPROVED_GAME_EXPORT_DIR must be an absolute path for production launch');
+  const exportDirectory = canonicalPath(configured);
+  const approvedExportDirectory = canonicalPath(approved);
+  if (exportDirectory !== approvedExportDirectory) throw new Error('GAME_EXPORT_DIR does not match APPROVED_GAME_EXPORT_DIR');
+  if (!fs.existsSync(exportDirectory) || !fs.statSync(exportDirectory).isDirectory()) {
+    throw new Error('GAME_EXPORT_DIR must reference an existing directory for production launch');
+  }
+  fs.accessSync(exportDirectory, fs.constants.W_OK);
+  return { exportDirectory, approvedExportDirectory };
+}
+
 export function resolveProductionLaunchConfig(env = process.env) {
   if (env.PORT !== PRODUCTION_PORT) {
     throw new Error(`Production launch requires PORT=${PRODUCTION_PORT}`);
@@ -37,17 +54,19 @@ export function resolveProductionLaunchConfig(env = process.env) {
   if (!fs.existsSync(weightsFile) || !fs.statSync(weightsFile).isFile()) {
     throw new Error('RL_WEIGHTS_FILE must reference an existing file for production launch');
   }
+  const exportConfig = resolveApprovedExportDirectory(env);
   return {
     port: PRODUCTION_PORT,
     portWindow: '0',
     weightsFile,
     approvedWeightsFile,
+    ...exportConfig,
   };
 }
 
 function start() {
   const config = resolveProductionLaunchConfig();
-  console.log(`[production-game] Starting on ${config.port} with RL weights file ${config.weightsFile}`);
+  console.log(`[production-game] Starting on ${config.port} with RL weights file ${config.weightsFile} and approved export directory ${config.exportDirectory}`);
   const child = spawn(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'next-with-port.mjs'), 'start'], {
     stdio: 'inherit',
     shell: false,
@@ -59,6 +78,9 @@ function start() {
       RL_WEIGHTS_FILE: config.weightsFile,
       APPROVED_RL_WEIGHTS_FILE: config.approvedWeightsFile,
       RL_WEIGHTS_REQUIRE_APPROVED: '1',
+      GAME_EXPORT_DIR: config.exportDirectory,
+      APPROVED_GAME_EXPORT_DIR: config.approvedExportDirectory,
+      GAME_EXPORT_REQUIRE_APPROVED: '1',
     },
   });
   child.on('exit', (code, signal) => {
