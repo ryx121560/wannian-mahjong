@@ -281,7 +281,7 @@ function ruleTiles(hand){return hand.map(tkey);}
 function ruleMeldsFromPlayer(player){
   return (player.melds||[]).map(function(m){
     const tile=tkey(m.tile);
-    const type=m.count===4?'mingGang':'peng';
+    const type=m.count===4?(m.concealed?'anGang':'mingGang'):'peng';
     return {type:type,tiles:m.count===4?[tile,tile,tile,tile]:[tile,tile,tile],fromPlayer:m.fromPlayer};
   });
 }
@@ -381,7 +381,7 @@ function invalidatePageKongResources(){
   GS._kongActionWindow=null;
 }
 function pageKongActionLabel(kind){
-  return {directChisel:'直铲',forcedRunImmediate:'立即强行跑杠',forcedRunDeferred:'延迟强行跑杠',chainKong:'连杠'}[kind]||'杠';
+  return {concealedKong:'普通暗杠',directChisel:'直铲',forcedRunImmediate:'立即强行跑杠',forcedRunDeferred:'延迟强行跑杠',chainKong:'连杠'}[kind]||'杠';
 }
 function pageKongResolutionLogMeta(action,resolution){
   const forced=action&&((action.kind==='forcedRunImmediate')||(action.kind==='forcedRunDeferred'));
@@ -1989,7 +1989,7 @@ function completePageKongSettlement(owner,action,result){
   if(window.MCTS)MCTS.sims=Math.min(300,100+Math.floor(totalGamesPlayed/5)*10);
   window.RL&&RL.saveAll();
   saveGameLog({winner:owner,winnerName:GS.players[owner].name,type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,scores:GS.players.map(function(player){return {name:player.name,score:player.score};})});
-  saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'kong-settled');
+  saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':action.kind==='concealedKong'?'concealed-kong-settled':'kong-settled');
   _spOnGameEnd(owner);
   setMsg(GS._lastResult.displayText);
   if(_selfPlay.running){
@@ -2101,6 +2101,29 @@ function applyPageChainKongAction(action){
   logEvent(owner,'杠后摸',drawTile,{actionKind:'连杠',outcome:result.resolution.outcome});
   return completePageKongSettlement(owner,replayAction,result);
 }
+function applyPageNormalConcealedKongAction(p,info){
+  if(!info||info.type!=='concealed'||!GS.players[p]||!GS.newDrawnTile||!Array.isArray(GS.wall)||GS.wall.length===0)return false;
+  const player=GS.players[p],tile=info.tile||GS.newDrawnTile;
+  const handAfterKong=removePageTiles(player.hand,tile,4);
+  const drawTile=GS.wall[GS.wall.length-1];
+  if(!handAfterKong||!drawTile)return false;
+  const key=tkey(tile),melds=ruleMeldsForPlayer(p).concat([{type:'anGang',tiles:[key,key,key,key]}]);
+  const action={owner:p,kongTile:key,preKongHand:ruleTiles(player.hand),handAfterKong:ruleTiles(handAfterKong),melds:melds,drawTile:tkey(drawTile)};
+  let resolution,settlement;
+  try{
+    resolution=RULE_ENGINE.resolveConcealedKongDraw(action);
+    settlement=RULE_ENGINE.scoreConcealedKongSettlement({action:action,winner:p,scores:GS.players.map(function(item){return item.score;})});
+  }catch(error){return false;}
+  if(!resolution||resolution.mustDiscard||resolution.robKongWindow||!settlement||!Array.isArray(settlement.after)||settlement.after.length!==GS.players.length)return false;
+  const nextHand=handAfterKong.concat([drawTile]);
+  player.hand=nextHand;
+  player.melds=(player.melds||[]).concat([{tile:tile,count:4,concealed:true}]);
+  GS.wall=GS.wall.slice(0,-1);GS.newDrawnTile=drawTile;GS.newDrawnIdx=nextHand.length-1;
+  GS._kc[p]=(GS._kc[p]||0)+1;
+  logEvent(p,'暗杠',tile,{actionKind:'普通暗杠',outcome:resolution.outcome,robKongWindow:false});
+  logEvent(p,'杠后摸',drawTile,{actionKind:'普通暗杠',outcome:resolution.outcome,robKongWindow:false});
+  return completePageKongSettlement(p,{kind:'concealedKong'},{resolution:{outcome:resolution.outcome,evaluation:{decomposition:resolution.classification.selectedDecomposition}},settlement:settlement});
+}
 
 function doSelfKong(p){
   clearSelectedTile();
@@ -2118,6 +2141,7 @@ function doSelfKong(p){
   }
   const info=canSelfKong(p);
   if(!info||!GS.newDrawnTile) return;
+  if(info.type==='concealed')return applyPageNormalConcealedKongAction(p,info);
   const t=info.tile||GS.newDrawnTile,pl=GS.players[p];
   // 抢杠检测：其他玩家能否胡这张牌
   if(info.type==='add'){

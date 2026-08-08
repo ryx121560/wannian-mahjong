@@ -6,6 +6,7 @@ export * from './hand-evaluator';
 export * from './score-calculator';
 export * from './wildcard-resolver';
 export * from './kong-resource';
+export * from './concealed-kong';
 
 import { canPeng, canAnGang, canMingGang } from './meld-validator';
 import { canWin } from './hand-evaluator';

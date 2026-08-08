@@ -90,6 +90,21 @@ function loadPageKongExecutors() {
 }
 
 const runtime = loadKongAdapter();
+const browserRules = loadRules();
+const normalConcealedAction = {
+  owner: 0,
+  kongTile: 'tong6',
+  preKongHand: ['tong6', 'tong6', 'tong6', 'tong6', 'wan4', 'wan4', 'wan4', 'wan8', 'wan8', 'tiao2', 'tiao3', 'tiao4', 'tong5', 'tong5'],
+  handAfterKong: ['wan4', 'wan4', 'wan4', 'wan8', 'wan8', 'tiao2', 'tiao3', 'tiao4', 'tong5', 'tong5'],
+  melds: [{ type: 'anGang', tiles: ['tong6', 'tong6', 'tong6', 'tong6'] }],
+  drawTile: 'wan6',
+};
+assert.equal(browserRules.resolveConcealedKongDraw(normalConcealedAction).outcome, 'concealedKongFakeWin', 'the page browser bundle must expose normal concealed-kong classification');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(browserRules.scoreConcealedKongSettlement({ action: normalConcealedAction, winner: 0, scores: [100, 100, 100, 100] }).delta)),
+  [12, -4, -4, -4],
+  'the page browser bundle must expose ordinary concealed-kong settlement',
+);
 const player = {
   hand: ['tong6', 'tong6', 'tong6', 'wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6', 'wan7', 'wan8', 'wan9', 'tiao1'],
   melds: [],
@@ -456,6 +471,21 @@ assert.equal(restoredSnapshot.ok, true, 'new resource snapshot must restore');
 assert.deepEqual(JSON.parse(JSON.stringify(restoredSnapshot.state._kongResources)), JSON.parse(JSON.stringify([resource])), 'restored state must retain real resources');
 assert.deepEqual(JSON.parse(JSON.stringify(restoredSnapshot.state._kongActionWindow)), JSON.parse(JSON.stringify(snapshotState._kongActionWindow)), 'restored state must retain the action window');
 assert.equal(restoredSnapshot.state.players[1].melds[0].fromPlayer, 0, 'snapshot must retain the real pong source player');
+
+const concealedKongSnapshotState = JSON.parse(JSON.stringify(snapshotState));
+concealedKongSnapshotState.players[0].melds = [{ tile: 'tong6', count: 4, concealed: true }];
+concealedKongSnapshotState._lastResult = {
+  type: '杠开',
+  kongAction: 'concealedKong',
+  kongOutcome: 'concealedKongFakeWin',
+  scoreDeltas: [12, -4, -4, -4],
+};
+const concealedKongSnapshot = session.create(concealedKongSnapshotState, { totalGames: 13, selfPlayRunning: false }, (tile) => tile);
+assert.equal(concealedKongSnapshot.players[0].melds[0].concealed, true, 'ordinary concealed-kong snapshots must retain the real meld visibility');
+const restoredConcealedKongSnapshot = session.restore(concealedKongSnapshot, (tile) => tile);
+assert.equal(restoredConcealedKongSnapshot.ok, true, 'ordinary concealed-kong snapshots must restore');
+assert.equal(restoredConcealedKongSnapshot.state.players[0].melds[0].concealed, true, 'restored ordinary concealed kong must remain an anGang');
+assert.equal(restoredConcealedKongSnapshot.state._lastResult.kongOutcome, 'concealedKongFakeWin', 'trusted normal concealed-kong settlement summaries must persist across refresh');
 
 const legacySnapshot = JSON.parse(JSON.stringify(snapshot));
 delete legacySnapshot.kongContext.resources;

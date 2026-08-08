@@ -36,6 +36,7 @@
       && isTileKey(meld.tile)
       && Number.isInteger(meld.count)
       && (meld.count === 3 || meld.count === 4)
+      && (meld.concealed === undefined || typeof meld.concealed === 'boolean')
       && (meld.fromPlayer === undefined || isPlayerIndex(meld.fromPlayer, false));
   }
 
@@ -144,6 +145,7 @@
           hand: mapTiles(player.hand),
           melds: (player.melds || []).map(function (meld) {
             const serialized = { tile: keyOf(meld.tile), count: meld.count };
+            if (meld.concealed === true) serialized.concealed = true;
             if (Number.isInteger(meld.fromPlayer)) serialized.fromPlayer = meld.fromPlayer;
             return serialized;
           })
@@ -197,6 +199,7 @@
           hand: makeTiles(player.hand),
           melds: player.melds.map(function (meld) {
             const restoredMeld = { tile: tileFactory(meld.tile), count: meld.count };
+            if (meld.concealed === true) restoredMeld.concealed = true;
             if (Number.isInteger(meld.fromPlayer)) restoredMeld.fromPlayer = meld.fromPlayer;
             return restoredMeld;
           })

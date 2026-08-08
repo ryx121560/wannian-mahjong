@@ -38,7 +38,9 @@
     "test:p1-statusbar": "node scripts/p1-statusbar-regression.mjs",
     "test:rl-weights-path": "node scripts/rl-weights-path-regression.mjs",
     "test:production-launch": "node scripts/production-launch-regression.mjs",
-    "test:production-port-window": "node scripts/production-port-window-regression.mjs"
+    "test:production-port-window": "node scripts/production-port-window-regression.mjs",
+    "test:normal-concealed-kong": "node scripts/normal-concealed-kong-regression.mjs",
+    "test:stage8-v2-normal-concealed-kong": "node scripts/stage8-v2-normal-concealed-kong-regression.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",

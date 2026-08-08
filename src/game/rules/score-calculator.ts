@@ -1,8 +1,10 @@
 import { baseScoreForHandType, classifyHand, getPrimaryHandType } from './hand-evaluator';
+import { resolveConcealedKongDraw } from './concealed-kong';
 import { resolveKongDraw } from './kong-resource';
 import { DEFAULT_RULES } from './rule-config';
 import { isArrow, isHonor, tileSuit } from './tile-utils';
 import type { HandType, KongResourceSettlementInput, KongSettlementInput, KongSettlementResult, KongWinEvent, Meld, MeldType, SettlementInput, SettlementResult, Tile, WinMethod } from './types';
+import type { ConcealedKongDrawInput, ConcealedKongOutcome } from './concealed-kong';
 
 export function applyCap(scorePerPlayer: number[], cap = DEFAULT_RULES.capAmount): number[] {
   return scorePerPlayer.map((score) => Math.min(score, cap));
@@ -64,6 +66,48 @@ export function calculateScore(params: {
 
 function multiplierForHandTypes(handTypes: HandType[]): number {
   return handTypes.reduce((product, handType) => product * baseScoreForHandType(handType), 1);
+}
+
+export interface ConcealedKongSettlementInput {
+  action: ConcealedKongDrawInput;
+  winner: number;
+  scores: number[];
+}
+
+export interface ConcealedKongSettlementResult {
+  before: number[];
+  after: number[];
+  delta: number[];
+  payments: number[];
+  winner: number;
+  event: ConcealedKongOutcome;
+  handTypes: HandType[];
+  multiplier: number;
+  capped: boolean;
+}
+
+export function scoreConcealedKongSettlement(input: ConcealedKongSettlementInput): ConcealedKongSettlementResult {
+  const resolution = resolveConcealedKongDraw(input.action);
+  const before = input.scores.slice();
+  const multiplier = multiplierForHandTypes(resolution.classification.handTypes);
+  const basePayment = resolution.outcome === 'concealedKongTrueWin' ? 8 : 4;
+  const rawPayments = before.map((_, playerId) => playerId === input.winner ? 0 : basePayment * multiplier);
+  const payments = applyCap(rawPayments);
+  const after = before.slice();
+  const winnerGain = payments.reduce((total, payment) => total + payment, 0);
+  after[input.winner] += winnerGain;
+  for (let playerId = 0; playerId < after.length; playerId += 1) after[playerId] -= payments[playerId];
+  return {
+    before,
+    after,
+    delta: after.map((score, index) => score - before[index]),
+    payments,
+    winner: input.winner,
+    event: resolution.outcome,
+    handTypes: resolution.classification.handTypes,
+    multiplier,
+    capped: rawPayments.some((payment) => payment > DEFAULT_RULES.capAmount),
+  };
 }
 
 function basePaymentsForKongEvent(event: KongWinEvent, winner: number, pointKongPlayer?: number): number[] {
