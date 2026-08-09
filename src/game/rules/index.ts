@@ -7,6 +7,7 @@ export * from './score-calculator';
 export * from './wildcard-resolver';
 export * from './kong-resource';
 export * from './concealed-kong';
+export * from './added-kong';
 export * from './special-kong';
 
 import { canPeng, canAnGang, canMingGang } from './meld-validator';

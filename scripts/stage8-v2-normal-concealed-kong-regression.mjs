@@ -42,8 +42,8 @@ const state = {
 };
 const protocol = { actionSpaceVersion: v2.STAGE8_ACTION_SPACE_V2_VERSION };
 
-const actions = v2.deriveStage8V2Actions({ ...protocol, state, playerId: 0 });
-const normalAction = actions.canonicalLegalActions.find((action) => action.actionType === 'normalConcealedKong');
+const actions = v2.deriveStage8V2RuleActions({ ...protocol, state, playerId: 0 });
+const normalAction = actions.find((action) => action.actionType === 'normalConcealedKong');
 assert.ok(normalAction, 'normal concealed kong must be an independent v2 action');
 assert.equal(normalAction.context.declarationWindow, 'self-draw-discard');
 assert.equal(normalAction.context.robKongWindow, false);
@@ -68,11 +68,15 @@ const trueResult = v2.simulateStage8V2NormalConcealedKong({
 assert.equal(trueResult.outcome, 'normalConcealedKongTrueWin');
 assert.deepEqual(trueResult.settlement.delta, [24, -8, -8, -8]);
 
-assert.throws(() => v2.deriveStage8V2Actions({ state, playerId: 0 }), /stage8-action-space-v2 protocol required/);
 assert.throws(
-  () => v2.deriveStage8V2Actions({ ...protocol, state, playerId: 0, replayCursor: 1 }),
+  () => v2.deriveStage8V2Actions({ ...protocol, state, playerId: 0 }),
+  /ambiguous v2 action entry disabled/,
+  'generic v2 action derivation must fail closed',
+);
+assert.throws(
+  () => v2.deriveStage8V2RuleActions({ ...protocol, state, playerId: 0, replayCursor: 1 }),
   /v1 artifact field rejected/,
-  'v1 replay/checkpoint/model inputs must be rejected at public v2 entry points',
+  'the explicit rule-semantic entry must reject v1 inputs',
 );
 assert.throws(
   () => v2.simulateStage8V2NormalConcealedKong({ ...protocol, state, claim: { ...claim, v1ActionId: 105 } }),

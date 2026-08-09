@@ -10,45 +10,43 @@ import type {
   Tile,
 } from '../rules';
 
-export const STAGE8_ACTION_SPACE_V2_VERSION = 'stage8-action-space-v2';
+import {
+  STAGE8_ACTION_SPACE_V2_VERSION,
+  STAGE8_ACTION_REGISTRY_V2,
+  assertStage8V2Protocol,
+  canonicalizeStage8V2Action,
+  STAGE8_V2_TILE_KEYS,
+} from './action-registry-v2';
+import type { CanonicalStage8V2Action, Stage8V2ProtocolInput } from './action-registry-v2';
 
-const TILE_KEYS: Tile[] = [
-  'wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6', 'wan7', 'wan8', 'wan9',
-  'tong1', 'tong2', 'tong3', 'tong4', 'tong5', 'tong6', 'tong7', 'tong8', 'tong9',
-  'tiao1', 'tiao2', 'tiao3', 'tiao4', 'tiao5', 'tiao6', 'tiao7', 'tiao8', 'tiao9',
-  'dong', 'nan', 'xi', 'bei', 'zhong', 'fa', 'bai',
-];
+export {
+  STAGE8_ACTION_SPACE_V2_VERSION,
+  STAGE8_ACTION_REGISTRY_V2,
+  assertStage8V2Protocol,
+  canonicalizeStage8V2Action,
+  STAGE8_V2_TILE_KEYS,
+};
+export type { CanonicalStage8V2Action, Stage8V2ProtocolInput };
+const TILE_KEYS: Tile[] = STAGE8_V2_TILE_KEYS;
 
-export const STAGE8_ACTION_REGISTRY_V2 = Object.freeze({
-  normalConcealedKong: Object.freeze({ baseId: 343, tiled: true }),
-});
+export { deriveStage8V2RuleActions, executeStage8V2RuleKongAction } from './rule-semantics-adapter-v2';
+export { deriveStage8V2PageSemanticActions, executeStage8V2PageKongAction } from './page-semantics-adapter-v2';
+export { deriveStage8V2RoundEngineActions, executeStage8V2AddedKongDraw, executeStage8V2RoundKongAction } from './round-engine-v2';
+export type { Stage8V2AddedKongExecutionInput } from './round-engine-v2';
+export type { Stage8V2VisibleActionInput, Stage8V2PageSemanticInput, Stage8V2BrowserRuleFacade } from './v2-visible-state';
 
-export interface Stage8V2ProtocolInput {
-  actionSpaceVersion: typeof STAGE8_ACTION_SPACE_V2_VERSION;
-}
-
-export interface CanonicalStage8V2Action {
-  actionSpaceVersion: typeof STAGE8_ACTION_SPACE_V2_VERSION;
-  actionType: 'normalConcealedKong';
-  actionId: number;
-  tile: Tile;
-  context: {
-    actor: number;
-    declarationWindow: 'self-draw-discard';
-    ownTileCount: 4;
-    robKongWindow: false;
+export function compareStage8V2CanonicalActions(
+  left: CanonicalStage8V2Action[],
+  right: CanonicalStage8V2Action[],
+): { equal: boolean; leftOnly: number[]; rightOnly: number[] } {
+  const leftIds = left.map((action) => action.actionId);
+  const rightIds = right.map((action) => action.actionId);
+  return {
+    equal: leftIds.length === rightIds.length && leftIds.every((actionId, index) => actionId === rightIds[index]),
+    leftOnly: leftIds.filter((actionId) => !rightIds.includes(actionId)),
+    rightOnly: rightIds.filter((actionId) => !leftIds.includes(actionId)),
   };
 }
-
-export interface Stage8V2ActionResult {
-  canonicalLegalActions: CanonicalStage8V2Action[];
-  publicLogSummary: {
-    actionIds: number[];
-    actionTypes: Array<CanonicalStage8V2Action['actionType']>;
-    phase: GameState['phase'];
-  };
-}
-
 export interface Stage8V2NormalConcealedKongClaim extends Stage8V2ProtocolInput {
   kind: 'normalConcealedKong';
   owner: number;
@@ -94,12 +92,6 @@ function assertV2Protocol(input: Record<string, unknown>): void {
   visit(input);
 }
 
-function tileIndex(tile: Tile): number {
-  const index = TILE_KEYS.indexOf(tile);
-  if (index < 0) throw new Error(`unknown stage8 v2 tile: ${tile}`);
-  return index;
-}
-
 function playerState(state: GameState, playerId: number): { hand: Tile[]; melds: Meld[] } {
   const player = state.players?.[playerId];
   if (!player) throw new Error(`missing stage8 v2 player: ${playerId}`);
@@ -122,29 +114,12 @@ function normalConcealedTiles(state: GameState, playerId: number): Tile[] {
   return TILE_KEYS.filter((tile) => hand.filter((item) => item === tile).length === 4);
 }
 
-function canonicalAction(playerId: number, tile: Tile): CanonicalStage8V2Action {
-  return {
-    actionSpaceVersion: STAGE8_ACTION_SPACE_V2_VERSION,
-    actionType: 'normalConcealedKong',
-    actionId: STAGE8_ACTION_REGISTRY_V2.normalConcealedKong.baseId + tileIndex(tile),
-    tile,
-    context: { actor: playerId, declarationWindow: 'self-draw-discard', ownTileCount: 4, robKongWindow: false },
-  };
-}
-
-export function deriveStage8V2Actions(input: Stage8V2ProtocolInput & { state: GameState; playerId: number }): Stage8V2ActionResult {
+/** @deprecated Use an explicit rule, page-semantic, or round-engine adapter. */
+export function deriveStage8V2Actions(input: Stage8V2ProtocolInput & { state: GameState; playerId: number }): never {
   assertV2Protocol(input as unknown as Record<string, unknown>);
-  const canonicalLegalActions = normalConcealedTiles(input.state, input.playerId)
-    .map((tile) => canonicalAction(input.playerId, tile))
-    .sort((left, right) => left.actionId - right.actionId);
-  return {
-    canonicalLegalActions,
-    publicLogSummary: {
-      actionIds: canonicalLegalActions.map((action) => action.actionId),
-      actionTypes: canonicalLegalActions.map((action) => action.actionType),
-      phase: input.state.phase,
-    },
-  };
+  throw new Error(
+    'ambiguous v2 action entry disabled; use deriveStage8V2RuleActions, deriveStage8V2PageSemanticActions, or deriveStage8V2RoundEngineActions',
+  );
 }
 
 export function prepareStage8V2NormalConcealedKongClaim(input: Stage8V2ProtocolInput & {

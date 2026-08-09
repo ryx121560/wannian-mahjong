@@ -47,7 +47,12 @@
     "test:normal-concealed-kong": "node scripts/normal-concealed-kong-regression.mjs",
     "test:p2-game-export": "node scripts/p2-game-export-regression.mjs",
     "test:p2-game-export-e2e": "node scripts/p2-game-export-e2e-regression.mjs",
-    "test:stage8-v2-normal-concealed-kong": "node scripts/stage8-v2-normal-concealed-kong-regression.mjs"
+    "test:stage8-v2-normal-concealed-kong": "node scripts/stage8-v2-normal-concealed-kong-regression.mjs",
+    "test:stage8-v2-action-space": "node scripts/stage8-v2-action-space-gate-regression.mjs",
+    "test:stage8-v2-added-kong-resolution": "node scripts/stage8-v2-added-kong-resolution-regression.mjs",
+    "test:stage8-v2-added-kong-page": "node scripts/stage8-v2-added-kong-page-adapter-regression.mjs",
+    "test:stage8-v2-added-kong-round": "node scripts/stage8-v2-added-kong-round-engine-regression.mjs",
+    "test:stage8-v2-kong-execution": "node scripts/stage8-v2-kong-execution-gate-regression.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",
