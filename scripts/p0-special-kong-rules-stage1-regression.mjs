@@ -44,7 +44,8 @@ const normalConcealedInput = {
   melds: [{ type: 'anGang', tiles: ['wan1', 'wan1', 'wan1', 'wan1'] }],
   drawTile: 'wan8',
 };
-assert.throws(() => rules.resolveForcedRunConcealed(normalConcealedInput), /normal-concealed-kong-available/);
+assert.equal(rules.canDeclareSpecialKongAction({ kind: 'forcedRunConcealed', input: Object.fromEntries(Object.entries(normalConcealedInput).filter(([key]) => key !== 'drawTile')) }), true);
+assert.doesNotThrow(() => rules.resolveForcedRunConcealed(normalConcealedInput));
 
 const forcedRun = rules.resolveForcedRunConcealed({
   owner: 0,

@@ -76,6 +76,12 @@ export type SpecialKongAction =
   | { kind: 'doublePongForcedRun'; input: DoublePongForcedRunInput }
   | { kind: 'addedKongChain'; input: AddedKongChainInput };
 
+export type SpecialKongDeclarationAction =
+  | { kind: 'forcedRunConcealed'; input: Omit<ForcedRunConcealedInput, 'drawTile'> }
+  | { kind: 'postPongCandidateConcealedKong'; input: Omit<PostPongCandidateConcealedKongInput, 'drawTile'> }
+  | { kind: 'doublePongForcedRun'; input: Omit<DoublePongForcedRunInput, 'drawTile'> }
+  | { kind: 'addedKongChain'; input: Omit<AddedKongChainInput, 'drawTile'> };
+
 export type SpecialKongOutcome =
   | 'forcedRunConcealedFakeWin'
   | 'forcedRunConcealedFailureDiscard'
@@ -175,6 +181,53 @@ function validatePongResource(resource: KongResource, owner: number): void {
   requireValid(resource.source === 'pong' && isExactPong(resource.pongMeld, resource.tile), 'resource-pong-invalid');
 }
 
+function validateForcedRunConcealedDeclaration(input: Omit<ForcedRunConcealedInput, 'drawTile'>): void {
+  requireValid(countTiles(input.preKongHand, input.kongTile) === 4, 'concealed-forced-run-pre-kong-count');
+  const expectedHand = removeTiles(input.preKongHand, input.kongTile, 4);
+  requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'concealed-forced-run-hand-after-kong');
+  requireValid(input.melds.some((meld) => isMatchingGang(meld, input.kongTile, 'anGang')), 'concealed-forced-run-meld');
+  const preKongMelds = input.melds.filter((meld) => !isMatchingGang(meld, input.kongTile, 'anGang'));
+  requireValid(!canWin(input.preKongHand, { melds: preKongMelds }).canWin, 'normal-concealed-kong-available');
+}
+
+function validatePostPongCandidateConcealedKongDeclaration(input: Omit<PostPongCandidateConcealedKongInput, 'drawTile'>): KongResourceEvaluationResult {
+  requireValid(input.resource.status === 'active', 'candidate-resource-not-active');
+  requireValid(input.resource.owner === input.owner, 'candidate-resource-owner-mismatch');
+  requireValid(isExactPong(input.resource.pongMeld), 'candidate-resource-pong-invalid');
+  requireValid(countTiles(input.preKongHand, input.resource.candidateKongTile) === 4, 'candidate-pre-kong-count');
+  const expectedHand = removeTiles(input.preKongHand, input.resource.candidateKongTile, 4);
+  requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'candidate-hand-after-kong');
+  requireValid(input.melds.some((meld) => sameMeld(meld, input.resource.pongMeld)), 'candidate-pong-meld-missing');
+  requireValid(input.melds.some((meld) => isMatchingGang(meld, input.resource.candidateKongTile, 'anGang')), 'candidate-kong-meld-missing');
+  const eligibility = evaluateWithSource(input.resource.candidateKongTile, input.handAfterKong, input.melds, false);
+  requireValid(eligibility.canComplete, 'candidate-conditional-eligibility-failed');
+  return eligibility;
+}
+
+function validateDoublePongForcedRunDeclaration(input: Omit<DoublePongForcedRunInput, 'drawTile'>): void {
+  validatePongResource(input.selectedResource, input.owner);
+  validatePongResource(input.conditionalResource, input.owner);
+  requireValid(input.selectedResource.tile !== input.conditionalResource.tile, 'double-pong-resource-must-differ');
+  requireValid(countTiles(input.preKongHand, input.selectedResource.tile) === 1, 'selected-resource-pre-kong-count');
+  requireValid(countTiles(input.preKongHand, input.conditionalResource.tile) >= 1, 'conditional-resource-pre-kong-count');
+  const expectedHand = removeTiles(input.preKongHand, input.selectedResource.tile, 1);
+  requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'double-pong-hand-after-kong');
+  requireValid(input.melds.some((meld) => isMatchingGang(meld, input.selectedResource.tile, 'mingGang')), 'selected-resource-kong-meld-missing');
+  requireValid(input.melds.some((meld) => sameMeld(meld, input.conditionalResource.pongMeld)), 'conditional-resource-pong-meld-missing');
+}
+
+export function canDeclareSpecialKongAction(action: SpecialKongDeclarationAction): boolean {
+  try {
+    if (action.kind === 'forcedRunConcealed') validateForcedRunConcealedDeclaration(action.input);
+    else if (action.kind === 'postPongCandidateConcealedKong') validatePostPongCandidateConcealedKongDeclaration(action.input);
+    else if (action.kind === 'doublePongForcedRun') validateDoublePongForcedRunDeclaration(action.input);
+    else requireValid(prepareAddedKongChainWindow(action.input).canDeclare, 'added-kong-chain-declaration-invalid');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createCandidateConcealedKongResource(input: {
   owner: number;
   pongMeld: Meld;
@@ -214,11 +267,7 @@ export function transitionCandidateConcealedKongResource(
   return { ...resource, status: event.type === 'declareCandidateKong' ? 'consumed' : 'invalidated' };
 }
 export function resolveForcedRunConcealed(input: ForcedRunConcealedInput): SpecialKongResolution {
-  requireValid(countTiles(input.preKongHand, input.kongTile) === 4, 'concealed-forced-run-pre-kong-count');
-  const expectedHand = removeTiles(input.preKongHand, input.kongTile, 4);
-  requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'concealed-forced-run-hand-after-kong');
-  requireValid(input.melds.some((meld) => isMatchingGang(meld, input.kongTile, 'anGang')), 'concealed-forced-run-meld');
-  requireValid(!canWin(input.handAfterKong.concat(input.drawTile), { melds: input.melds }).canWin, 'normal-concealed-kong-available');
+  validateForcedRunConcealedDeclaration(input);
   const evaluation = evaluateWithSource(input.kongTile, input.handAfterKong.concat(input.drawTile), input.melds, true);
   const complete = evaluation.canComplete;
   return {
@@ -231,16 +280,7 @@ export function resolveForcedRunConcealed(input: ForcedRunConcealedInput): Speci
 }
 
 export function resolvePostPongCandidateConcealedKong(input: PostPongCandidateConcealedKongInput): SpecialKongResolution {
-  requireValid(input.resource.status === 'active', 'candidate-resource-not-active');
-  requireValid(input.resource.owner === input.owner, 'candidate-resource-owner-mismatch');
-  requireValid(isExactPong(input.resource.pongMeld), 'candidate-resource-pong-invalid');
-  requireValid(countTiles(input.preKongHand, input.resource.candidateKongTile) === 4, 'candidate-pre-kong-count');
-  const expectedHand = removeTiles(input.preKongHand, input.resource.candidateKongTile, 4);
-  requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'candidate-hand-after-kong');
-  requireValid(input.melds.some((meld) => sameMeld(meld, input.resource.pongMeld)), 'candidate-pong-meld-missing');
-  requireValid(input.melds.some((meld) => isMatchingGang(meld, input.resource.candidateKongTile, 'anGang')), 'candidate-kong-meld-missing');
-  const eligibility = evaluateWithSource(input.resource.candidateKongTile, input.handAfterKong, input.melds, false);
-  requireValid(eligibility.canComplete, 'candidate-conditional-eligibility-failed');
+  const eligibility = validatePostPongCandidateConcealedKongDeclaration(input);
   const handAfterDraw = input.handAfterKong.concat(input.drawTile);
   const evaluation = evaluateWithSource(input.resource.candidateKongTile, handAfterDraw, input.melds, true);
   const trueWin = canWin(handAfterDraw, { melds: input.melds, winTile: input.drawTile }).canWin;
@@ -258,15 +298,7 @@ export function resolvePostPongCandidateConcealedKong(input: PostPongCandidateCo
 }
 
 export function resolveDoublePongForcedRun(input: DoublePongForcedRunInput): SpecialKongResolution {
-  validatePongResource(input.selectedResource, input.owner);
-  validatePongResource(input.conditionalResource, input.owner);
-  requireValid(input.selectedResource.tile !== input.conditionalResource.tile, 'double-pong-resource-must-differ');
-  requireValid(countTiles(input.preKongHand, input.selectedResource.tile) === 1, 'selected-resource-pre-kong-count');
-  requireValid(countTiles(input.preKongHand, input.conditionalResource.tile) >= 1, 'conditional-resource-pre-kong-count');
-  const expectedHand = removeTiles(input.preKongHand, input.selectedResource.tile, 1);
-  requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'double-pong-hand-after-kong');
-  requireValid(input.melds.some((meld) => isMatchingGang(meld, input.selectedResource.tile, 'mingGang')), 'selected-resource-kong-meld-missing');
-  requireValid(input.melds.some((meld) => sameMeld(meld, input.conditionalResource.pongMeld)), 'conditional-resource-pong-meld-missing');
+  validateDoublePongForcedRunDeclaration(input);
   const evaluation = evaluateWithSource(
     input.conditionalResource.tile,
     input.handAfterKong.concat(input.drawTile),

@@ -432,8 +432,8 @@ function candidateKongChoiceKey(kind,tile,sourceTile){
 function publicPageSpecialKongChoice(choice){
   return {key:choice.key,kind:choice.kind,tile:choice.tile||undefined};
 }
-function pageSpecialActionCanPreflight(action,owner){
-  return !!preflightPageSpecialKongResolution(action,owner);
+function pageSpecialActionCanDeclare(action){
+  try{return !!RULE_ENGINE.canDeclareSpecialKongAction(action);}catch(error){return false;}
 }
 function collectPageSpecialKongChoices(playerIdx){
   const player=GS.players[playerIdx];
@@ -445,12 +445,12 @@ function collectPageSpecialKongChoices(playerIdx){
     const tile=resource.candidateKongTile;
     if(hand.filter(function(item){return item===tile;}).length!==4)continue;
     const action={kind:'postPongCandidateConcealedKong',input:{owner:playerIdx,resource:resource,preKongHand:hand,handAfterKong:hand.filter(function(item){return item!==tile;}),melds:ruleMeldsForPlayer(playerIdx).concat([{type:'anGang',tiles:[tile,tile,tile,tile]}])}};
-    if(pageSpecialActionCanPreflight(action,playerIdx))choices.push({key:candidateKongChoiceKey(action.kind,tile,resource.pongMeld.tiles[0]),kind:action.kind,tile:tile,action:action});
+    if(pageSpecialActionCanDeclare(action))choices.push({key:candidateKongChoiceKey(action.kind,tile,resource.pongMeld.tiles[0]),kind:action.kind,tile:tile,action:action});
   }
   if(GS.newDrawnTile){
     for(const tile of RULE_ENGINE.canAnGang(hand).slice().sort()){
       const action={kind:'forcedRunConcealed',input:{owner:playerIdx,kongTile:tile,preKongHand:hand,handAfterKong:hand.filter(function(item){return item!==tile;}),melds:ruleMeldsForPlayer(playerIdx).concat([{type:'anGang',tiles:[tile,tile,tile,tile]}])}};
-      if(pageSpecialActionCanPreflight(action,playerIdx))choices.push({key:candidateKongChoiceKey(action.kind,tile,''),kind:action.kind,tile:tile,action:action});
+      if(pageSpecialActionCanDeclare(action))choices.push({key:candidateKongChoiceKey(action.kind,tile,''),kind:action.kind,tile:tile,action:action});
     }
     const active=pageKongResources().filter(function(resource){return resource&&resource.owner===playerIdx&&resource.status==='active'&&hasPageRuleMeld(playerIdx,resource.pongMeld)&&hand.includes(resource.tile);});
     for(const selectedResource of active)for(const conditionalResource of active){
@@ -458,7 +458,7 @@ function collectPageSpecialKongChoices(playerIdx){
       const selectedTile=selectedResource.tile;
       const melds=ruleMeldsForPlayer(playerIdx).map(function(meld){return meld.type==='peng'&&meld.tiles[0]===selectedTile?{type:'mingGang',tiles:[selectedTile,selectedTile,selectedTile,selectedTile],fromPlayer:meld.fromPlayer}:meld;});
       const action={kind:'doublePongForcedRun',input:{owner:playerIdx,selectedResource:selectedResource,conditionalResource:conditionalResource,preKongHand:hand,handAfterKong:hand.filter(function(item){return item!==selectedTile;}),melds:melds}};
-      if(pageSpecialActionCanPreflight(action,playerIdx))choices.push({key:candidateKongChoiceKey(action.kind,selectedTile,conditionalResource.tile),kind:action.kind,tile:selectedTile,action:action});
+      if(pageSpecialActionCanDeclare(action))choices.push({key:candidateKongChoiceKey(action.kind,selectedTile,conditionalResource.tile),kind:action.kind,tile:selectedTile,action:action});
     }
   }
   return choices.sort(function(left,right){return left.key.localeCompare(right.key);});
