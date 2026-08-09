@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "stage8-c4-value-calibration-readiness-preflight-v1",
+  "status": "fixture-readiness-passed-real-offline-gate-blocked",
+  "designSha256": "19F175F06DACE16C3D5B27D7BEAA423DAA2F589A94BC7FC07D32DDDA7A930FD3",
+  "protocol": {
+    "schemaVersion": "stage8-c4-value-calibration-readiness-v1",
+    "splitVersion": "stage8-c4-value-calibration-split-v1",
+    "splitPrefix": "stage8-c4-value-calibration-v1:",
+    "sampleSchemaVersion": "stage8-experience-v1",
+    "learningVersion": "stage8-terminal-actor-critic-v1",
+    "labelField": "terminalScoreDeltas",
+    "valueTargetTransformVersion": "stage8-terminal-score-delta-over-value-scale-v1",
+    "valueScale": 8,
+    "zeroSumTolerance": 0.000001,
+    "actionSpaceVersion": "stage8-action-space-v2",
+    "experienceProtocolVersion": "stage8-c4-visible-value-readiness-v1",
+    "minimumScale": 0.125,
+    "signEpsilon": 0.000001,
+    "effectiveValueThreshold": 0.05,
+    "minimumEffectiveStateFraction": 0.95,
+    "bootstrapSeed": 2026073004,
+    "bootstrapReplicates": 10000,
+    "bootstrapVersion": "stage8-c4-sha256-counter-bootstrap-v1",
+    "percentileVersion": "stage8-c4-nearest-rank-percentile-v1"
+  },
+  "lineage": {
+    "actionSpaceVersion": "stage8-action-space-v2",
+    "experienceProtocolVersion": "stage8-c4-visible-value-readiness-v1",
+    "actionRegistrySourceSha256": "DE8F2B28F785F8E26A621F27B4403A5DE1B91788DC757423E28D9221C0790753",
+    "actionSpaceGateCommit": "a3ba905b52c80aa61bbdf04a09f1655b3faa6d67"
+  },
+  "verificationEvidence": {
+    "readinessRegressionPassed": true,
+    "stage8V2ActionSpaceGatePassed": true,
+    "readinessRegressionSha256": "F9DD01324BFCA2815BCAD644EE0CD1ABC3663814206D55923DAF01F7A5D402E3",
+    "stage8V2GateRegressionSha256": "C14848018871743C0818005735C4289CCC8557BC114A0D56C1A29CD1138B0FB8",
+    "readinessRegressionOutputSha256": "B3263CAE9E74972A12649383EDDCA6B6D78A7353A44F9E99B2C03AE7DFD4DCF1",
+    "stage8V2GateRegressionOutputSha256": "48BEA643C7201B69E71CDBD889482BAFC0FBB06A947333E61F1665510909C3D1"
+  },
+  "implementationGates": {
+    "acceptedDesignBound": true,
+    "gameIdSplitDeterministic": true,
+    "calibrationOnlyScaleFit": true,
+    "finalTestOneShotFailClosed": true,
+    "labelZeroSumValidated": true,
+    "scaleNonDegeneracyFrozen": true,
+    "sameSignNoDegradationFrozen": true,
+    "privacyAllowlistStrict": true,
+    "stage8V2LineageVerified": true,
+    "downstreamAuthorizationRefused": true
+  },
+  "executionPrerequisites": {
+    "p0RuleCoreAccepted": true,
+    "p0PageAccepted": true,
+    "stage8V2ThreeLayerGateAccepted": true,
+    "v2ValueModelAvailable": false,
+    "v2CalibrationCorpusAvailable": false
+  },
+  "authorizations": {
+    "candidateCreated": false,
+    "corpusGenerated": false,
+    "finalTestOpened": false,
+    "trainingAuthorized": false,
+    "arenaAuthorized": false,
+    "runtimeAuthorized": false
+  },
+  "preflightDigest": "e3402cc9d93074a09acc09f22f906b7e5d1c34d46713c03460fc1907be2b12d3",
+  "evidence": {
+    "config": {
+      "path": "docs/stage8/candidate-4-value-calibration-readiness-config-v1.json",
+      "sha256": "861414DB630FADE02DCED3449746AE55A4769F1E6452414438B053DD1502F7F6"
+    },
+    "design": {
+      "path": "docs/stage8/candidate-4-value-calibration-readiness-design-2026-07-30.md",
+      "sha256": "19F175F06DACE16C3D5B27D7BEAA423DAA2F589A94BC7FC07D32DDDA7A930FD3"
+    },
+    "actionRegistry": {
+      "path": "src/game/stage8/action-registry-v2.ts",
+      "sha256": "DE8F2B28F785F8E26A621F27B4403A5DE1B91788DC757423E28D9221C0790753"
+    },
+    "actionSpaceGateReport": {
+      "path": "docs/stage8-v2-action-space-gate-candidate-report-2026-08-09.md",
+      "sha256": "212A10CBFB7A1E3562930B2B37D3B5AD98F1517F341E458B9B5912C7DE47428C"
+    },
+    "readinessModule": {
+      "path": "scripts/lib/stage8-c4-value-calibration-readiness.mjs",
+      "sha256": "83B829B63C8F469244FEF8DC8DFBEB4AA90ED77E375372A44001ED376CB66CC5"
+    },
+    "readinessRegression": {
+      "path": "scripts/stage8-c4-value-calibration-readiness-regression.mjs",
+      "sha256": "F9DD01324BFCA2815BCAD644EE0CD1ABC3663814206D55923DAF01F7A5D402E3"
+    },
+    "stage8V2GateRegression": {
+      "path": "scripts/stage8-v2-action-space-gate-regression.mjs",
+      "sha256": "C14848018871743C0818005735C4289CCC8557BC114A0D56C1A29CD1138B0FB8"
+    }
+  },
+  "releaseCorrectionCommit": "e60dee4994e783eb49430085f4503b7d3d8448eb",
+  "offlineEvaluation": {
+    "calibrationCorpusGenerated": false,
+    "scaleFittedFromRealCorpus": false,
+    "finalTestOpened": false,
+    "finalTestMetricsProduced": false
+  }
+}
