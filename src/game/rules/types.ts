@@ -121,6 +121,14 @@ export interface KongResourceEvaluationInput {
   allowFakeWinRemainder: boolean;
 }
 
+export interface ConditionalKongResourceEvaluationInput {
+  sourceTile: Tile;
+  hand: Tile[];
+  melds: Meld[];
+  allowFakeWinRemainder: boolean;
+  consumeSourceTileFromHand?: boolean;
+}
+
 export interface KongResourceEvaluationResult {
   canComplete: boolean;
   reason: string;

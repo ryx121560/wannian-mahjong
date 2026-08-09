@@ -8,6 +8,7 @@ import type {
   KongDrawResolutionInput,
   KongDrawOutcome,
   KongResource,
+  ConditionalKongResourceEvaluationInput,
   KongResourceEvaluationInput,
   KongResourceEvaluationResult,
   Meld,
@@ -104,7 +105,7 @@ function makeDecomposition(
   };
 }
 
-function findResourceWitnesses(input: KongResourceEvaluationInput): HandDecomposition[] {
+function findConditionalResourceWitnesses(input: ConditionalKongResourceEvaluationInput): HandDecomposition[] {
   const expectedGroups = 4 - input.melds.length;
   if (expectedGroups < 0) return [];
   const witnesses = new Map<string, HandDecomposition>();
@@ -152,7 +153,7 @@ function findResourceWitnesses(input: KongResourceEvaluationInput): HandDecompos
         const next = removeCandidate(remaining, physicalTiles);
         if (!next) continue;
         buildGroups(next, groups.concat([group]), {
-          sourceTile: input.resource.tile,
+          sourceTile: input.sourceTile,
           role: 'group',
           asTile: group[resourceIndex],
         }, pair, fakeWinRemainder);
@@ -172,7 +173,7 @@ function findResourceWitnesses(input: KongResourceEvaluationInput): HandDecompos
     if (!afterPair) continue;
     const pair: [Tile, Tile] = [tile, tile];
     buildGroups(afterPair, [], {
-      sourceTile: input.resource.tile,
+      sourceTile: input.sourceTile,
       role: 'pair',
       asTile: tile,
     }, pair);
@@ -180,9 +181,7 @@ function findResourceWitnesses(input: KongResourceEvaluationInput): HandDecompos
   return Array.from(witnesses.values()).sort((left, right) => left.signature.localeCompare(right.signature));
 }
 
-export function evaluateKongResource(input: KongResourceEvaluationInput): KongResourceEvaluationResult {
-  const contextError = validateResourceContext(input);
-  if (contextError) return { canComplete: false, reason: contextError };
+export function evaluateConditionalKongResource(input: ConditionalKongResourceEvaluationInput): KongResourceEvaluationResult {
   const normal = canWin(input.hand, { melds: input.melds });
   if (normal.canWin) {
     const classification = classifyHand(input.hand, input.melds);
@@ -195,7 +194,11 @@ export function evaluateKongResource(input: KongResourceEvaluationInput): KongRe
       classification,
     };
   }
-  const witnesses = findResourceWitnesses(input);
+  const hand = input.consumeSourceTileFromHand
+    ? removeTiles(input.hand, input.sourceTile, 1)
+    : input.hand;
+  if (!hand) return { canComplete: false, reason: 'conditional-resource-source-tile-missing', witnesses: [] };
+  const witnesses = findConditionalResourceWitnesses({ ...input, hand });
   if (!witnesses.length) return { canComplete: false, reason: 'resource-cannot-complete-legal-structure', witnesses: [] };
   const candidates = witnesses.map((decomposition) => ({
     decomposition,
@@ -212,6 +215,18 @@ export function evaluateKongResource(input: KongResourceEvaluationInput): KongRe
     witnesses,
     classification: selected.classification,
   };
+}
+
+export function evaluateKongResource(input: KongResourceEvaluationInput): KongResourceEvaluationResult {
+  const contextError = validateResourceContext(input);
+  if (contextError) return { canComplete: false, reason: contextError };
+  return evaluateConditionalKongResource({
+    sourceTile: input.resource.tile,
+    hand: input.hand,
+    melds: input.melds,
+    allowFakeWinRemainder: input.allowFakeWinRemainder,
+    consumeSourceTileFromHand: false,
+  });
 }
 
 export function createKongResource(input: {

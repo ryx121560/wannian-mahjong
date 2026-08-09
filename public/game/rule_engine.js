@@ -582,6 +582,7 @@ function baseScoreForHandType(handType) {
 "./kong-resource": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.evaluateConditionalKongResource = evaluateConditionalKongResource;
 exports.evaluateKongResource = evaluateKongResource;
 exports.createKongResource = createKongResource;
 exports.consumeKongResource = consumeKongResource;
@@ -669,7 +670,7 @@ function makeDecomposition(pair, groups, melds, resourceUse, fakeWinRemainder) {
         signature: (0, hand_evaluator_1.decompositionSignature)(pair, groups, melds, resourceUse, fakeWinRemainder),
     };
 }
-function findResourceWitnesses(input) {
+function findConditionalResourceWitnesses(input) {
     const expectedGroups = 4 - input.melds.length;
     if (expectedGroups < 0)
         return [];
@@ -717,7 +718,7 @@ function findResourceWitnesses(input) {
                 if (!next)
                     continue;
                 buildGroups(next, groups.concat([group]), {
-                    sourceTile: input.resource.tile,
+                    sourceTile: input.sourceTile,
                     role: 'group',
                     asTile: group[resourceIndex],
                 }, pair, fakeWinRemainder);
@@ -738,17 +739,14 @@ function findResourceWitnesses(input) {
             continue;
         const pair = [tile, tile];
         buildGroups(afterPair, [], {
-            sourceTile: input.resource.tile,
+            sourceTile: input.sourceTile,
             role: 'pair',
             asTile: tile,
         }, pair);
     }
     return Array.from(witnesses.values()).sort((left, right) => left.signature.localeCompare(right.signature));
 }
-function evaluateKongResource(input) {
-    const contextError = validateResourceContext(input);
-    if (contextError)
-        return { canComplete: false, reason: contextError };
+function evaluateConditionalKongResource(input) {
     const normal = (0, hand_evaluator_1.canWin)(input.hand, { melds: input.melds });
     if (normal.canWin) {
         const classification = (0, hand_evaluator_1.classifyHand)(input.hand, input.melds);
@@ -761,7 +759,12 @@ function evaluateKongResource(input) {
             classification,
         };
     }
-    const witnesses = findResourceWitnesses(input);
+    const hand = input.consumeSourceTileFromHand
+        ? removeTiles(input.hand, input.sourceTile, 1)
+        : input.hand;
+    if (!hand)
+        return { canComplete: false, reason: 'conditional-resource-source-tile-missing', witnesses: [] };
+    const witnesses = findConditionalResourceWitnesses({ ...input, hand });
     if (!witnesses.length)
         return { canComplete: false, reason: 'resource-cannot-complete-legal-structure', witnesses: [] };
     const candidates = witnesses.map((decomposition) => ({
@@ -777,6 +780,18 @@ function evaluateKongResource(input) {
         witnesses,
         classification: selected.classification,
     };
+}
+function evaluateKongResource(input) {
+    const contextError = validateResourceContext(input);
+    if (contextError)
+        return { canComplete: false, reason: contextError };
+    return evaluateConditionalKongResource({
+        sourceTile: input.resource.tile,
+        hand: input.hand,
+        melds: input.melds,
+        allowFakeWinRemainder: input.allowFakeWinRemainder,
+        consumeSourceTileFromHand: false,
+    });
 }
 function createKongResource(input) {
     if (!isExactPong(input.pongMeld, input.tile))
@@ -1108,10 +1123,12 @@ exports.calculateScore = calculateScore;
 exports.scoreConcealedKongSettlement = scoreConcealedKongSettlement;
 exports.scoreKongSettlement = scoreKongSettlement;
 exports.scoreKongResourceSettlement = scoreKongResourceSettlement;
+exports.scoreSpecialKongSettlement = scoreSpecialKongSettlement;
 exports.scoreSettlement = scoreSettlement;
 const hand_evaluator_1 = require("./hand-evaluator");
 const concealed_kong_1 = require("./concealed-kong");
 const kong_resource_1 = require("./kong-resource");
+const special_kong_1 = require("./special-kong");
 const rule_config_1 = require("./rule-config");
 const tile_utils_1 = require("./tile-utils");
 function applyCap(scorePerPlayer, cap = rule_config_1.DEFAULT_RULES.capAmount) {
@@ -1263,6 +1280,44 @@ function scoreKongSettlement(input) {
 function scoreKongResourceSettlement(input) {
     return scoreKongSettlement(input);
 }
+function basePaymentsForSpecialKongEvent(event, winner, playerCount) {
+    if (event === 'forcedRunConcealedFailureDiscard' || event === 'doublePongForcedRunFailureDiscard') {
+        throw new Error('failed special kong cannot settle');
+    }
+    const basePayment = event === 'forcedRunConcealedFakeWin' || event === 'doublePongForcedRunFakeWin'
+        ? 2
+        : event === 'postPongCandidateConcealedTrueWin' || event === 'addedKongChainTrueWin'
+            ? 8
+            : 4;
+    return Array.from({ length: playerCount }, (_, playerId) => playerId === winner ? 0 : basePayment);
+}
+function scoreSpecialKongSettlement(input) {
+    const resolution = (0, special_kong_1.resolveSpecialKongAction)(input.action);
+    if (resolution.mustDiscard)
+        throw new Error('special kong discard path cannot settle');
+    const classification = (0, special_kong_1.specialKongClassification)(resolution);
+    const before = input.scores.slice();
+    const multiplier = multiplierForHandTypes(classification.handTypes);
+    const rawPayments = basePaymentsForSpecialKongEvent(resolution.outcome, input.winner, before.length)
+        .map((payment) => payment * multiplier);
+    const payments = applyCap(rawPayments);
+    const after = before.slice();
+    const winnerGain = payments.reduce((total, payment) => total + payment, 0);
+    after[input.winner] += winnerGain;
+    for (let playerId = 0; playerId < after.length; playerId += 1)
+        after[playerId] -= payments[playerId];
+    return {
+        before,
+        after,
+        delta: after.map((score, index) => score - before[index]),
+        payments,
+        winner: input.winner,
+        event: resolution.outcome,
+        handTypes: classification.handTypes,
+        multiplier,
+        capped: rawPayments.some((payment) => payment > rule_config_1.DEFAULT_RULES.capAmount),
+    };
+}
 function pointsFor(hand, winType) {
     const classification = (0, hand_evaluator_1.classifyHand)(hand);
     const base = classification.baseScore || (0, hand_evaluator_1.baseScoreForHandType)(classification.primaryType);
@@ -1300,6 +1355,257 @@ function scoreSettlement(input) {
     const classification = (0, hand_evaluator_1.classifyHand)(input.hand);
     const handType = (0, hand_evaluator_1.getPrimaryHandType)(input.hand);
     return { before, after, delta, payer, winner: input.winner, winType: input.winType, handType, handTypes: classification.handTypes, baseScore: classification.baseScore, points, reason: `${handType} ${input.winType} 结算` };
+}
+
+},
+"./special-kong": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createCandidateConcealedKongResource = createCandidateConcealedKongResource;
+exports.enumeratePostPongCandidateConcealedKongs = enumeratePostPongCandidateConcealedKongs;
+exports.transitionCandidateConcealedKongResource = transitionCandidateConcealedKongResource;
+exports.resolveForcedRunConcealed = resolveForcedRunConcealed;
+exports.resolvePostPongCandidateConcealedKong = resolvePostPongCandidateConcealedKong;
+exports.resolveDoublePongForcedRun = resolveDoublePongForcedRun;
+exports.prepareAddedKongChainWindow = prepareAddedKongChainWindow;
+exports.resolveAddedKongChain = resolveAddedKongChain;
+exports.resolveSpecialKongAction = resolveSpecialKongAction;
+exports.specialKongClassification = specialKongClassification;
+const hand_evaluator_1 = require("./hand-evaluator");
+const kong_resource_1 = require("./kong-resource");
+const tile_utils_1 = require("./tile-utils");
+function sameTiles(left, right) {
+    const sortedLeft = (0, tile_utils_1.sortTiles)(left);
+    const sortedRight = (0, tile_utils_1.sortTiles)(right);
+    return sortedLeft.length === sortedRight.length && sortedLeft.every((tile, index) => tile === sortedRight[index]);
+}
+function countTiles(hand, tile) {
+    return hand.filter((item) => item === tile).length;
+}
+function removeTiles(hand, tile, amount) {
+    const remaining = hand.slice();
+    for (let index = 0; index < amount; index += 1) {
+        const tileIndex = remaining.indexOf(tile);
+        if (tileIndex < 0)
+            return null;
+        remaining.splice(tileIndex, 1);
+    }
+    return remaining;
+}
+function isExactPong(meld, tile) {
+    return meld.type === 'peng'
+        && meld.tiles.length === 3
+        && meld.tiles.every((item) => item === meld.tiles[0])
+        && (tile == null || meld.tiles[0] === tile);
+}
+function isMatchingGang(meld, tile, expectedType) {
+    return (expectedType == null || meld.type === expectedType)
+        && (meld.type === 'anGang' || meld.type === 'mingGang' || meld.type === 'zhiChan')
+        && meld.tiles.length === 4
+        && meld.tiles.every((item) => item === tile);
+}
+function sameMeld(left, right) {
+    return left.type === right.type
+        && left.fromPlayer === right.fromPlayer
+        && left.tiles.length === right.tiles.length
+        && left.tiles.every((tile, index) => tile === right.tiles[index]);
+}
+function requireValid(condition, reason) {
+    if (!condition)
+        throw new Error(`invalid special kong context: ${reason}`);
+}
+function classifyFallback(hand, melds) {
+    const classification = (0, hand_evaluator_1.classifyHand)(hand, melds);
+    return {
+        canComplete: false,
+        reason: 'conditional-resource-cannot-complete-legal-structure',
+        classification,
+        decomposition: classification.selectedDecomposition,
+        witnesses: classification.selectedDecomposition ? [classification.selectedDecomposition] : [],
+    };
+}
+function evaluateWithSource(sourceTile, hand, melds, allowFakeWinRemainder, consumeSourceTileFromHand = false) {
+    const evaluation = (0, kong_resource_1.evaluateConditionalKongResource)({
+        sourceTile,
+        hand,
+        melds,
+        allowFakeWinRemainder,
+        consumeSourceTileFromHand,
+    });
+    return evaluation.canComplete ? evaluation : classifyFallback(hand, melds);
+}
+function validatePongResource(resource, owner) {
+    requireValid(resource.status === 'active', 'resource-not-active');
+    requireValid(resource.owner === owner, 'resource-owner-mismatch');
+    requireValid(resource.source === 'pong' && isExactPong(resource.pongMeld, resource.tile), 'resource-pong-invalid');
+}
+function createCandidateConcealedKongResource(input) {
+    if (!isExactPong(input.pongMeld))
+        throw new Error('candidate concealed kong requires a real pong meld');
+    return { ...input, status: 'active' };
+}
+function enumeratePostPongCandidateConcealedKongs(input) {
+    if (!isExactPong(input.pongMeld))
+        return [];
+    return Array.from(new Set(input.hand))
+        .filter((tile) => countTiles(input.hand, tile) === 4)
+        .sort()
+        .map((candidateKongTile) => createCandidateConcealedKongResource({
+        owner: input.owner,
+        pongMeld: input.pongMeld,
+        candidateKongTile,
+    }));
+}
+function transitionCandidateConcealedKongResource(resource, event) {
+    if (resource.status !== 'active' || event.type === 'decline')
+        return resource;
+    if (event.type === 'roundEnd')
+        return { ...resource, status: 'invalidated' };
+    if (event.player !== resource.owner || event.tile !== resource.candidateKongTile)
+        return resource;
+    return { ...resource, status: event.type === 'declareCandidateKong' ? 'consumed' : 'invalidated' };
+}
+function resolveForcedRunConcealed(input) {
+    requireValid(countTiles(input.preKongHand, input.kongTile) === 4, 'concealed-forced-run-pre-kong-count');
+    const expectedHand = removeTiles(input.preKongHand, input.kongTile, 4);
+    requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'concealed-forced-run-hand-after-kong');
+    requireValid(input.melds.some((meld) => isMatchingGang(meld, input.kongTile, 'anGang')), 'concealed-forced-run-meld');
+    requireValid(!(0, hand_evaluator_1.canWin)(input.handAfterKong.concat(input.drawTile), { melds: input.melds }).canWin, 'normal-concealed-kong-available');
+    const evaluation = evaluateWithSource(input.kongTile, input.handAfterKong.concat(input.drawTile), input.melds, true);
+    const complete = evaluation.canComplete;
+    return {
+        action: { kind: 'forcedRunConcealed', input },
+        outcome: complete ? 'forcedRunConcealedFakeWin' : 'forcedRunConcealedFailureDiscard',
+        mustDiscard: !complete,
+        robKongWindow: false,
+        evaluation,
+    };
+}
+function resolvePostPongCandidateConcealedKong(input) {
+    requireValid(input.resource.status === 'active', 'candidate-resource-not-active');
+    requireValid(input.resource.owner === input.owner, 'candidate-resource-owner-mismatch');
+    requireValid(isExactPong(input.resource.pongMeld), 'candidate-resource-pong-invalid');
+    requireValid(countTiles(input.preKongHand, input.resource.candidateKongTile) === 4, 'candidate-pre-kong-count');
+    const expectedHand = removeTiles(input.preKongHand, input.resource.candidateKongTile, 4);
+    requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'candidate-hand-after-kong');
+    requireValid(input.melds.some((meld) => sameMeld(meld, input.resource.pongMeld)), 'candidate-pong-meld-missing');
+    requireValid(input.melds.some((meld) => isMatchingGang(meld, input.resource.candidateKongTile, 'anGang')), 'candidate-kong-meld-missing');
+    const eligibility = evaluateWithSource(input.resource.candidateKongTile, input.handAfterKong, input.melds, false);
+    requireValid(eligibility.canComplete, 'candidate-conditional-eligibility-failed');
+    const handAfterDraw = input.handAfterKong.concat(input.drawTile);
+    const evaluation = evaluateWithSource(input.resource.candidateKongTile, handAfterDraw, input.melds, true);
+    const trueWin = (0, hand_evaluator_1.canWin)(handAfterDraw, { melds: input.melds, winTile: input.drawTile }).canWin;
+    return {
+        action: { kind: 'postPongCandidateConcealedKong', input },
+        outcome: trueWin ? 'postPongCandidateConcealedTrueWin' : 'postPongCandidateConcealedFakeWin',
+        mustDiscard: false,
+        robKongWindow: false,
+        eligibility,
+        evaluation,
+        resourceAfterKong: transitionCandidateConcealedKongResource(input.resource, {
+            type: 'declareCandidateKong', player: input.owner, tile: input.resource.candidateKongTile,
+        }),
+    };
+}
+function resolveDoublePongForcedRun(input) {
+    validatePongResource(input.selectedResource, input.owner);
+    validatePongResource(input.conditionalResource, input.owner);
+    requireValid(input.selectedResource.tile !== input.conditionalResource.tile, 'double-pong-resource-must-differ');
+    requireValid(countTiles(input.preKongHand, input.selectedResource.tile) === 1, 'selected-resource-pre-kong-count');
+    requireValid(countTiles(input.preKongHand, input.conditionalResource.tile) >= 1, 'conditional-resource-pre-kong-count');
+    const expectedHand = removeTiles(input.preKongHand, input.selectedResource.tile, 1);
+    requireValid(expectedHand != null && sameTiles(expectedHand, input.handAfterKong), 'double-pong-hand-after-kong');
+    requireValid(input.melds.some((meld) => isMatchingGang(meld, input.selectedResource.tile, 'mingGang')), 'selected-resource-kong-meld-missing');
+    requireValid(input.melds.some((meld) => sameMeld(meld, input.conditionalResource.pongMeld)), 'conditional-resource-pong-meld-missing');
+    const evaluation = evaluateWithSource(input.conditionalResource.tile, input.handAfterKong.concat(input.drawTile), input.melds, true, true);
+    const complete = evaluation.canComplete;
+    return {
+        action: { kind: 'doublePongForcedRun', input },
+        outcome: complete ? 'doublePongForcedRunFakeWin' : 'doublePongForcedRunFailureDiscard',
+        mustDiscard: !complete,
+        robKongWindow: true,
+        evaluation,
+        resourceAfterKong: {
+            selected: (0, kong_resource_1.consumeKongResource)(input.selectedResource),
+            conditional: input.conditionalResource,
+            initial: input.selectedResource,
+        },
+    };
+}
+function validateAddedKongChainWindow(input) {
+    try {
+        validatePongResource(input.initialResource, input.owner);
+    }
+    catch {
+        return 'initial-resource-invalid';
+    }
+    if (!isExactPong(input.chainPongMeld))
+        return 'chain-pong-invalid';
+    if (input.chainPongMeld.tiles[0] === input.initialResource.tile)
+        return 'chain-pong-must-differ';
+    if (countTiles(input.preKongHand, input.initialResource.tile) !== 1)
+        return 'added-kong-pre-kong-count';
+    const expectedInitialHand = removeTiles(input.preKongHand, input.initialResource.tile, 1);
+    if (!expectedInitialHand || !sameTiles(expectedInitialHand, input.initialHandAfterKong))
+        return 'added-kong-hand-after-kong';
+    if (!input.initialMelds.some((meld) => isMatchingGang(meld, input.initialResource.tile, 'mingGang')))
+        return 'added-kong-meld-missing';
+    if (!input.initialMelds.some((meld) => sameMeld(meld, input.chainPongMeld)))
+        return 'chain-pong-meld-missing';
+    if (input.firstDrawTile !== input.chainPongMeld.tiles[0])
+        return 'first-draw-does-not-match-real-pong';
+    return null;
+}
+function prepareAddedKongChainWindow(input) {
+    const reason = validateAddedKongChainWindow(input);
+    if (reason)
+        return { canDeclare: false, reason, robKongWindow: false };
+    return {
+        canDeclare: true,
+        reason: 'matching-real-pong-fourth-tile',
+        chainKongTile: input.chainPongMeld.tiles[0],
+        robKongWindow: true,
+    };
+}
+function validateAddedKongChain(input) {
+    const window = prepareAddedKongChainWindow(input);
+    requireValid(window.canDeclare, window.reason);
+    requireValid(sameTiles(input.handBeforeChainKong, input.initialHandAfterKong.concat(input.firstDrawTile)), 'chain-hand-before-kong');
+    requireValid(countTiles(input.handBeforeChainKong, input.chainPongMeld.tiles[0]) === 1, 'chain-second-kong-count');
+    const expectedChainHand = removeTiles(input.handBeforeChainKong, input.chainPongMeld.tiles[0], 1);
+    requireValid(expectedChainHand != null && sameTiles(expectedChainHand, input.handAfterChainKong), 'chain-hand-after-kong');
+    requireValid(input.melds.some((meld) => isMatchingGang(meld, input.initialResource.tile, 'mingGang')), 'chain-initial-kong-meld-missing');
+    requireValid(input.melds.some((meld) => isMatchingGang(meld, input.chainPongMeld.tiles[0], 'mingGang')), 'chain-second-kong-meld-missing');
+}
+function resolveAddedKongChain(input) {
+    validateAddedKongChain(input);
+    const finalHand = input.handAfterChainKong.concat(input.drawTile);
+    const trueEvaluation = evaluateWithSource(input.initialResource.tile, finalHand, input.melds, false);
+    const evaluation = trueEvaluation.canComplete
+        ? trueEvaluation
+        : evaluateWithSource(input.initialResource.tile, finalHand, input.melds, true);
+    return {
+        action: { kind: 'addedKongChain', input },
+        outcome: trueEvaluation.canComplete ? 'addedKongChainTrueWin' : 'addedKongChainFakeWin',
+        mustDiscard: false,
+        robKongWindow: true,
+        evaluation,
+        resourceAfterKong: (0, kong_resource_1.consumeKongResource)(input.initialResource),
+    };
+}
+function resolveSpecialKongAction(action) {
+    if (action.kind === 'forcedRunConcealed')
+        return resolveForcedRunConcealed(action.input);
+    if (action.kind === 'postPongCandidateConcealedKong')
+        return resolvePostPongCandidateConcealedKong(action.input);
+    if (action.kind === 'doublePongForcedRun')
+        return resolveDoublePongForcedRun(action.input);
+    return resolveAddedKongChain(action.input);
+}
+function specialKongClassification(resolution) {
+    if (!resolution.evaluation.classification)
+        throw new Error('special kong evaluation classification required');
+    return resolution.evaluation.classification;
 }
 
 },
@@ -1494,6 +1800,7 @@ __exportStar(require("./score-calculator"), exports);
 __exportStar(require("./wildcard-resolver"), exports);
 __exportStar(require("./kong-resource"), exports);
 __exportStar(require("./concealed-kong"), exports);
+__exportStar(require("./special-kong"), exports);
 const meld_validator_1 = require("./meld-validator");
 const hand_evaluator_1 = require("./hand-evaluator");
 const kong_resource_1 = require("./kong-resource");

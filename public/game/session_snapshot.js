@@ -7,7 +7,8 @@
   const RESPONSE_KINDS = Object.freeze([null, 'win', 'calls']);
   const HONORS = Object.freeze(['dong', 'nan', 'xi', 'bei', 'zhong', 'fa', 'bai']);
   const KONG_RESOURCE_STATUSES = Object.freeze(['active', 'consumed', 'invalidated']);
-  const KONG_CLAIM_KINDS = Object.freeze(['directChisel', 'forcedRunImmediate', 'forcedRunDeferred', 'chainKong']);
+  const KONG_CLAIM_KINDS = Object.freeze(['directChisel', 'forcedRunImmediate', 'forcedRunDeferred', 'chainKong', 'addedKongChain']);
+  const SPECIAL_KONG_CHOICE_KINDS = Object.freeze(['postPongCandidateConcealedKong', 'forcedRunConcealed', 'doublePongForcedRun', 'cancel']);
 
   function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -60,13 +61,64 @@
       && resource.pongMeld.tiles.every(function (tile) { return tile === resource.tile; });
   }
 
-  function validateKongActionWindow(window) {
-    return window === null || (isObject(window)
-      && KONG_CLAIM_KINDS.includes(window.kind)
-      && isPlayerIndex(window.owner, false)
-      && validateKongResource(window.resource));
+  function validateAddedKongChainWindow(window) {
+    if (!isObject(window)
+      || window.kind !== 'addedKongChain'
+      || !isPlayerIndex(window.owner, false)
+      || !validateKongResource(window.initialResource)
+      || window.initialResource.owner !== window.owner
+      || window.initialResource.status !== 'active'
+      || !validateRuleMeld(window.chainPongMeld)
+      || window.chainPongMeld.type !== 'peng'
+      || window.chainPongMeld.tiles.length !== 3
+      || window.chainPongMeld.tiles[0] === window.initialResource.tile
+      || !isTileArray(window.preKongHand)
+      || !isTileArray(window.initialHandAfterKong)
+      || !Array.isArray(window.initialMelds)
+      || !window.initialMelds.every(validateRuleMeld)
+      || !isTileKey(window.firstDrawTile)) return false;
+    return window.initialMelds.some(function (meld) {
+      return meld.type === 'mingGang'
+        && meld.tiles.length === 4
+        && meld.tiles[0] === window.initialResource.tile;
+    }) && window.initialMelds.some(function (meld) {
+      return meld.type === 'peng'
+        && meld.tiles.length === 3
+        && meld.tiles[0] === window.chainPongMeld.tiles[0];
+    });
   }
 
+  function validateKongActionWindow(window) {
+    if (window === null) return true;
+    if (!isObject(window) || !KONG_CLAIM_KINDS.includes(window.kind)) return false;
+    if (window.kind === 'addedKongChain') return validateAddedKongChainWindow(window);
+    return isPlayerIndex(window.owner, false) && validateKongResource(window.resource);
+  }
+
+  function validateCandidateKongResource(resource) {
+    return isObject(resource)
+      && isPlayerIndex(resource.owner, false)
+      && isTileKey(resource.candidateKongTile)
+      && KONG_RESOURCE_STATUSES.includes(resource.status)
+      && validateRuleMeld(resource.pongMeld)
+      && resource.pongMeld.type === 'peng'
+      && resource.pongMeld.tiles.length === 3;
+  }
+
+  function validateSpecialKongChoice(choice) {
+    return isObject(choice)
+      && typeof choice.key === 'string'
+      && SPECIAL_KONG_CHOICE_KINDS.includes(choice.kind)
+      && (choice.tile === undefined || isTileKey(choice.tile));
+  }
+
+  function validateSpecialKongChoiceWindow(window) {
+    return window === null || (isObject(window)
+      && isPlayerIndex(window.owner, false)
+      && typeof window.phase === 'string'
+      && Array.isArray(window.choices)
+      && window.choices.every(validateSpecialKongChoice));
+  }
   function validateTopSettlement(summary) {
     return summary === null || summary === undefined || (isObject(summary)
       && typeof summary.type === 'string'
@@ -133,6 +185,8 @@
     if (!isObject(snapshot.kongContext) || !isObject(snapshot.kongContext.counts) || !isObject(snapshot.kongContext.wild)) return invalid('invalid-kong-context');
     if (snapshot.kongContext.resources !== undefined && (!Array.isArray(snapshot.kongContext.resources) || !snapshot.kongContext.resources.every(validateKongResource))) return invalid('invalid-kong-resources');
     if (snapshot.kongContext.actionWindow !== undefined && !validateKongActionWindow(snapshot.kongContext.actionWindow)) return invalid('invalid-kong-action-window');
+    if (snapshot.kongContext.candidateResources !== undefined && (!Array.isArray(snapshot.kongContext.candidateResources) || !snapshot.kongContext.candidateResources.every(validateCandidateKongResource))) return invalid('invalid-candidate-kong-resources');
+    if (snapshot.kongContext.choiceWindow !== undefined && !validateSpecialKongChoiceWindow(snapshot.kongContext.choiceWindow)) return invalid('invalid-special-kong-choice-window');
     if (!isObject(snapshot.modeContext) || typeof snapshot.modeContext.selfPlayRunning !== 'boolean') return invalid('invalid-mode-context');
     if (!Number.isInteger(snapshot.totalGames) || snapshot.totalGames < 0) return invalid('invalid-total-games');
     if (snapshot.gameSequence !== null && snapshot.gameSequence !== undefined && (!Number.isInteger(snapshot.gameSequence) || snapshot.gameSequence < 1)) return invalid('invalid-game-sequence');
@@ -183,7 +237,9 @@
         counts: clone(state._kc) || {},
         wild: clone(state._hasWild) || {},
         resources: clone(state._kongResources) || [],
-        actionWindow: clone(state._kongActionWindow) || null
+        actionWindow: clone(state._kongActionWindow) || null,
+        candidateResources: clone(state._candidateKongResources) || [],
+        choiceWindow: clone(state._specialKongChoiceWindow) || null
       },
       modeContext: {
         selfPlayRunning: !!(context && context.selfPlayRunning)
@@ -269,6 +325,8 @@
           _hasWild: clone(snapshot.kongContext.wild) || {},
           _kongResources: clone(snapshot.kongContext.resources) || [],
           _kongActionWindow: clone(snapshot.kongContext.actionWindow) || null,
+          _candidateKongResources: clone(snapshot.kongContext.candidateResources) || [],
+          _specialKongChoiceWindow: clone(snapshot.kongContext.choiceWindow) || null,
           newDrawnTile: newDrawnTile,
           newDrawnIdx: snapshot.newDrawnIdx,
           _gameLog: clone(snapshot.currentGameLog),

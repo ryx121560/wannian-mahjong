@@ -1,10 +1,12 @@
 import { baseScoreForHandType, classifyHand, getPrimaryHandType } from './hand-evaluator';
 import { resolveConcealedKongDraw } from './concealed-kong';
 import { resolveKongDraw } from './kong-resource';
+import { resolveSpecialKongAction, specialKongClassification } from './special-kong';
 import { DEFAULT_RULES } from './rule-config';
 import { isArrow, isHonor, tileSuit } from './tile-utils';
 import type { HandType, KongResourceSettlementInput, KongSettlementInput, KongSettlementResult, KongWinEvent, Meld, MeldType, SettlementInput, SettlementResult, Tile, WinMethod } from './types';
 import type { ConcealedKongDrawInput, ConcealedKongOutcome } from './concealed-kong';
+import type { SpecialKongAction, SpecialKongOutcome } from './special-kong';
 
 export function applyCap(scorePerPlayer: number[], cap = DEFAULT_RULES.capAmount): number[] {
   return scorePerPlayer.map((score) => Math.min(score, cap));
@@ -165,6 +167,62 @@ export function scoreKongSettlement(input: KongSettlementInput): KongSettlementR
 
 export function scoreKongResourceSettlement(input: KongResourceSettlementInput): KongSettlementResult {
   return scoreKongSettlement(input);
+}
+
+export interface SpecialKongSettlementInput {
+  action: SpecialKongAction;
+  winner: number;
+  scores: number[];
+}
+
+export interface SpecialKongSettlementResult {
+  before: number[];
+  after: number[];
+  delta: number[];
+  payments: number[];
+  winner: number;
+  event: SpecialKongOutcome;
+  handTypes: HandType[];
+  multiplier: number;
+  capped: boolean;
+}
+
+function basePaymentsForSpecialKongEvent(event: SpecialKongOutcome, winner: number, playerCount: number): number[] {
+  if (event === 'forcedRunConcealedFailureDiscard' || event === 'doublePongForcedRunFailureDiscard') {
+    throw new Error('failed special kong cannot settle');
+  }
+  const basePayment = event === 'forcedRunConcealedFakeWin' || event === 'doublePongForcedRunFakeWin'
+    ? 2
+    : event === 'postPongCandidateConcealedTrueWin' || event === 'addedKongChainTrueWin'
+      ? 8
+      : 4;
+  return Array.from({ length: playerCount }, (_, playerId) => playerId === winner ? 0 : basePayment);
+}
+
+export function scoreSpecialKongSettlement(input: SpecialKongSettlementInput): SpecialKongSettlementResult {
+  const resolution = resolveSpecialKongAction(input.action);
+  if (resolution.mustDiscard) throw new Error('special kong discard path cannot settle');
+  const classification = specialKongClassification(resolution);
+  const before = input.scores.slice();
+  const multiplier = multiplierForHandTypes(classification.handTypes);
+  const rawPayments = basePaymentsForSpecialKongEvent(resolution.outcome, input.winner, before.length)
+    .map((payment) => payment * multiplier);
+  const payments = applyCap(rawPayments);
+  const after = before.slice();
+  const winnerGain = payments.reduce((total, payment) => total + payment, 0);
+  after[input.winner] += winnerGain;
+  for (let playerId = 0; playerId < after.length; playerId += 1) after[playerId] -= payments[playerId];
+  return {
+    before,
+    after,
+    delta: after.map((score, index) => score - before[index]),
+    payments,
+    winner: input.winner,
+    event: resolution.outcome,
+    handTypes: classification.handTypes,
+    multiplier,
+    capped: rawPayments.some((payment) => payment > DEFAULT_RULES.capAmount),
+  };
 }
 
 function pointsFor(hand: Tile[], winType: WinMethod): number {
