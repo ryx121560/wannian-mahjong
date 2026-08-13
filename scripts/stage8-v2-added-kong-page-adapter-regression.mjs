@@ -137,6 +137,7 @@ function pageCommit(rules, input, suppliedResult) {
   vm.createContext(context);
   for (const name of [
     'removePageTiles', 'resolvePageAddedKongDraw', 'samePageRuleTileList',
+    'captureSettledKongSupplement',
     'samePageAddedKongRuleResult', 'resetPageKongResponseState', 'pageKongActionLabel', 'completePageKongSettlement',
     'hasPageAddedKongSettlementContract', 'completePageAddedKongSettlement', 'applyPageAddedKongDraw',
   ]) vm.runInContext(extractFunction(name), context, { filename: `page-${name}.js` });

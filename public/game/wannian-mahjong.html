@@ -1681,6 +1681,31 @@ function roundRect(ctx,x,y,w,h,r,strokeOnly){
   if(strokeOnly)ctx.stroke();else ctx.fill();
 }
 
+function captureSettledKongSupplement(owner){
+  if(!Number.isInteger(owner)||!GS.players||!GS.players[owner]||!Array.isArray(GS.players[owner].hand))return null;
+  const tile=GS.newDrawnTile,index=GS.newDrawnIdx,hand=GS.players[owner].hand;
+  if(!tile||!Number.isInteger(index)||index<0||index>=hand.length||hand[index]!==tile)return null;
+  return {owner:owner,tileKey:tkey(tile),handIndex:index};
+}
+
+function resolveEndedKongSupplement(){
+  if(GS.phase!=='ended'||!GS._lastResult||GS._lastResult.type!=='杠开')return null;
+  const supplement=GS._lastResult.kongSupplement;
+  if(!supplement||!Number.isInteger(supplement.owner)||supplement.owner<0||supplement.owner>=4||supplement.owner!==GS._lastResult.winner)return null;
+  const player=GS.players&&GS.players[supplement.owner],index=supplement.handIndex;
+  if(!player||!Array.isArray(player.hand)||!Number.isInteger(index)||index<0||index>=player.hand.length)return null;
+  const tile=player.hand[index];
+  if(!tile||typeof supplement.tileKey!=='string'||tkey(tile)!==supplement.tileKey)return null;
+  return {owner:supplement.owner,tile:tile,handIndex:index,label:'杠开补牌'};
+}
+
+function drawKongSupplementLabel(x,y,label){
+  ctx.save();
+  ctx.fillStyle='#ffcc00';ctx.font='bold 16px "Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
+  ctx.fillText(label,x+TW/2,y-8);
+  ctx.restore();
+}
+
 function render(){
   updateTopScoreBar();
   ctx.clearRect(0,0,W,H);
@@ -1697,11 +1722,16 @@ function render(){
 
   // player hand (bottom)
   // 构建手牌副本，排除新摸的牌（已在手牌中，单独显示）
+  const endedKongSupplement=resolveEndedKongSupplement();
   const fullHand = [...GS.players[0].hand];
   const hasNewDrawn = GS.phase==='discarding' && GS.newDrawnTile && GS.cur===0;
   if(hasNewDrawn){
     const ndtIdx = fullHand.indexOf(GS.newDrawnTile);
     if(ndtIdx >= 0) fullHand.splice(ndtIdx, 1);
+  }
+  if(endedKongSupplement&&endedKongSupplement.owner===0){
+    const supplementIdx=fullHand.indexOf(endedKongSupplement.tile);
+    if(supplementIdx>=0)fullHand.splice(supplementIdx,1);
   }
   const ph=fullHand.sort(tcmp);
   const pw=ph.length*(TW+GAP);
@@ -1716,14 +1746,16 @@ function render(){
     GS._hot.push({x:tx,y:H-TH-45+yo,w:TW,h:TH,idx:i,t:ph[i]});
   }
   
-  // 绘制新摸的牌（在最右边，与手牌隔开）
-  if(hasNewDrawn){
+  // Draw the live tile or settled kong supplement separately from the sorted hand.
+  const independentTile=hasNewDrawn?GS.newDrawnTile:(endedKongSupplement&&endedKongSupplement.tile);
+  if(independentTile){
     const newTileGap = 30; // 新牌与手牌的间隔
-    const newTileX = sx + ph.length*(TW+GAP) + newTileGap;
-    const isSelected=selectedTile===GS.newDrawnTile;
+    const newTileX = Math.min(W-TW-24,sx + ph.length*(TW+GAP) + newTileGap);
+    const isSelected=hasNewDrawn&&selectedTile===independentTile;
     const yo = isSelected ? -12 : 0;
-    drawTile(newTileX, H-TH-45+yo, GS.newDrawnTile, {sel:isSelected, hl:true});
-    GS._hot.push({x:newTileX, y:H-TH-45+yo, w:TW, h:TH, idx:GS.newDrawnIdx, t:GS.newDrawnTile});
+    drawTile(newTileX,H-TH-45+yo,independentTile,{sel:isSelected,hl:true,face:!!endedKongSupplement});
+    if(hasNewDrawn)GS._hot.push({x:newTileX,y:H-TH-45+yo,w:TW,h:TH,idx:GS.newDrawnIdx,t:GS.newDrawnTile});
+    else drawKongSupplementLabel(newTileX,H-TH-45,endedKongSupplement.label);
     
     // 绘制分隔线
     const sepX = sx + ph.length*(TW+GAP) + newTileGap/2 - 1;
@@ -2426,6 +2458,7 @@ function resetPageKongResponseState(owner){
 }
 function completePageKongSettlement(owner,action,result){
   const settlement=result.settlement;
+  const kongSupplement=captureSettledKongSupplement(owner);
   if(!settlement)return false;
   const decompositionSignature=result.resolution.evaluation.decomposition&&result.resolution.evaluation.decomposition.signature;
   GS._preWinScores=GS.players.map(function(player){return player.score;});
@@ -2436,6 +2469,7 @@ function completePageKongSettlement(owner,action,result){
   logEvent(owner,'杠开',null,{actionKind:actionKind,outcome:result.resolution.outcome,decompositionSignature:decompositionSignature,handTypes:settlement.handTypes,payments:settlement.payments});
   const gain=settlement.delta[owner];
   GS._lastResult={title:GS.players[owner].name+'杠开胡了！',type:'杠开',huType:settlement.handTypes.join('+'),handTypes:settlement.handTypes.slice(),decompositionSignature:decompositionSignature,pts:gain,winner:owner,kongAction:action.kind,kongOutcome:result.resolution.outcome,scoreDeltas:settlement.delta.slice(),displayText:formatWinSettlementText(GS.players[owner].name+'杠开胡了！',actionKind+'('+result.resolution.outcome+')',gain)};commitTopSettlementSummary(GS._lastResult);
+  GS._lastResult.kongSupplement=kongSupplement;
   finalizeRecommendationSummary();
   renderFinalRecommendationPanel();
   if(window.RL&&RL.useRL){

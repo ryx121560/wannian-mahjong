@@ -44,6 +44,7 @@
     "test:p1-top-settlement-persistence": "node scripts/p1-top-settlement-persistence-regression.mjs",
     "test:p1-score-baseline-reset": "node scripts/p1-score-baseline-reset-regression.mjs",
     "test:p1-score-baseline-migration": "node scripts/p1-score-baseline-migration-regression.mjs",
+    "test:p1-kong-settlement-draw": "node scripts/p1-kong-settlement-draw-regression.mjs",
     "migrate:score-baseline-50": "node scripts/score-baseline-50-migration.mjs",
     "test:dealer-continuity": "node scripts/dealer-continuity-regression.mjs",
     "test:rl-weights-path": "node scripts/rl-weights-path-regression.mjs",
