@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "stage8-c4-diagnostic-v2-actor-runtime-proposal-v1",
+  "status": "source-audited-minimal-implementation-not-authorized",
+  "sourceCommit": "64def8ccfd8596c4542cda35a0a271bb1c169215",
+  "auditVerdict": {
+    "existingSafeReusableActorFound": false,
+    "rulesAndRoundEngineReusable": true,
+    "strongAiCompleteV2Coverage": false,
+    "mctsCompleteV2Coverage": false,
+    "recommendationIsExecutionPolicy": false,
+    "pageAiSideEffectFree": false,
+    "c3PolicyAllowed": false
+  },
+  "proposedActor": {
+    "actorId": "c4-diagnostic-v2-canonical-sampler",
+    "actorVersion": "stage8-c4-diagnostic-v2-actor-v1",
+    "actionSpaceVersion": "stage8-action-space-v2",
+    "implementationStatus": "not-created",
+    "proposedSourcePath": "src/game/stage8/diagnostic-actor-v2.ts",
+    "actorSourceSha256": null,
+    "runtimeFingerprint": null,
+    "decisionMode": "sha256-seeded-uniform-over-rule-authorized-canonical-actions",
+    "mandatoryRulePriority": "trusted-rule-controller-owned",
+    "actionOrdering": "canonical-action-id-ascending",
+    "plannedConfigFingerprint": "008CF41F524E1336E47308CAF957625240F5F191A3CA7A9CD63F6F7C39C33C68"
+  },
+  "seedIdentity": {
+    "schemaVersion": "stage8-c4-diagnostic-actor-seed-v1",
+    "domain": "stage8-c4-diagnostic-v2-actor-v1",
+    "rootSeed": 2026080901,
+    "derivation": "sha256(domain\\0rootSeed\\0gameId\\0decisionIndex\\0actorSeat)",
+    "actionOrdering": "canonical-action-id-ascending",
+    "seedFingerprint": "2B96C862E701479246B432F7F1941AC14AC96B6DFBDD4F5A1A7A5D7188FA3A91"
+  },
+  "frozenDependencies": {
+    "auditedDependencyFingerprint": "79EECCE2DA981B38AC2154777A54ED8B90F3B1CD66C8F506DC2F7848E6B7F028",
+    "registry": {
+      "path": "src/game/stage8/action-registry-v2.ts",
+      "gitBlobSha256": "7B742C3AB12DFAA0CF005070AFBFBC7AFCB3992CFC5C79AFFEE5B01B2AF4E9E7",
+      "acceptedCheckoutSha256": "DE8F2B28F785F8E26A621F27B4403A5DE1B91788DC757423E28D9221C0790753"
+    },
+    "roundEngineGitBlobSha256": "D93669512037F979B5A9F049C1BC9389EF3126FC1C2DB5D74C056177486F9EF8",
+    "ruleAdapterGitBlobSha256": "02E048EB765275194E2EAC0009AEF43C9D8537639A8130F74A61D6B0E31BEC7F",
+    "ruleIndexGitBlobSha256": "C4DE1E69B9E944C32EB065704005E9AB33048EF1782AD819A10DD7CAB50E73FE",
+    "specialKongGitBlobSha256": "A377105FF317C1FE32638224B2E0ACCDDB798519A2DE197911FBB603DE7C7DE4",
+    "kongResourceGitBlobSha256": "A9919EF40B900364D444AC8E7E0081D6FBED9831E4DFCA7781C6589149BE7627"
+  },
+  "actorInputContract": {
+    "allowed": [
+      "actorOwnVisibleHand",
+      "publicMelds",
+      "publicDiscards",
+      "scores",
+      "turnAndPhase",
+      "publicLastDiscard",
+      "actorOwnedPublicResourceSummaries",
+      "wallRemainingCount",
+      "canonicalLegalActions"
+    ],
+    "forbidden": [
+      "wallTiles",
+      "wallTop",
+      "opponentHands",
+      "hiddenSimulationState",
+      "c3PolicyLogits",
+      "v1ActionIds",
+      "replay",
+      "checkpoint",
+      "model",
+      "manifest",
+      "workRoot",
+      "userRecords"
+    ]
+  },
+  "actionCoverage": {
+    "requiredActionTypes": [
+      "pass",
+      "discard",
+      "pong",
+      "win",
+      "directChisel",
+      "forcedRunImmediate",
+      "forcedRunDeferred",
+      "addedKong",
+      "chainKong",
+      "normalConcealedKong",
+      "forcedRunConcealed",
+      "postPongCandidateConcealedKong",
+      "doublePongForcedRun",
+      "declineKong"
+    ],
+    "fixtureCoverageRequired": "each-action-at-least-one-selected-and-one-non-selected-when-competing",
+    "actualRuntimeCoverageAvailable": false
+  },
+  "observerEquivalence": {
+    "observer": "candidate-3-step150-read-only-value-head",
+    "policyLogitsUsed": false,
+    "observerSeedDomain": "stage8-c4-diagnostic-observer-v1",
+    "observerMayConsumeActorRandomness": false,
+    "requiredEquality": [
+      "canonicalLegalActionIds",
+      "selectedActionId",
+      "terminalStateHash",
+      "actualActionsHash",
+      "behaviorDistributionHash",
+      "publicSummaryHash"
+    ],
+    "fullDryRunRequired": true
+  },
+  "failClosedGates": {
+    "actorSourceSha256Present": false,
+    "runtimeFingerprintPresent": false,
+    "visibleObservationAllowlistImplemented": false,
+    "allV2ActionsCovered": false,
+    "observerOnOffEquivalent": false,
+    "privacyScanPassed": false,
+    "productImplementationAuthorization": false,
+    "diagnosticRootMayBeCreated": false,
+    "corpusMayBeCollected": false
+  },
+  "prohibitions": {
+    "runtimeCodeWrittenInThisStage": true,
+    "modelOrOnnxCreated": true,
+    "selfplayOrCorpusCreated": true,
+    "replayWritten": true,
+    "scaleFitted": true,
+    "finalTestOpened": true,
+    "candidate4Created": true,
+    "trainingOrArenaStarted": true
+  }
+}

@@ -55,6 +55,7 @@
     "test:stage8-v2-kong-execution": "node scripts/stage8-v2-kong-execution-gate-regression.mjs",
     "test:stage8-c4-value-calibration-readiness": "node scripts/stage8-c4-value-calibration-readiness-regression.mjs",
     "test:stage8-c4-value-calibration-preflight": "node scripts/stage8-c4-value-calibration-preflight-regression.mjs",
+    "test:stage8-c4-diagnostic-actor": "node scripts/stage8-c4-diagnostic-actor-runtime-regression.mjs",
     "stage8:c4:value-calibration:preflight": "node scripts/stage8-c4-value-calibration-preflight.mjs"
   },
   "dependencies": {
