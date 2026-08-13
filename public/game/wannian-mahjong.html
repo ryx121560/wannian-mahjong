@@ -9,7 +9,7 @@ body{background:#1a3c1a;overflow:hidden}
 canvas{display:block;margin:112px auto 0;border:12px solid #8b4513;border-radius:16px}
 #ui{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:200px}
 #bar{position:fixed;top:14px;left:50%;transform:translateX(-50%);box-sizing:border-box;width:min(520px,calc(100vw - 24px));max-width:calc(100vw - 24px);overflow:hidden;white-space:pre-line;min-height:60px;background:rgba(0,0,0,0.78);color:#ffcc00;padding:8px 18px;border:1px solid rgba(212,160,23,0.45);border-radius:8px;font-size:14px;line-height:1.45;text-align:center;z-index:90;pointer-events:none;font-variant-numeric:tabular-nums}
-#btns{display:flex;gap:10px;pointer-events:auto}
+#btns{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:1120px;pointer-events:auto}
 button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;color:#fff}
 .btn-d{background:#4a752c}.btn-d:hover{background:#5a9a3c}.btn-d:disabled{background:#555;color:#aaa}
 .btn-a{background:#d4a017}.btn-a:hover{background:#e8b830}.btn-a:disabled{background:#555;color:#aaa}
@@ -65,7 +65,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 #ai-log-panel th,#ai-log-panel td{border:1px solid #444;padding:3px 5px;text-align:center;font-size:12px}
 #ai-log-panel th{background:rgba(74,117,44,0.3);color:#9f9}
 #ai-log-panel .close{display:block;margin:12px auto 0;background:#555;padding:8px 18px}
-@media (max-width:600px){#bar{top:8px;box-sizing:border-box;width:calc(100vw - 16px);max-width:calc(100vw - 16px);min-height:48px;padding:6px 10px;font-size:12px;line-height:1.35}}
+@media (max-width:600px){#bar{top:8px;box-sizing:border-box;width:calc(100vw - 16px);max-width:calc(100vw - 16px);min-height:48px;padding:6px 10px;font-size:12px;line-height:1.35}#btns{width:calc(100vw - 16px);gap:6px}button{padding:8px 10px;font-size:13px}}
    </style>
 <style>#sp-status{display:none;position:fixed;bottom:60px;left:10px;background:rgba(0,0,0,0.85);color:#0f0;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;line-height:1.6}</style></head>
 <body>
@@ -82,7 +82,7 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:15px;font-weigh
 <button class="btn-n" id="bt-new">新游戏</button>
 
 <button class="btn-eye" id="bt-eye" title="显示/隐藏AI手牌">👁</button>
-<button class="btn-n" id="bt-export" title="导出游戏记录到JSON文件">导出记录</button><button class="btn-n" id="bt-selfplay" title="AI自弈训练">自弈</button><button class="btn-n" id="bt-speed" title="切换自弈速度" style="display:none">快速</button>
+<button class="btn-n" id="bt-export" title="导出游戏记录到JSON文件">导出记录</button><button class="btn-n" id="bt-reset-scores" title="将四家积分重置为50并开始新局">重置积分</button><button class="btn-n" id="bt-selfplay" title="AI自弈训练">自弈</button><button class="btn-n" id="bt-speed" title="切换自弈速度" style="display:none">快速</button>
 </div>
 </div>
 <div id="rules-panel">
@@ -876,7 +876,11 @@ function getSelectedTile(){
 }
 
 // 持久化分数（全局，与服务器同步）
-let scores = [100, 100, 100, 100];
+const SCORE_BASELINE=50;
+function createBaselineScores(){return [SCORE_BASELINE,SCORE_BASELINE,SCORE_BASELINE,SCORE_BASELINE];}
+function bankruptScoreResetNotice(name){return name+'破产，四名玩家积分已统一重置为 '+SCORE_BASELINE;}
+let scores = createBaselineScores();
+let _authoritativeScoresLoaded=false;
 let totalGamesPlayed = 0;
 let _selfPlay={running:false,count:0,fast:true,audit:{invalidWins:0,suspiciousWins:0,failures:[]}};
 let _sessionInitialized=false;
@@ -962,6 +966,7 @@ function clearGameTimers(){
 }
 
 function currentGameSequence(){
+  if(typeof GS==='undefined'||!GS)return null;
   const value=GS._gameSequence||(GS._gameLog&&GS._gameLog.gameSequence);
   return Number.isInteger(value)&&value>0?value:null;
 }
@@ -1095,6 +1100,7 @@ function restoreGameSession(snapshot){
     clearGameSnapshot('restore-failed');
     return false;
   }
+  const authoritativeScores=typeof _authoritativeScoresLoaded!=='undefined'&&_authoritativeScoresLoaded&&Array.isArray(scores)&&scores.length===4&&scores.every(Number.isFinite)?scores.slice():null;
   clearGameTimers();
   Object.assign(GS,restored.state);
   GS._gameSequence=restored.gameSequence||((restored.state._gameLog&&restored.state._gameLog.gameSequence)||null);
@@ -1110,7 +1116,10 @@ function restoreGameSession(snapshot){
       GS.players[i].lastDrawnTileKey=null;
     }
   }
-  scores=GS.players.map(function(player){return player.score;});
+  if(authoritativeScores){
+    GS.players.forEach(function(player,index){player.score=authoritativeScores[index];});
+    scores=authoritativeScores;
+  }else scores=GS.players.map(function(player){return player.score;});
   totalGamesPlayed=restored.totalGames;
   _selfPlay.running=restored.selfPlayRunning;
   _selfPlay.count=totalGamesPlayed;
@@ -1873,26 +1882,43 @@ function render(){
 
 // === 分数持久化 ===
 async function loadScores() {
+  _authoritativeScoresLoaded=false;
   try {
     const r = await fetch('/api/rl/load_rl');
     const all = await r.json();
     if (all && Array.isArray(all.scores) && all.scores.length === 4 && all.scores.every(Number.isFinite)) {
       if(Number.isInteger(all.totalGames)&&all.totalGames>=0)totalGamesPlayed=all.totalGames;
+      _authoritativeScoresLoaded=true;
       return all.scores;
     }
     console.warn('[scores] invalid persisted score data, using defaults');
   } catch(e) {console.warn('[scores] load failed, using defaults',e);}
-  return [100, 100, 100, 100];
+  return createBaselineScores();
 }
 
-async function saveScores() {
+async function saveScores(nextScores=scores) {
   try {
-    await fetch('/api/rl/save_rl', {
+    const response=await fetch('/api/rl/save_rl', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({agent:'scoreboard',scores:scores,totalGames:totalGamesPlayed})
+      body: JSON.stringify({agent:'scoreboard',scores:nextScores,totalGames:totalGamesPlayed})
     });
-  } catch(e) {console.warn('[scores] save failed',e);}
+    const result=await response.json();
+    if(!response.ok||!result||result.ok!==true)throw new Error(result&&result.error?result.error:'score-save-failed');
+    return true;
+  } catch(e) {console.warn('[scores] save failed',e);return false;}
+}
+
+async function resetScoresManually(){
+  if(!confirm('确认将四家积分重置为50，并清除当前未完成对局后立即开始新局？'))return false;
+  const nextScores=createBaselineScores();
+  if(!await saveScores(nextScores)){alert('积分重置失败，当前对局和积分均未改动。');return false;}
+  scores=nextScores;
+  if(Array.isArray(GS.players))GS.players.forEach(function(player){player.score=SCORE_BASELINE;});
+  clearGameSnapshot('manual-score-reset');
+  const started=newGame({dealer:0,snapshotAlreadyCleared:true});
+  if(started===false){alert('积分已重置，但新局启动失败。请保留页面并联系研发。');return false;}
+  return true;
 }
 
 // game logic
@@ -1902,11 +1928,12 @@ function resolveNextDealer(previousState){
   if(!hasTrustedNoBankruptcy||!Number.isInteger(result.winner)||result.winner<0||result.winner>3)return 0;
   return result.winner;
 }
-function newGame(){
-  const dealer=resolveNextDealer(GS);
+function newGame(options){
+  options=options||{};
+  const dealer=options.dealer===0?0:resolveNextDealer(GS);
   let gameSequence;
   try{gameSequence=allocateGameSequence(localStorage);}catch(error){console.error('[game log] game sequence allocation failed',error);alert('无法分配稳定局号，未开始新局。请检查浏览器存储权限。');return false;}
-  clearGameSnapshot('new-game');
+  if(!options.snapshotAlreadyCleared)clearGameSnapshot('new-game');
   clearGameTimers();
   _sessionResumeScheduled=false;
   if(!_selfPlay.running)configureAiLearning(false);
@@ -1952,7 +1979,7 @@ function newGame(){
 
   // check tian hu (only raw 14 cards, no wild)
   if(canSelfWinForPlayer(GS.dealer,null,'天胡')&&meetsThresh(GS.players[GS.dealer].hand)){
-    GS.phase='ended';applyWin(GS.dealer,'天胡');return;
+    GS.phase='ended';applyWin(GS.dealer,'天胡');return true;
   }
   GS.phase='drawing';
   document.getElementById('suggest').style.display='none';
@@ -1980,6 +2007,7 @@ function newGame(){
     clearTimeout(GS._aiActionTimer);
     GS._aiActionTimer=gameSetTimeout(()=>aiDiscard(GS.cur),700);
   }
+  return true;
 }
 
 // -- win check --
@@ -2281,10 +2309,10 @@ function persistSettledScores(){
   scores=GS.players.map(function(player){return player.score;});
   const bankrupt=scores.findIndex(function(score){return score<=0;});
   if(bankrupt>=0){
-    scores=[100,100,100,100];
-    for(let i=0;i<GS.players.length;i++)GS.players[i].score=100;
+    scores=createBaselineScores();
+    GS.players.forEach(function(player){player.score=SCORE_BASELINE;});
     const names=['你','下家','对家','上家'];
-    const notice=names[bankrupt]+'破产，四名玩家积分已统一重置为 100';
+    const notice=bankruptScoreResetNotice(names[bankrupt]);
     if(_selfPlay.running)document.getElementById('sp-info').textContent=notice;
     else alert(notice+'。');
   }
@@ -4784,15 +4812,20 @@ function formatTopSettlementSummary(lastResult,players){
   const deltaText=lastResult.scoreDeltas.map(function(delta,index){return deltaLabels[index]+(delta>=0?'+':'')+delta;}).join(' | ');
   return resultLabel+' | '+deltaText;
 }
+function formatCurrentGameLabel(){
+  const sequence=currentGameSequence();
+  return sequence?'第'+sequence+'局':'未开始';
+}
 function updateTopScoreBar(){
   const players=typeof GS!=='undefined'&&Array.isArray(GS.players)?GS.players:[];
   const labels=['你','AI下家','AI对家','AI上家'];
-  const text=labels.map(function(label,index){
+  const scoreLabels=labels.map(function(label,index){
     const player=players[index];
     const name=player&&typeof player.name==='string'&&player.name.trim()?player.name.trim():label;
     const score=player&&Number.isFinite(player.score)?player.score:'-';
     return name+':'+score;
-  }).join(' | ');
+  });
+  const text=[formatCurrentGameLabel()].concat(scoreLabels).join(' | ');
   const summary=formatTopSettlementSummary(currentTopSettlementSummary(),players);
   document.getElementById('bar').textContent=summary?text+'\n'+summary:text;
 }
@@ -4850,6 +4883,7 @@ btnEye.addEventListener('click',function(){
 });
 
 document.getElementById('bt-export').onclick=exportGameLogs;
+document.getElementById('bt-reset-scores').onclick=resetScoresManually;
 document.getElementById('bt-selfplay').addEventListener('click',()=>{toggleSelfPlay();});
 document.getElementById('bt-speed').addEventListener('click',()=>{_selfPlay.fast=!_selfPlay.fast;document.getElementById('bt-speed').textContent=_selfPlay.fast?'快速':'慢速';});
 

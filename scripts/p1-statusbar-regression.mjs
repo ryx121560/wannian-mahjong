@@ -69,6 +69,8 @@ const scoreContext = {
 scoreContext.currentTopSettlementSummary = () => scoreContext.topSettlement || null;
 vm.createContext(scoreContext);
 vm.runInContext(extractFunction('captureSettlementScoreDeltas'), scoreContext, { filename: 'captureSettlementScoreDeltas.js' });
+vm.runInContext(extractFunction('currentGameSequence'), scoreContext, { filename: 'currentGameSequence.js' });
+vm.runInContext(extractFunction('formatCurrentGameLabel'), scoreContext, { filename: 'formatCurrentGameLabel.js' });
 vm.runInContext(extractFunction('formatTopSettlementSummary'), scoreContext, { filename: 'formatTopSettlementSummary.js' });
 vm.runInContext(extractFunction('updateTopScoreBar'), scoreContext, { filename: 'updateTopScoreBar.js' });
 vm.runInContext(extractFunction('setMsg'), scoreContext, { filename: 'setMsg.js' });

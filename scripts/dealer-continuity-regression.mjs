@@ -36,7 +36,7 @@ assert.equal(decide({ phase: 'ended', _lastResult: null }), 0, 'an old snapshot 
 assert.equal(decide(null), 0, 'a missing previous state falls back to seat zero');
 
 const newGame = extractFunction('newGame');
-const decisionIndex = newGame.indexOf('const dealer=resolveNextDealer(GS);');
+const decisionIndex = newGame.indexOf('const dealer=options.dealer===0?0:resolveNextDealer(GS);');
 const assignmentIndex = newGame.indexOf('GS.dealer=dealer;GS.cur=dealer;');
 const clearResultIndex = newGame.indexOf('GS._lastResult=null');
 assert.notEqual(decisionIndex, -1, 'newGame must resolve the next dealer from the previous state');
