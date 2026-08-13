@@ -1753,7 +1753,7 @@ function render(){
     const newTileX = Math.min(W-TW-24,sx + ph.length*(TW+GAP) + newTileGap);
     const isSelected=hasNewDrawn&&selectedTile===independentTile;
     const yo = isSelected ? -12 : 0;
-    drawTile(newTileX,H-TH-45+yo,independentTile,{sel:isSelected,hl:true,face:!!endedKongSupplement});
+    drawTile(newTileX,H-TH-45+yo,independentTile,{sel:isSelected,hl:true,face:true});
     if(hasNewDrawn)GS._hot.push({x:newTileX,y:H-TH-45+yo,w:TW,h:TH,idx:GS.newDrawnIdx,t:GS.newDrawnTile});
     else drawKongSupplementLabel(newTileX,H-TH-45,endedKongSupplement.label);
     
