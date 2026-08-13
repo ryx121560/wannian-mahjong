@@ -563,13 +563,13 @@ assert.match(
 );
 assert.match(
   extractFunction('canSelfKong'),
-  /preparePageDeferredKongAction\(p\)/,
-  'a retained resource must surface a deferred forced-run opportunity only for its owner turn',
+  /collectPageKongDeclarations\(p\)/,
+  'a retained resource must surface through the shared owner-turn declaration collector',
 );
 assert.match(
   extractFunction('doSelfKong'),
-  /preparePageChainKongAction\(p\)/,
-  'the common kong button must prepare a real second-kong action from the first draw window',
+  /collectPageKongDeclarations\(p\)/,
+  'the common kong button must reuse the side-effect-free declaration set for second-kong execution',
 );
 assert.match(
   extractFunction('doSelfKong'),

@@ -462,7 +462,56 @@ function collectPageSpecialKongChoices(playerIdx){
     }
   }
   return choices.sort(function(left,right){return left.key.localeCompare(right.key);});
-}function openPageSpecialKongChoiceWindow(playerIdx,choices){
+}
+function collectPageKongDeclarations(playerIdx){
+  const player=GS.players[playerIdx];
+  if(!player||!Array.isArray(player.hand)||GS.cur!==playerIdx||GS.phase!=='discarding')return [];
+  const declarations=[],seen=new Set();
+  function add(declaration){
+    if(!declaration||!declaration.kind)return;
+    const tile=declaration.tile?tkey(declaration.tile):'';
+    const choiceKey=declaration.choice&&declaration.choice.key||'';
+    const key=[declaration.kind,tile,choiceKey].join(':');
+    if(seen.has(key))return;
+    seen.add(key);declarations.push(declaration);
+  }
+  for(const choice of collectPageSpecialKongChoices(playerIdx)){
+    add({kind:choice.kind,tile:choice.tile,action:choice.action,choice:choice,source:'special'});
+  }
+  const addedChainAction=preparePageAddedKongChainAction(playerIdx);
+  if(addedChainAction){
+    const tile=kt(addedChainAction.input.chainPongMeld.tiles[0]);
+    add({kind:'addedKongChain',tile:tile,action:addedChainAction,info:{type:'addedKongChain',tile:tile,action:addedChainAction}});
+  }
+  const chainAction=preparePageChainKongAction(playerIdx);
+  if(chainAction){
+    const tile=kt(chainAction.secondKongTile);
+    add({kind:'chainKong',tile:tile,action:chainAction,info:{type:'chain',tile:tile,action:chainAction}});
+  }
+  const deferredAction=preparePageDeferredKongAction(playerIdx);
+  if(deferredAction){
+    const tile=kt(deferredAction.resource.tile);
+    add({kind:'forcedRunDeferred',tile:tile,action:deferredAction,info:{type:'deferred',tile:tile,action:deferredAction}});
+  }
+  const hand=ruleTiles(player.hand);
+  for(const meld of player.melds||[]){
+    if(!meld||meld.count!==3||!player.hand.some(function(tile){return teq(tile,meld.tile);}))continue;
+    const tileKey=tkey(meld.tile);
+    if(!RULE_ENGINE.canMingGang(hand,ruleMeldsForPlayer(playerIdx),tileKey))continue;
+    add({kind:'addedKong',tile:meld.tile,info:{type:'add',tile:meld.tile}});
+  }
+  const concealedKeys=RULE_ENGINE.canAnGang(hand).slice().sort();
+  if(GS.newDrawnTile){
+    const drawnKey=tkey(GS.newDrawnTile),index=concealedKeys.indexOf(drawnKey);
+    if(index>0)concealedKeys.unshift(concealedKeys.splice(index,1)[0]);
+  }
+  for(const tileKey of concealedKeys){
+    const tile=player.hand.find(function(item){return tkey(item)===tileKey;});
+    if(tile)add({kind:'normalConcealedKong',tile:tile,info:{type:'concealed',tile:tile}});
+  }
+  return declarations;
+}
+function openPageSpecialKongChoiceWindow(playerIdx,choices){
   const available=(choices||[]).filter(function(choice){return choice&&choice.key&&choice.kind;});
   if(!available.length)return false;
   GS._specialKongChoiceWindow={owner:playerIdx,phase:'discarding',choices:available.map(publicPageSpecialKongChoice)};
@@ -582,7 +631,11 @@ function preparePageInitialKongAction(playerIdx){
 function preparePageDeferredKongAction(playerIdx){
   const player=GS.players[playerIdx];
   const resource=((player&&player.hand)||[]).map(function(tile){return activePageKongResource(playerIdx,tile);}).find(Boolean);
-  if(!resource||!RULE_ENGINE.canUseDeferredForcedRun(pageRuleState(GS),playerIdx))return null;
+  const declarationState={
+    phase:GS.phase,currentPlayer:GS.cur,kongResources:pageKongResources(),
+    players:(GS.players||[]).map(function(item,index){return {hand:ruleTiles((item&&item.hand)||[]),melds:ruleMeldsForPlayer(index)};})
+  };
+  if(!resource||!RULE_ENGINE.canUseDeferredForcedRun(declarationState,playerIdx))return null;
   const tile=kt(resource.tile);
   const handAfterKong=removePageTiles(player.hand,tile,1);
   if(!handAfterKong)return null;
@@ -2232,8 +2285,8 @@ function completeHumanDraw(playerIdx,reason){
   GS.newDrawnIdx=GS.players[playerIdx].hand.length-1;
   clearSelectedTile();
   GS.canWS=canSelfWinForPlayer(playerIdx,GS.newDrawnTile,'自摸');
-  GS.canK=!!canSelfKong(playerIdx);
   GS.phase='discarding';
+  GS.canK=collectPageKongDeclarations(playerIdx).length>0;
   setMsg('选择要打出的牌（新摸的牌在最右边）');
   render();updateBtns();updateSuggestion();
   saveGameSnapshot(reason||'human-draw');
@@ -2382,28 +2435,8 @@ function drawGame(){
 function canPongChk(h,t){return RULE_ENGINE.canPeng(ruleTiles(h),tkey(t));}
 function canKongChk(h,t){return RULE_ENGINE.canQiangXingPaoGang(ruleTiles(h),[],false,tkey(t)).canGang;}
 function canSelfKong(p){
-  if(!GS.newDrawnTile) return null;
-  const t=GS.newDrawnTile,pl=GS.players[p];
-  const addedChainAction=preparePageAddedKongChainAction(p);
-  if(addedChainAction)return {type:'addedKongChain',tile:kt(addedChainAction.input.chainPongMeld.tiles[0]),action:addedChainAction};
-  const chainAction=preparePageChainKongAction(p);
-  if(chainAction)return {type:'chain',tile:kt(chainAction.secondKongTile),action:chainAction};
-  const deferredAction=preparePageDeferredKongAction(p);
-  if(deferredAction)return {type:'deferred',tile:kt(deferredAction.resource.tile),action:deferredAction};
-  // Add-kong: after drawing, any tile already ponged can be upgraded if one copy remains in hand.
-  if(pl.melds){
-    for(const meld of pl.melds){
-      if(meld.count===3&&pl.hand.some(function(tile){return teq(tile,meld.tile);})&&RULE_ENGINE.canMingGang(ruleTiles(pl.hand),ruleMeldsForPlayer(p),tkey(meld.tile))) return {type:'add',tile:meld.tile};
-    }
-  }
-  // 暗杠：手牌（含刚摸的）中是否有 >=4 张同名牌
-  const anGangTiles=RULE_ENGINE.canAnGang(ruleTiles(pl.hand));
-  if(anGangTiles.includes(tkey(t))) return {type:'concealed',tile:t};
-  for(const k of anGangTiles){
-    const tile=pl.hand.find(function(item){return tkey(item)===k;});
-    if(tile)return {type:'concealed',tile:tile};
-  }
-  return null;
+  const declaration=collectPageKongDeclarations(p).find(function(item){return item&&item.info;});
+  return declaration?declaration.info:null;
 }
 
 function doPong(p){
@@ -2433,7 +2466,7 @@ function doPong(p){
   GS.cur=p;GS.lastDiscard=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   clearPlayerDrawMarker(p);
   GS.phase='discarding';GS.canP=GS.canW=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;
-  GS.canK=collectPageSpecialKongChoices(p).length>0;
+  GS.canK=collectPageKongDeclarations(p).length>0;
   setMsg(GS.players[p].name+'碰牌后可选择杠或弃牌');
   render();updateBtns();
   saveGameSnapshot('pong');
@@ -2497,7 +2530,7 @@ function completePageKongSettlement(owner,action,result){
   return true;
 }
 function commitPageSpecialFailureDiscard(owner,action,replayAction,result,drawTile){
-  resetPageKongResponseState(owner);GS.phase='discarding';GS.canK=!!(canSelfKong(owner)||collectPageSpecialKongChoices(owner).length);
+  resetPageKongResponseState(owner);GS.phase='discarding';GS.canK=collectPageKongDeclarations(owner).length>0;
   logEvent(owner,'kong-draw',drawTile,{actionKind:action.kind,outcome:result.resolution.outcome});
   setMsg(GS.players[owner].name+' '+action.kind+' requires discard');
   render();updateBtns();saveGameSnapshot('special-kong-failure-discard');
@@ -2605,7 +2638,7 @@ function applyInitialPageKongAction(action){
     return true;
   }
   if(result.settlement){completePageKongSettlement(owner,replayAction,result);return true;}
-  resetPageKongResponseState(owner);GS.phase='discarding';GS.canK=!!canSelfKong(owner);
+  resetPageKongResponseState(owner);GS.phase='discarding';GS.canK=collectPageKongDeclarations(owner).length>0;
   setMsg(GS.players[owner].name+pageKongActionLabel(action.kind)+'未跑到，请出牌');
   render();updateBtns();saveGameSnapshot('forced-run-failure-discard');
   if(!player.human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(function(){aiDiscard(owner);},1200);}
@@ -2645,7 +2678,7 @@ function applyPageDeferredKongAction(action){
   GS._kc[owner]=(GS._kc[owner]||0)+1;
   logEvent(owner,'杠后摸',drawTile,pageKongResolutionLogMeta(action,result.resolution));
   if(result.settlement){completePageKongSettlement(owner,replayAction,result);return true;}
-  resetPageKongResponseState(owner);GS.phase='discarding';GS.canK=!!canSelfKong(owner);
+  resetPageKongResponseState(owner);GS.phase='discarding';GS.canK=collectPageKongDeclarations(owner).length>0;
   setMsg(GS.players[owner].name+'延迟强行跑杠未跑到，请出牌');
   render();updateBtns();saveGameSnapshot('deferred-forced-run-failure-discard');
   if(!player.human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(function(){aiDiscard(owner);},1200);}
@@ -2699,7 +2732,8 @@ function applyPageNormalConcealedKongAction(p,info){
 
 function doSelfKong(p){
   clearSelectedTile();
-  const specialChoices=collectPageSpecialKongChoices(p);
+  const declarations=collectPageKongDeclarations(p);
+  const specialChoices=declarations.filter(function(item){return item.source==='special'&&item.choice;}).map(function(item){return item.choice;});
   if(specialChoices.length===1)return executePageSpecialKongAction(specialChoices[0].action);
   if(specialChoices.length>1){
     if(openPageSpecialKongChoiceWindow(p,specialChoices)){
@@ -2708,27 +2742,27 @@ function doSelfKong(p){
     }
     return false;
   }
-  const addedChainAction=preparePageAddedKongChainAction(p);
+  const addedChainAction=(declarations.find(function(item){return item.kind==='addedKongChain';})||{}).action;
   if(addedChainAction){
     const chainTile=addedChainAction.input.chainPongMeld.tiles[0];
     const robWinner=resolvePageRobKongWinner(p,chainTile);
     if(robWinner!=null){setMsg(GS.players[robWinner].name+'抢杠胡牌！');GS._robKongTarget=p;applyWin(robWinner,'抢杠');return true;}
     return applyPageAddedKongChainAction(addedChainAction);
   }
-  const chainAction=preparePageChainKongAction(p);
+  const chainAction=(declarations.find(function(item){return item.kind==='chainKong';})||{}).action;
   if(chainAction){
     const robWinner=RULE_ENGINE.resolveRobKongWinner(pageRuleState(GS),p,chainAction.secondKongTile);
     if(robWinner!=null){setMsg(GS.players[robWinner].name+'抢杠胡牌！');GS._robKongTarget=p;applyWin(robWinner,'抢杠');return true;}
     return applyPageChainKongAction(chainAction);
   }
-  const deferredAction=preparePageDeferredKongAction(p);
+  const deferredAction=(declarations.find(function(item){return item.kind==='forcedRunDeferred';})||{}).action;
   if(deferredAction){
     const robWinner=RULE_ENGINE.resolveRobKongWinner(pageRuleState(GS),p,deferredAction.resource.tile);
     if(robWinner!=null){setMsg(GS.players[robWinner].name+'抢杠胡牌！');GS._robKongTarget=p;applyWin(robWinner,'抢杠');return true;}
     return applyPageDeferredKongAction(deferredAction);
   }
-  const info=canSelfKong(p);
-  if(!info||!GS.newDrawnTile) return;
+  const info=(declarations.find(function(item){return item.info&&['add','concealed'].includes(item.info.type);})||{}).info;
+  if(!info) return;
   if(info.type==='add'){
     const result=resolvePageAddedKongDraw(p,info);
     if(!result)return false;
@@ -4834,8 +4868,9 @@ function updateBtns(){
   }
   const h=GS.players[GS.cur]&&GS.players[GS.cur].human;
   const r=GS.phase==='responding'&&GS._respP===0;
+  const selfKongAvailable=!!(h&&GS.phase==='discarding'&&collectPageKongDeclarations(GS.cur).length);
   pong.disabled=!(GS.canP&&r);
-  kong.disabled=!((GS.canK&&r)||(h&&GS.canK&&GS.phase==='discarding'));
+  kong.disabled=!((GS.canK&&r)||selfKongAvailable);
   win.disabled=!(GS.canW&&r)&&!(h&&GS.canWS&&GS.phase==='discarding');
   pass.disabled=!(GS.phase==='responding'&&((GS.canP&&r)||(GS.canK&&r)||(GS.canW&&r)));
 }

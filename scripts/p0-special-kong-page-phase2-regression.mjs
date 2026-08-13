@@ -326,6 +326,11 @@ const routeContext = {
   clearSelectedTile: () => {},
   kt: (tile) => (typeof tile === 'string' ? { k: tile } : tile),
   collectPageSpecialKongChoices: () => [],
+  collectPageKongDeclarations: () => [{
+    kind: 'addedKongChain',
+    action: { kind: 'addedKongChain', input: realAddedChainInput },
+    info: { type: 'addedKongChain', tile: { k: 'wan1' } },
+  }],
   preparePageAddedKongChainAction: () => ({ kind: 'addedKongChain', input: realAddedChainInput }),
   resolvePageRobKongWinner: () => null,
   applyPageAddedKongChainAction: (action) => { routedAddedChain = action; return true; },
@@ -359,6 +364,11 @@ const robRouteContext = {
   clearSelectedTile: () => {},
   kt: (tile) => (typeof tile === 'string' ? { k: tile } : tile),
   collectPageSpecialKongChoices: () => [],
+  collectPageKongDeclarations: () => [{
+    kind: 'addedKongChain',
+    action: { kind: 'addedKongChain', input: realAddedChainInput },
+    info: { type: 'addedKongChain', tile: { k: 'wan1' } },
+  }],
   preparePageAddedKongChainAction: () => ({ kind: 'addedKongChain', input: realAddedChainInput }),
   resolvePageRobKongWinner: () => 1,
   applyPageAddedKongChainAction: () => { robChainCommit = true; return true; },
@@ -399,6 +409,11 @@ function createAddedChainEligibilityContext(phase) {
     GS: state,
     kt: (tile) => (typeof tile === 'string' ? { k: tile } : tile),
     tkey: (tile) => (typeof tile === 'string' ? tile : tile.k),
+    collectPageKongDeclarations: () => [{
+      kind: 'addedKongChain',
+      action: { kind: 'addedKongChain', input: realAddedChainInput },
+      info: { type: 'addedKongChain', tile: { k: 'wan1' }, action: { kind: 'addedKongChain', input: realAddedChainInput } },
+    }],
     preparePageAddedKongChainAction: () => ({ kind: 'addedKongChain', input: realAddedChainInput }),
     preparePageChainKongAction: () => null,
     preparePageDeferredKongAction: () => null,
@@ -456,6 +471,10 @@ const actualHelperContext = {
     { type: 'mingGang', tiles: ['wan2', 'wan2', 'wan2', 'wan2'], fromPlayer: 2 },
     { type: 'peng', tiles: ['wan1', 'wan1', 'wan1'], fromPlayer: 1 },
   ],
+  collectPageKongDeclarations: (owner) => {
+    const action = actualHelperContext.preparePageAddedKongChainAction(owner);
+    return action ? [{ kind: 'addedKongChain', action, info: { type: 'addedKongChain', tile: { k: 'wan1' }, action } }] : [];
+  },
   RULE_ENGINE: { prepareAddedKongChainWindow: () => ({ canDeclare: true }) },
 };
 vm.createContext(actualHelperContext);
