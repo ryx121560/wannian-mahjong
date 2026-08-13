@@ -1896,7 +1896,14 @@ async function saveScores() {
 }
 
 // game logic
+function resolveNextDealer(previousState){
+  const result=previousState&&previousState.phase==='ended'?previousState._lastResult:null;
+  const hasTrustedNoBankruptcy=result&&(result.bankrupt===false||result.bankrupt===-1);
+  if(!hasTrustedNoBankruptcy||!Number.isInteger(result.winner)||result.winner<0||result.winner>3)return 0;
+  return result.winner;
+}
 function newGame(){
+  const dealer=resolveNextDealer(GS);
   let gameSequence;
   try{gameSequence=allocateGameSequence(localStorage);}catch(error){console.error('[game log] game sequence allocation failed',error);alert('无法分配稳定局号，未开始新局。请检查浏览器存储权限。');return false;}
   clearGameSnapshot('new-game');
@@ -1913,9 +1920,9 @@ function newGame(){
   GS.discards=[];GS.lastDiscard=null;GS.lastDiscardP=-1;clearSelectedTile();
   GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS._kc={};GS._hasWild={};GS._kongResources=[];GS._kongActionWindow=null;GS._candidateKongResources=[];GS._specialKongChoiceWindow=null;
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  GS.dealer=dealer;GS.cur=dealer;
   GS.playerDiscards=[[],[],[],[]];GS.passRecords=[];GS.turn=0;GS._gameSequence=gameSequence;GS._lastResult=null;
   GS._recommendation={current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null};
-  GS.dealer=Math.floor(Math.random()*4);GS.cur=GS.dealer;
 
   for(let i=0;i<4;i++){
     GS.players[i].hand=[];
@@ -2408,6 +2415,7 @@ function completePageKongSettlement(owner,action,result){
   }
   totalGamesPlayed++;
   const bankrupt=persistSettledScores();
+  GS._lastResult.bankrupt=bankrupt;
   if(window.MCTS)MCTS.sims=Math.min(300,100+Math.floor(totalGamesPlayed/5)*10);
   window.RL&&RL.saveAll();
   saveGameLog({winner:owner,winnerName:GS.players[owner].name,type:'杠开',huType:settlement.handTypes.join('+'),pts:gain,scores:GS.players.map(function(player){return {name:player.name,score:player.score};})});
