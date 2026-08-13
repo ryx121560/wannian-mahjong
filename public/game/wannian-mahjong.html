@@ -2007,8 +2007,9 @@ function isSpecial(hand){
   return !!(result&&result.canWin&&['sevenPairs','allHonor','dalan','banzhengzong','quanzhengzong'].includes(result.route));
 }
 
-function effectiveHand(p){
-  const h=[...GS.players[p].hand];
+function effectiveHand(p,concealedOverride){
+  const concealed=Array.isArray(concealedOverride)?concealedOverride:GS.players[p].hand;
+  const h=[...concealed];
   const melds=GS.players[p].melds||[];
   for(let m of melds){
     const c=m.count===4?3:m.count;
@@ -2147,8 +2148,8 @@ function classifyWin(hand){
   return ruleClassification(hand).primaryType;
 }
 
-function calcScore(hand,wt){
-  const classification=ruleClassification(hand);
+function calcScore(hand,wt,auditedClassification){
+  const classification=auditedClassification&&Array.isArray(auditedClassification.handTypes)&&Number.isFinite(auditedClassification.baseScore)?auditedClassification:ruleClassification(hand);
   const result=RULE_ENGINE.calculateScore({
     handTypes:classification.handTypes,
     baseScore:classification.baseScore,
@@ -2701,8 +2702,9 @@ function applyWin(winner,wt){
   clearAllDrawMarkers();
   document.getElementById('suggest').style.display='block';
   GS._preWinScores=GS.players.map(function(p){return p.score;});
-  const eh=effectiveHand(winner);
-  const pts=calcScore(eh,wt);
+  const eh=effectiveHand(winner,winAudit.hand);
+  const huType=winAudit.ruleResult.handType||classifyWin(eh);
+  const pts=calcScore(eh,wt,winAudit.ruleResult);
   const payer=(wt==='抢杠'&&Number.isInteger(GS._robKongTarget)&&GS._robKongTarget>=0)?GS._robKongTarget:GS.lastDiscardP;
   if(wt==='点炮'||wt==='抢杠'){
     GS.players[winner].score+=pts;
@@ -2715,8 +2717,8 @@ function applyWin(winner,wt){
   logEvent(winner,'胡牌['+wt+']',null);
   finalizeRecommendationSummary();
   saveGameLog({winner:winner,winnerName:GS.players[winner].name,type:wt,
-    hand:effectiveHand(winner).map(t=>tkey(t)).join(','),
-    huType:classifyWin(eh),pts:pts,
+    hand:eh.map(t=>tkey(t)).join(','),
+    huType:huType,pts:pts,
     scores:GS.players.map(p=>({name:p.name,score:p.score}))});
   renderFinalRecommendationPanel();
   // RL 学习
@@ -2738,14 +2740,13 @@ function applyWin(winner,wt){
   // 每局结束保存RL权重
   window.RL&&RL.saveAll();
   const resultTitle=GS.players[winner].name+'胡了！';
-  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:classifyWin(eh),pts:pts,winner:winner,bankrupt:bankrupt,scoreDeltas:settlementScoreDeltas,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,classifyWin(eh)+'('+wt+')',pts)};commitTopSettlementSummary(GS._lastResult);
+  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:huType,pts:pts,winner:winner,bankrupt:bankrupt,scoreDeltas:settlementScoreDeltas,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,huType+'('+wt+')',pts)};commitTopSettlementSummary(GS._lastResult);
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
   setMsg(GS._lastResult.displayText);
-  if(_selfPlay.running){const _info=GS.players[winner].name+'胡了!'+classifyWin(eh)+'('+wt+')';document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
+  if(_selfPlay.running){const _info=GS.players[winner].name+'胡了!'+huType+'('+wt+')';document.getElementById('sp-info').textContent=_info;gameSetTimeout(function(){startSelfPlayGame();},10);return;}
   render();
-  const h=classifyWin(eh);
-  showWinDlg(`${GS.players[winner].name}胡了！`,`${h}(${wt})`,pts);
+  showWinDlg(`${GS.players[winner].name}胡了！`,`${huType}(${wt})`,pts);
 }
 
 function showWinDlg(title,type,pts){
@@ -2809,7 +2810,7 @@ function auditFinalWinBeforeSettlement(winner,wt){
       auditLog.invalidWins=(auditLog.invalidWins||0)+1;
       auditLog.winAuditFailure=failure;
     }
-    return {ok:false,ruleResult:ruleResult,winTile:winTile};
+    return {ok:false,ruleResult:ruleResult,winTile:winTile,hand:auditHand,ruleMelds:ruleMelds};
   }
   const tileCount=auditHand.length+ruleMelds.length*3;
   const missingPointContext=(wt==='点炮'||wt==='抢杠')&&(!GS.lastDiscard||GS.lastDiscardP<0);
@@ -2820,7 +2821,7 @@ function auditFinalWinBeforeSettlement(winner,wt){
     console.warn('[win-audit] suspicious win context',warning);
     if(auditLog)auditLog.suspiciousWins=(auditLog.suspiciousWins||0)+1;
   }
-  return {ok:true,ruleResult:ruleResult,winTile:winTile};
+  return {ok:true,ruleResult:ruleResult,winTile:winTile,hand:auditHand,ruleMelds:ruleMelds};
 }
 
 // -- AI --

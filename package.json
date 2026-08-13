@@ -34,6 +34,7 @@
     "test:response-real-meld-context": "node scripts/response-real-meld-context-regression.mjs",
     "test:response-phase": "node scripts/response-phase-regression.mjs",
     "test:response-restore-revalidation": "node scripts/response-restore-revalidation-regression.mjs",
+    "test:p0-final-winning-hand-settlement": "node scripts/p0-final-winning-hand-settlement-regression.mjs",
     "test:p0-kong-resource": "node scripts/p0-kong-resource-regression.mjs",
     "test:p0-special-kong-rules": "node scripts/p0-special-kong-rules-stage1-regression.mjs",
     "test:p0-kong-page-persistence": "node scripts/p0-kong-page-persistence-regression.mjs",
