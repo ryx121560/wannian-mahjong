@@ -2374,6 +2374,7 @@ function drawGame(){
   GS._preWinScores=GS.players.map(function(p){return p.score;});
   const drawSummary=formatWinSettlementText(GS._lastResult.title,'荒牌',0);
   setMsg(drawSummary);
+  updateBtns();
   if(_selfPlay.running){document.getElementById('sp-info').textContent='第'+_selfPlay.count+'局流局';gameSetTimeout(function(){startSelfPlayGame();},10);return;}
   showWinDlg('流局','荒牌',0);
 }
@@ -2464,6 +2465,7 @@ function completePageKongSettlement(owner,action,result){
   GS._preWinScores=GS.players.map(function(player){return player.score;});
   for(let playerId=0;playerId<GS.players.length;playerId++)GS.players[playerId].score=settlement.after[playerId];
   GS.phase='ended';resetPageKongResponseState(owner);GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  updateBtns();
   clearAllDrawMarkers();invalidatePageKongResources();
   const actionKind=pageKongActionLabel(action.kind);
   logEvent(owner,'杠开',null,{actionKind:actionKind,outcome:result.resolution.outcome,decompositionSignature:decompositionSignature,handTypes:settlement.handTypes,payments:settlement.payments});
@@ -2760,6 +2762,7 @@ function applyWin(winner,wt){
     return;
   }
   GS.phase='ended';GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
+  updateBtns();
   invalidatePageKongResources();
   clearAllDrawMarkers();
   document.getElementById('suggest').style.display='block';
@@ -4824,12 +4827,17 @@ function furoTransitionCoreReason(hand,discardIdx,playerIdx){
 }
 // -- UI --
 function updateBtns(){
+  const pong=document.getElementById('bt-pong'),kong=document.getElementById('bt-kong'),win=document.getElementById('bt-win'),pass=document.getElementById('bt-pass');
+  if(GS.phase==='idle'||GS.phase==='ended'){
+    pong.disabled=kong.disabled=win.disabled=pass.disabled=true;
+    return;
+  }
   const h=GS.players[GS.cur]&&GS.players[GS.cur].human;
-  const r=GS._respP===0;
-  document.getElementById('bt-pong').disabled=!(GS.canP&&r);
-  document.getElementById('bt-kong').disabled=!((GS.canK&&r)||(h&&GS.canK&&GS.phase==='discarding'));
-  document.getElementById('bt-win').disabled=!(GS.canW&&r)&&!(h&&GS.canWS&&GS.phase==='discarding');
-  document.getElementById('bt-pass').disabled=!((GS.phase==='responding')&&((GS.canP&&r)||(GS.canK&&r)||(GS.canW&&r)));
+  const r=GS.phase==='responding'&&GS._respP===0;
+  pong.disabled=!(GS.canP&&r);
+  kong.disabled=!((GS.canK&&r)||(h&&GS.canK&&GS.phase==='discarding'));
+  win.disabled=!(GS.canW&&r)&&!(h&&GS.canWS&&GS.phase==='discarding');
+  pass.disabled=!(GS.phase==='responding'&&((GS.canP&&r)||(GS.canK&&r)||(GS.canW&&r)));
 }
 function captureSettlementScoreDeltas(beforeScores,players){
   if(!Array.isArray(beforeScores)||!Array.isArray(players)||beforeScores.length!==4||players.length!==4)return [];
@@ -4882,24 +4890,39 @@ canvas.addEventListener('click',(e)=>{
   clearSelectedTile();render();updateSuggestion();
 });
 
-document.getElementById('bt-pong').onclick=()=>{if(GS._respP===0&&GS.canP){recordRecommendationChoice('response','碰');doPong(0);}};
-document.getElementById('bt-kong').onclick=()=>{
-  if(GS._respP===0&&GS.canK){recordRecommendationChoice('response','杠');doKong(0);}
-  else if(GS.canK&&GS.players[GS.cur]&&GS.players[GS.cur].human){recordRecommendationChoice('response','杠');doSelfKong(GS.cur);}
-};
-document.getElementById('bt-win').onclick=()=>{
-  if(GS.canW&&GS._respP===0){recordRecommendationChoice('response','胡');applyWin(0,'点炮');}
-  else if(GS.canWS&&GS.phase==='discarding'&&GS.players[GS.cur].human){
-    if(canSelfWinForPlayer(0,GS.newDrawnTile,'自摸')){recordRecommendationChoice('response','胡');applyWin(0,'自摸');}
+function handlePongButton(){
+  if(GS.phase!=='responding'||GS._respP!==0||!GS.canP)return false;
+  recordRecommendationChoice('response','碰');doPong(0);return true;
+}
+function handleKongButton(){
+  if(GS.phase==='responding'&&GS._respP===0&&GS.canK){
+    recordRecommendationChoice('response','杠');doKong(0);return true;
   }
-};
-document.getElementById('bt-pass').onclick=()=>{
+  if(GS.phase==='discarding'&&GS.canK&&GS.players[GS.cur]&&GS.players[GS.cur].human){
+    recordRecommendationChoice('response','杠');doSelfKong(GS.cur);return true;
+  }
+  return false;
+}
+function handleWinButton(){
+  if(GS.phase==='responding'&&GS.canW&&GS._respP===0){
+    recordRecommendationChoice('response','胡');applyWin(0,'点炮');return true;
+  }
+  if(GS.phase==='discarding'&&GS.canWS&&GS.players[GS.cur]&&GS.players[GS.cur].human&&canSelfWinForPlayer(0,GS.newDrawnTile,'自摸')){
+    recordRecommendationChoice('response','胡');applyWin(0,'自摸');return true;
+  }
+  return false;
+}
+function handlePassButton(){
+  if(GS.phase!=='responding'||!(GS.canP||GS.canK||GS.canW))return false;
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
   recordRecommendationChoice('response','过');
   if(GS.canW&&GS._respP>=0&&GS.lastDiscard)recordPass(GS._respP,GS.lastDiscard);
-  GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;
-  nextTurn();
-};
+  GS.canP=GS.canK=GS.canW=false;GS._resp=null;GS._respP=-1;nextTurn();return true;
+}
+document.getElementById('bt-pong').onclick=handlePongButton;
+document.getElementById('bt-kong').onclick=handleKongButton;
+document.getElementById('bt-win').onclick=handleWinButton;
+document.getElementById('bt-pass').onclick=handlePassButton;
 document.getElementById('bt-new').onclick=()=>{GS._kc={};newGame();};
 document.getElementById('bt-rules').onclick=()=>{document.getElementById('rules-panel').style.display='block';};
 document.getElementById('bt-rules-close').onclick=()=>{document.getElementById('rules-panel').style.display='none';};
