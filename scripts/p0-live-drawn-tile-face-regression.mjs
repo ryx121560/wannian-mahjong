@@ -51,7 +51,7 @@ function renderState(state, selectedTile = null) {
     GS: state, ctx, W: 1366, H: 768, TW: 56, TH: 78, GAP: 2,
     updateTopScoreBar() {}, tcmp: (a, b) => a.k.localeCompare(b.k), tkey: (value) => value.k,
     getSelectedTile: () => selectedTile, drawTile: (x, y, value, opts = {}) => drawCalls.push({ x, y, tile: value, opts }),
-    drawKongSupplementLabel: (x, y, label, rotation) => labels.push({ x, y, label, rotation }),
+    drawKongSupplementLabel: (x, y, label, rotation, offsetX, offsetY) => labels.push({ x, y, label, rotation, offsetX, offsetY }),
   };
   vm.createContext(context);
   vm.runInContext(extractFunction('aiNewDrawnTileForDisplay'), context, { filename: 'ai-new-drawn-tile-for-display.js' });
@@ -204,6 +204,8 @@ assert.equal(directChiselRendered.drawCalls.filter((entry) => entry.tile === dir
 assert.equal(independentCall(directChiselRendered, directChiselTile).opts.face, true, 'an AI upper direct-chisel supplement must render independently at its owner seat');
 assert.deepEqual(directChiselRendered.labels.map((entry) => entry.label), ['杠开补牌'], 'an AI upper direct-chisel settlement must show one owner label');
 assert.equal(directChiselRendered.labels[0].rotation, Math.PI / 2, 'an AI upper supplement label must follow the side-hand direction');
+assert.equal(directChiselRendered.labels[0].offsetX, 28, 'an AI upper supplement label must remain centered in its side-hand coordinate system');
+assert.equal(directChiselRendered.labels[0].offsetY, -90, 'an AI upper supplement label must sit outside the tile instead of overlapping it');
 assert.equal(directChiselRendered.strokes.length, 1, 'an AI upper direct-chisel settlement must show one separator');
 
 const lowerAiTile = tile('wan6');
@@ -216,7 +218,36 @@ const lowerAiRendered = renderState(lowerAiEndedState);
 assert.equal(independentCall(lowerAiRendered, lowerAiTile).opts.face, true, 'a lower AI kong supplement must render independently at its owner seat');
 assert.deepEqual(lowerAiRendered.labels.map((entry) => entry.label), ['杠开补牌'], 'a lower AI kong supplement must show one owner label');
 assert.equal(lowerAiRendered.labels[0].rotation, Math.PI / 2, 'a lower AI supplement label must follow the side-hand direction');
+assert.equal(lowerAiRendered.labels[0].offsetX, 28, 'a lower AI supplement label must remain centered in its side-hand coordinate system');
+assert.equal(lowerAiRendered.labels[0].offsetY, 98, 'a lower AI supplement label must sit outside the tile instead of overlapping it');
 assert.equal(lowerAiRendered.strokes.length, 1, 'a lower AI kong supplement must show one separator');
+
+for (const playerIdx of [1, 3]) {
+  const hiddenLive = aiDrawState(playerIdx, tile(`tiao${playerIdx + 1}`));
+  hiddenLive.showAI = false;
+  const hiddenLiveRendered = renderState(hiddenLive);
+  const hiddenLiveCalls = hiddenLiveRendered.drawCalls.filter((entry) => entry.tile === hiddenLive.newDrawnTile);
+  assert.equal(hiddenLiveCalls.length, 1, `a hidden AI ${playerIdx} live draw must remain a single card back`);
+  assert.equal(hiddenLiveCalls[0].opts.face, false, `a hidden AI ${playerIdx} live draw must remain face down`);
+  assert.equal(hiddenLiveCalls[0].opts.hl, false, `a hidden AI ${playerIdx} live draw must not use a green highlight`);
+  assert.equal(hiddenLiveRendered.labels.length, 0, `a hidden AI ${playerIdx} live draw must not expose a supplement label`);
+  assert.equal(hiddenLiveRendered.strokes.length, 1, `a hidden AI ${playerIdx} live draw may retain its separator`);
+
+  const hiddenSettled = aiDrawState(playerIdx, tile(`wan${playerIdx + 2}`));
+  hiddenSettled.showAI = false;
+  hiddenSettled.phase = 'ended';
+  hiddenSettled.newDrawnTile = null;
+  hiddenSettled.newDrawnIdx = -1;
+  hiddenSettled._lastResult = { type: '杠开', winner: playerIdx, kongSupplement: { owner: playerIdx, tileKey: hiddenSettled.players[playerIdx].hand[2].k, handIndex: 2 } };
+  const hiddenSettledRendered = renderState(hiddenSettled);
+  const hiddenSettledTile = hiddenSettled.players[playerIdx].hand[2];
+  const hiddenSettledCalls = hiddenSettledRendered.drawCalls.filter((entry) => entry.tile === hiddenSettledTile);
+  assert.equal(hiddenSettledCalls.length, 1, `a hidden AI ${playerIdx} settled supplement must remain a single card back`);
+  assert.equal(hiddenSettledCalls[0].opts.face, false, `a hidden AI ${playerIdx} settled supplement must remain face down`);
+  assert.equal(hiddenSettledCalls[0].opts.hl, false, `a hidden AI ${playerIdx} settled supplement must not use a green highlight`);
+  assert.equal(hiddenSettledRendered.labels.length, 0, `a hidden AI ${playerIdx} settled supplement must not expose a label`);
+  assert.equal(hiddenSettledRendered.strokes.length, 1, `a hidden AI ${playerIdx} settled supplement may retain its separator`);
+}
 
 const aiDiscardState = aiDrawState(1, tile('tong2'));
 aiDiscardState.phase = 'drawing';

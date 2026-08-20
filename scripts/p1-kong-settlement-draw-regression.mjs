@@ -27,6 +27,10 @@ function loadSessionSnapshot() {
 assert.match(html, /function captureSettledKongSupplement\(/, 'kong settlement must capture a structured supplement tile before clearing the live draw marker');
 assert.match(html, /function resolveEndedKongSupplement\(/, 'ended rendering must resolve the structured supplement against the owning hand');
 assert.match(html, /function drawKongSupplementLabel\(/, 'ended rendering must visibly label the owner supplement tile');
+assert.match(html, /settled1&&GS\.showAI[\s\S]*TW\/2,TH\+20/, 'the right-side supplement label must be outside its vertical tile and hidden with AI hands');
+assert.match(html, /settled3&&GS\.showAI[\s\S]*TW\/2,-TH-12/, 'the left-side supplement label must be outside its vertical tile and hidden with AI hands');
+assert.match(html, /independent1\.tile,\{face:!!GS\.showAI,hl:!!GS\.showAI\}/, 'the right-side independent AI tile highlight must follow AI visibility');
+assert.match(html, /independent3\.tile,\{face:!!GS\.showAI,hl:!!GS\.showAI\}/, 'the left-side independent AI tile highlight must follow AI visibility');
 const renderSource = extractFunction('render');
 for (const owner of [0, 1, 2, 3]) {
   assert.match(renderSource, new RegExp(`endedKongSupplement&&endedKongSupplement\\.owner===${owner}`), `seat ${owner} must use the structured supplement owner when rendering the ended board`);
