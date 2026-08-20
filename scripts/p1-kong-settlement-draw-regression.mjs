@@ -25,8 +25,12 @@ function loadSessionSnapshot() {
 }
 
 assert.match(html, /function captureSettledKongSupplement\(/, 'kong settlement must capture a structured supplement tile before clearing the live draw marker');
-assert.match(html, /function resolveEndedKongSupplement\(/, 'ended rendering must validate the structured supplement against the winning hand');
-assert.match(html, /杠开补牌/, 'the ended board must visibly label the independent supplement tile');
+assert.match(html, /function resolveEndedKongSupplement\(/, 'ended rendering must resolve the structured supplement against the owning hand');
+assert.match(html, /function drawKongSupplementLabel\(/, 'ended rendering must visibly label the owner supplement tile');
+const renderSource = extractFunction('render');
+for (const owner of [0, 1, 2, 3]) {
+  assert.match(renderSource, new RegExp(`endedKongSupplement&&endedKongSupplement\\.owner===${owner}`), `seat ${owner} must use the structured supplement owner when rendering the ended board`);
+}
 assert.match(extractFunction('completePageKongSettlement'), /const kongSupplement=captureSettledKongSupplement\(owner\)[\s\S]*GS\._lastResult\.kongSupplement=kongSupplement/, 'every common kong settlement must persist the structured supplement captured before the live marker is cleared');
 
 const tile = { k: 'tong8' };
@@ -39,12 +43,14 @@ assert.deepEqual(captured, { owner: 0, tileKey: 'tong8', handIndex: 2 }, 'captur
 context.GS.phase = 'ended';
 context.GS._lastResult = { type: '杠开', winner: 0, kongSupplement: captured };
 const resolved = context.resolveEndedKongSupplement();
-assert.equal(resolved.tile, tile, 'ended presentation must resolve the exact physical tile object in the hand');
+assert.equal(resolved.tile, tile, 'ended presentation must resolve the exact physical tile object in the owner hand');
 assert.equal(resolved.label, '杠开补牌');
-context.GS._lastResult = { type: '点炮', winner: 0 };
-assert.equal(context.resolveEndedKongSupplement(), null, 'ordinary wins must not show an empty supplement marker');
+context.GS._lastResult = { type: '点炮', winner: 0, kongSupplement: captured };
+assert.equal(context.resolveEndedKongSupplement(), null, 'a non-kong ended result must not expose a supplement');
+context.GS._lastResult = { type: '杠开', winner: 1, kongSupplement: captured };
+assert.equal(context.resolveEndedKongSupplement(), null, 'a supplement owner that differs from the winner must fail closed');
 context.GS._lastResult = { type: '杠开', winner: 0, kongSupplement: { owner: 0, tileKey: 'tong9', handIndex: 2 } };
-assert.equal(context.resolveEndedKongSupplement(), null, 'invalid structured references must fail closed');
+assert.equal(context.resolveEndedKongSupplement(), null, 'a supplement with a mismatched hand index or tile key must fail closed');
 
 const session = loadSessionSnapshot();
 const players = Array.from({ length: 4 }, (_, index) => ({ name: `P${index}`, human: index === 0, score: 50, hand: index === 0 ? ['wan1', 'wan2', 'tong8'] : [], melds: [] }));

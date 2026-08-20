@@ -51,7 +51,7 @@ function renderState(state, selectedTile = null) {
     GS: state, ctx, W: 1366, H: 768, TW: 56, TH: 78, GAP: 2,
     updateTopScoreBar() {}, tcmp: (a, b) => a.k.localeCompare(b.k), tkey: (value) => value.k,
     getSelectedTile: () => selectedTile, drawTile: (x, y, value, opts = {}) => drawCalls.push({ x, y, tile: value, opts }),
-    drawKongSupplementLabel: (x, y, label) => labels.push({ x, y, label }),
+    drawKongSupplementLabel: (x, y, label, rotation) => labels.push({ x, y, label, rotation }),
   };
   vm.createContext(context);
   vm.runInContext(extractFunction('aiNewDrawnTileForDisplay'), context, { filename: 'ai-new-drawn-tile-for-display.js' });
@@ -120,9 +120,10 @@ settledState.newDrawnTile = null;
 settledState.newDrawnIdx = -1;
 settledState._lastResult = { type: '杠开', winner: 0, kongSupplement: { owner: 0, tileKey: 'tong8', handIndex: 2 } };
 rendered = renderState(settledState);
-assert.equal(independentCall(rendered, settledTile).opts.face, true, 'settled kong supplement must remain face up');
-assert.deepEqual(rendered.labels.map((entry) => entry.label), ['杠开补牌'], 'settled kong supplement must retain its visible label');
-assert.equal(rendered.hot.some((entry) => entry.t === settledTile), false, 'settled kong supplement must not be clickable');
+assert.equal(independentCall(rendered, settledTile).opts.face, true, 'a settled human kong supplement must render independently at its owner seat');
+assert.deepEqual(rendered.labels.map((entry) => entry.label), ['杠开补牌'], 'a settled human kong supplement must retain one owner label');
+assert.equal(rendered.hot.some((entry) => entry.t === settledTile), false, 'a settled human kong supplement must not be clickable');
+assert.equal(rendered.strokes.length, 1, 'a settled human kong supplement must retain one separator');
 
 const ordinaryEndedTile = tile('wan5');
 const ordinaryEndedState = baseState(ordinaryEndedTile);
@@ -133,6 +134,14 @@ ordinaryEndedState._lastResult = { type: '自摸', winner: 0 };
 rendered = renderState(ordinaryEndedState);
 assert.equal(rendered.drawCalls.some((entry) => entry.opts.hl === true), false, 'ordinary ended states must not synthesize an independent tile');
 assert.equal(rendered.labels.length, 0, 'ordinary ended states must not show an empty kong supplement label');
+
+const restoredEndedSnapshot = snapshotContext.window.GameSessionSnapshot.create(settledState, { totalGames: 1, selfPlayRunning: false }, (value) => value.k);
+const restoredEnded = snapshotContext.window.GameSessionSnapshot.restore(restoredEndedSnapshot, (key) => tile(key));
+assert.equal(restoredEnded.ok, true, 'a settled human kong snapshot must restore');
+rendered = renderState(restoredEnded.state);
+assert.equal(independentCall(rendered, restoredEnded.state.players[0].hand[2]).opts.face, true, 'a restored settled human kong supplement must remain independently rendered at its owner seat');
+assert.deepEqual(rendered.labels.map((entry) => entry.label), ['杠开补牌'], 'a restored settled human kong supplement must retain its owner label');
+assert.equal(rendered.strokes.length, 1, 'a restored settled human kong state must retain one separator');
 
 function aiDrawState(playerIdx, drawnTile) {
   const state = baseState(tile('bai'));
@@ -175,9 +184,39 @@ const endedAddedKongState = aiDrawState(2, tile('tong3'));
 endedAddedKongState.phase = 'ended';
 endedAddedKongState.newDrawnTile = null;
 endedAddedKongState.newDrawnIdx = -1;
+endedAddedKongState._lastResult = { type: '杠开', winner: 2, kongSupplement: { owner: 2, tileKey: 'tong3', handIndex: 2 } };
 addedKongRendered = renderState(endedAddedKongState);
-assert.equal(addedKongRendered.drawCalls.some((entry) => entry.opts.hl), false, 'a settled AI added-kong supplement must not remain independently displayed');
-assert.equal(addedKongRendered.strokes.length, 0, 'a settled AI added-kong supplement must not retain a separator');
+assert.equal(independentCall(addedKongRendered, endedAddedKongState.players[2].hand[2]).opts.face, true, 'a settled opposite AI kong supplement must render independently at its owner seat');
+assert.deepEqual(addedKongRendered.labels.map((entry) => entry.label), ['杠开补牌'], 'a settled opposite AI kong supplement must retain one owner label');
+assert.equal(addedKongRendered.strokes.length, 1, 'a settled opposite AI kong supplement must retain one separator');
+
+const directChiselTile = tile('wan7');
+const directChiselEndedState = aiDrawState(3, directChiselTile);
+directChiselEndedState.phase = 'ended';
+directChiselEndedState.newDrawnTile = null;
+directChiselEndedState.newDrawnIdx = -1;
+directChiselEndedState._lastResult = {
+  type: '杠开', winner: 3, kongAction: 'directChisel', kongOutcome: 'directChiselFakeWin',
+  kongSupplement: { owner: 3, tileKey: 'wan7', handIndex: 2 },
+};
+const directChiselRendered = renderState(directChiselEndedState);
+assert.equal(directChiselRendered.drawCalls.filter((entry) => entry.tile === directChiselTile).length, 1, 'an AI upper direct-chisel supplement must remain in its owner hand exactly once');
+assert.equal(independentCall(directChiselRendered, directChiselTile).opts.face, true, 'an AI upper direct-chisel supplement must render independently at its owner seat');
+assert.deepEqual(directChiselRendered.labels.map((entry) => entry.label), ['杠开补牌'], 'an AI upper direct-chisel settlement must show one owner label');
+assert.equal(directChiselRendered.labels[0].rotation, Math.PI / 2, 'an AI upper supplement label must follow the side-hand direction');
+assert.equal(directChiselRendered.strokes.length, 1, 'an AI upper direct-chisel settlement must show one separator');
+
+const lowerAiTile = tile('wan6');
+const lowerAiEndedState = aiDrawState(1, lowerAiTile);
+lowerAiEndedState.phase = 'ended';
+lowerAiEndedState.newDrawnTile = null;
+lowerAiEndedState.newDrawnIdx = -1;
+lowerAiEndedState._lastResult = { type: '杠开', winner: 1, kongSupplement: { owner: 1, tileKey: 'wan6', handIndex: 2 } };
+const lowerAiRendered = renderState(lowerAiEndedState);
+assert.equal(independentCall(lowerAiRendered, lowerAiTile).opts.face, true, 'a lower AI kong supplement must render independently at its owner seat');
+assert.deepEqual(lowerAiRendered.labels.map((entry) => entry.label), ['杠开补牌'], 'a lower AI kong supplement must show one owner label');
+assert.equal(lowerAiRendered.labels[0].rotation, Math.PI / 2, 'a lower AI supplement label must follow the side-hand direction');
+assert.equal(lowerAiRendered.strokes.length, 1, 'a lower AI kong supplement must show one separator');
 
 const aiDiscardState = aiDrawState(1, tile('tong2'));
 aiDiscardState.phase = 'drawing';
@@ -191,6 +230,13 @@ responseState.phase = 'responding';
 aiRendered = renderState(responseState);
 assert.equal(aiRendered.drawCalls.some((entry) => entry.tile === responseState.newDrawnTile && entry.opts.hl), false, 'a response state must not retain an AI independent draw');
 assert.equal(aiRendered.strokes.length, 0, 'a response state must not retain an AI separator');
+
+const humanResponseState = baseState(tile('tong4'));
+humanResponseState.phase = 'responding';
+rendered = renderState(humanResponseState);
+assert.equal(rendered.drawCalls.filter((entry) => entry.tile === humanResponseState.newDrawnTile).length, 1, 'a human response state must retain the former draw in the hand exactly once');
+assert.equal(rendered.drawCalls.some((entry) => entry.tile === humanResponseState.newDrawnTile && entry.opts.hl === true), false, 'a human response state must not retain an independent tile');
+assert.equal(rendered.strokes.length, 0, 'a human response state must not retain a separator');
 
 const endedAiState = aiDrawState(1, tile('tong2'));
 endedAiState.phase = 'ended';

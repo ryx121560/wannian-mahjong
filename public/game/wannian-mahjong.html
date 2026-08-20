@@ -993,6 +993,10 @@ function aiDisplayHand(playerIdx){
   const hand=[...(player&&player.hand?player.hand:[])];
   const drawn=aiNewDrawnTileForDisplay(playerIdx);
   if(drawn)hand.splice(drawn.index,1);
+  else{
+    const supplement=resolveEndedKongSupplement();
+    if(supplement&&supplement.owner===playerIdx)hand.splice(supplement.handIndex,1);
+  }
   return hand.sort(tcmp);
 }
 
@@ -1766,10 +1770,11 @@ function resolveEndedKongSupplement(){
   return {owner:supplement.owner,tile:tile,handIndex:index,label:'杠开补牌'};
 }
 
-function drawKongSupplementLabel(x,y,label){
+function drawKongSupplementLabel(x,y,label,rotation){
   ctx.save();
   ctx.fillStyle='#ffcc00';ctx.font='bold 16px "Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
-  ctx.fillText(label,x+TW/2,y-8);
+  if(rotation){ctx.translate(x,y);ctx.rotate(rotation);ctx.fillText(label,TW/2,-8);}
+  else ctx.fillText(label,x+TW/2,y-8);
   ctx.restore();
 }
 
@@ -1805,10 +1810,7 @@ function render(){
     const ndtIdx = fullHand.indexOf(GS.newDrawnTile);
     if(ndtIdx >= 0) fullHand.splice(ndtIdx, 1);
   }
-  if(endedKongSupplement&&endedKongSupplement.owner===0){
-    const supplementIdx=fullHand.indexOf(endedKongSupplement.tile);
-    if(supplementIdx>=0)fullHand.splice(supplementIdx,1);
-  }
+  if(endedKongSupplement&&endedKongSupplement.owner===0)fullHand.splice(endedKongSupplement.handIndex,1);
   const ph=fullHand.sort(tcmp);
   const pw=ph.length*(TW+GAP);
   let sx=W/2-pw/2;
@@ -1822,8 +1824,8 @@ function render(){
     GS._hot.push({x:tx,y:H-TH-45+yo,w:TW,h:TH,idx:i,t:ph[i]});
   }
   
-  // Draw the live tile or settled kong supplement separately from the sorted hand.
-  const independentTile=hasNewDrawn?GS.newDrawnTile:(endedKongSupplement&&endedKongSupplement.tile);
+  // A live draw or the settled owner's structured kong supplement is rendered independently.
+  const independentTile=hasNewDrawn?GS.newDrawnTile:(endedKongSupplement&&endedKongSupplement.owner===0?endedKongSupplement.tile:null);
   if(independentTile){
     const newTileGap = 30; // 新牌与手牌的间隔
     const newTileX = Math.min(W-TW-24,sx + ph.length*(TW+GAP) + newTileGap);
@@ -1859,10 +1861,13 @@ function render(){
     drawTile(sx2+i*(TW+GAP),45+yo,h2[i],{face:!!GS.showAI,hl:aiDrawHighlight(2,h2[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===2&&GS._aiDiscardAnim.idx===i)});
   }
   const drawn2=aiNewDrawnTileForDisplay(2);
-  if(drawn2){
+  const settled2=endedKongSupplement&&endedKongSupplement.owner===2?endedKongSupplement:null;
+  const independent2=drawn2||settled2;
+  if(independent2){
     const gap=30,newX2=Math.min(W-TW-24,sx2+h2.length*(TW+GAP)+gap),sepX2=sx2+h2.length*(TW+GAP)+gap/2-1;
-    drawTile(newX2,45,drawn2.tile,{face:!!GS.showAI,hl:true});
+    drawTile(newX2,45,independent2.tile,{face:!!GS.showAI,hl:true});
     drawHandSeparator(sepX2,35,sepX2,45+TH+10);
+    if(settled2)drawKongSupplementLabel(newX2,45,settled2.label);
   }
   
   // 碰/杠展示 - 顶部玩家 (p=2)
@@ -1889,10 +1894,13 @@ function render(){
     ctx.restore();
   }
   const drawn3=aiNewDrawnTileForDisplay(3);
-  if(drawn3){
+  const settled3=endedKongSupplement&&endedKongSupplement.owner===3?endedKongSupplement:null;
+  const independent3=drawn3||settled3;
+  if(independent3){
     const gap=30,newY3=Math.min(H-TW-24,startY3+h3.length*(TW+GAP)+gap),sepY3=startY3+h3.length*(TW+GAP)+gap/2-1;
-    ctx.save();ctx.translate(35,newY3);ctx.rotate(Math.PI/2);drawTile(0,-TH,drawn3.tile,{face:!!GS.showAI,hl:true});ctx.restore();
+    ctx.save();ctx.translate(35,newY3);ctx.rotate(Math.PI/2);drawTile(0,-TH,independent3.tile,{face:!!GS.showAI,hl:true});ctx.restore();
     drawHandSeparator(25,sepY3,35+TH+10,sepY3);
+    if(settled3)drawKongSupplementLabel(35,newY3,settled3.label,Math.PI/2);
   }
   
   // 碰/杠展示 - 左侧玩家 (p=3)
@@ -1926,10 +1934,13 @@ function render(){
     ctx.restore();
   }
   const drawn1=aiNewDrawnTileForDisplay(1);
-  if(drawn1){
+  const settled1=endedKongSupplement&&endedKongSupplement.owner===1?endedKongSupplement:null;
+  const independent1=drawn1||settled1;
+  if(independent1){
     const gap=30,newY1=Math.min(H-TW-24,startY1+h1.length*(TW+GAP)+gap),sepY1=startY1+h1.length*(TW+GAP)+gap/2-1;
-    ctx.save();ctx.translate(W-45,newY1);ctx.rotate(Math.PI/2);drawTile(0,0,drawn1.tile,{face:!!GS.showAI,hl:true});ctx.restore();
+    ctx.save();ctx.translate(W-45,newY1);ctx.rotate(Math.PI/2);drawTile(0,0,independent1.tile,{face:!!GS.showAI,hl:true});ctx.restore();
     drawHandSeparator(W-45-TH-10,sepY1,W-35,sepY1);
+    if(settled1)drawKongSupplementLabel(W-45,newY1,settled1.label,Math.PI/2);
   }
 
   // 碰/杠展示 - 右侧玩家 (p=1)
