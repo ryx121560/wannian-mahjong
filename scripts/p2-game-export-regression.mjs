@@ -37,19 +37,18 @@ fs.mkdirSync(otherDir);
 
 assert.throws(
   () => resolveGameExportDirectory({}),
-  /GAME_EXPORT_DIR is required/,
+  /APPROVED_GAME_EXPORT_DIR is required/,
   'missing export directory must fail instead of falling back to cwd',
 );
 assert.throws(
-  () => resolveGameExportDirectory({ GAME_EXPORT_DIR: 'exports' }),
+  () => resolveGameExportDirectory({ APPROVED_GAME_EXPORT_DIR: 'exports' }),
   /must be an absolute path/,
-  'relative export directories must be rejected',
+  'relative approved export directories must be rejected',
 );
 assert.throws(
   () => resolveGameExportDirectory({
-    GAME_EXPORT_DIR: exportDir,
-    APPROVED_GAME_EXPORT_DIR: otherDir,
-    GAME_EXPORT_REQUIRE_APPROVED: '1',
+    GAME_EXPORT_DIR: otherDir,
+    APPROVED_GAME_EXPORT_DIR: exportDir,
   }),
   /does not match APPROVED_GAME_EXPORT_DIR/,
   'approved export directory mismatch must be rejected',
@@ -57,9 +56,7 @@ assert.throws(
 
 assert.equal(
   resolveGameExportDirectory({
-    GAME_EXPORT_DIR: exportDir,
     APPROVED_GAME_EXPORT_DIR: exportDir,
-    GAME_EXPORT_REQUIRE_APPROVED: '1',
   }),
   fs.realpathSync.native(exportDir),
   'approved export directory must resolve independently from cwd',

@@ -51,6 +51,7 @@
     "migrate:score-baseline-50": "node scripts/score-baseline-50-migration.mjs",
     "test:dealer-continuity": "node scripts/dealer-continuity-regression.mjs",
     "test:rl-weights-path": "node scripts/rl-weights-path-regression.mjs",
+    "test:approved-deployment-paths": "node scripts/approved-deployment-paths-regression.mjs",
     "test:production-launch": "node scripts/production-launch-regression.mjs",
     "test:production-port-window": "node scripts/production-port-window-regression.mjs",
     "test:normal-concealed-kong": "node scripts/normal-concealed-kong-regression.mjs",

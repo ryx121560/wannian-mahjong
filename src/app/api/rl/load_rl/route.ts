@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import { resolveRlWeightsFile } from "@/lib/rl-weights-file";
+import { requireExistingRlWeightsFile } from "@/lib/rl-weights-file";
 
 export async function GET() {
   let saveFile: string;
   try {
-    saveFile = resolveRlWeightsFile();
+    saveFile = requireExistingRlWeightsFile();
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid RL weights configuration" }, { status: 503 });
   }

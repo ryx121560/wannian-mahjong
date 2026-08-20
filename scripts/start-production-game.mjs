@@ -11,32 +11,25 @@ function canonicalPath(value) {
 }
 
 function resolveApprovedExportDirectory(env) {
-  const configured = env.GAME_EXPORT_DIR;
-  if (!configured) throw new Error('GAME_EXPORT_DIR is required for production launch');
-  if (!path.isAbsolute(configured)) throw new Error('GAME_EXPORT_DIR must be an absolute path for production launch');
   const approved = env.APPROVED_GAME_EXPORT_DIR;
   if (!approved) throw new Error('APPROVED_GAME_EXPORT_DIR is required for production launch');
   if (!path.isAbsolute(approved)) throw new Error('APPROVED_GAME_EXPORT_DIR must be an absolute path for production launch');
-  const exportDirectory = canonicalPath(configured);
   const approvedExportDirectory = canonicalPath(approved);
-  if (exportDirectory !== approvedExportDirectory) throw new Error('GAME_EXPORT_DIR does not match APPROVED_GAME_EXPORT_DIR');
-  if (!fs.existsSync(exportDirectory) || !fs.statSync(exportDirectory).isDirectory()) {
-    throw new Error('GAME_EXPORT_DIR must reference an existing directory for production launch');
+  const configured = env.GAME_EXPORT_DIR;
+  if (configured) {
+    if (!path.isAbsolute(configured)) throw new Error('GAME_EXPORT_DIR must be an absolute path for production launch');
+    if (canonicalPath(configured) !== approvedExportDirectory) throw new Error('GAME_EXPORT_DIR does not match APPROVED_GAME_EXPORT_DIR');
   }
-  fs.accessSync(exportDirectory, fs.constants.W_OK);
-  return { exportDirectory, approvedExportDirectory };
+  if (!fs.existsSync(approvedExportDirectory) || !fs.statSync(approvedExportDirectory).isDirectory()) {
+    throw new Error('APPROVED_GAME_EXPORT_DIR must reference an existing directory for production launch');
+  }
+  fs.accessSync(approvedExportDirectory, fs.constants.W_OK);
+  return { exportDirectory: approvedExportDirectory, approvedExportDirectory };
 }
 
 export function resolveProductionLaunchConfig(env = process.env) {
   if (env.PORT !== PRODUCTION_PORT) {
     throw new Error(`Production launch requires PORT=${PRODUCTION_PORT}`);
-  }
-  const configured = env.RL_WEIGHTS_FILE;
-  if (!configured) {
-    throw new Error('RL_WEIGHTS_FILE is required for production launch');
-  }
-  if (!path.isAbsolute(configured)) {
-    throw new Error('RL_WEIGHTS_FILE must be an absolute path for production launch');
   }
   const approved = env.APPROVED_RL_WEIGHTS_FILE;
   if (!approved) {
@@ -46,19 +39,24 @@ export function resolveProductionLaunchConfig(env = process.env) {
     throw new Error('APPROVED_RL_WEIGHTS_FILE must be an absolute path for production launch');
   }
 
-  const weightsFile = canonicalPath(configured);
   const approvedWeightsFile = canonicalPath(approved);
-  if (weightsFile !== approvedWeightsFile) {
-    throw new Error('RL_WEIGHTS_FILE does not match APPROVED_RL_WEIGHTS_FILE');
+  const configured = env.RL_WEIGHTS_FILE;
+  if (configured) {
+    if (!path.isAbsolute(configured)) {
+      throw new Error('RL_WEIGHTS_FILE must be an absolute path for production launch');
+    }
+    if (canonicalPath(configured) !== approvedWeightsFile) {
+      throw new Error('RL_WEIGHTS_FILE does not match APPROVED_RL_WEIGHTS_FILE');
+    }
   }
-  if (!fs.existsSync(weightsFile) || !fs.statSync(weightsFile).isFile()) {
-    throw new Error('RL_WEIGHTS_FILE must reference an existing file for production launch');
+  if (!fs.existsSync(approvedWeightsFile) || !fs.statSync(approvedWeightsFile).isFile()) {
+    throw new Error('APPROVED_RL_WEIGHTS_FILE must reference an existing file for production launch');
   }
   const exportConfig = resolveApprovedExportDirectory(env);
   return {
     port: PRODUCTION_PORT,
     portWindow: '0',
-    weightsFile,
+    weightsFile: approvedWeightsFile,
     approvedWeightsFile,
     ...exportConfig,
   };

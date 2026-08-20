@@ -33,30 +33,27 @@ fs.writeFileSync(otherWeights, '{}', 'utf8');
 
 assert.throws(
   () => resolveRlWeightsFile({}),
-  /RL_WEIGHTS_FILE is required/,
+  /APPROVED_RL_WEIGHTS_FILE is required/,
   'missing configured path must fail instead of using process.cwd()',
 );
 
 assert.throws(
-  () => resolveRlWeightsFile({ RL_WEIGHTS_FILE: 'rl_weights.json' }),
+  () => resolveRlWeightsFile({ APPROVED_RL_WEIGHTS_FILE: 'rl_weights.json' }),
   /must be an absolute path/,
-  'relative configured path must fail',
+  'relative approved path must fail',
 );
 
 assert.throws(
   () => resolveRlWeightsFile({
-    RL_WEIGHTS_FILE: tempWeights,
-    APPROVED_RL_WEIGHTS_FILE: otherWeights,
-    RL_WEIGHTS_REQUIRE_APPROVED: '1',
+    RL_WEIGHTS_FILE: otherWeights,
+    APPROVED_RL_WEIGHTS_FILE: tempWeights,
   }),
   /does not match APPROVED_RL_WEIGHTS_FILE/,
   'production-approved path mismatch must fail',
 );
 
 const resolved = resolveRlWeightsFile({
-  RL_WEIGHTS_FILE: tempWeights,
   APPROVED_RL_WEIGHTS_FILE: tempWeights,
-  RL_WEIGHTS_REQUIRE_APPROVED: '1',
 });
 assert.equal(resolved, fs.realpathSync.native(tempWeights), 'configured path must resolve independently from cwd');
 

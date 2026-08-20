@@ -9,24 +9,20 @@ function canonicalPath(value: string): string {
 }
 
 export function resolveRlWeightsFile(env: Environment = process.env): string {
+  const approved = env.APPROVED_RL_WEIGHTS_FILE;
+  if (!approved) {
+    throw new Error("APPROVED_RL_WEIGHTS_FILE is required; refusing to use the process working directory");
+  }
+  if (!path.isAbsolute(approved)) {
+    throw new Error("APPROVED_RL_WEIGHTS_FILE must be an absolute path");
+  }
+  const resolved = canonicalPath(approved);
   const configured = env.RL_WEIGHTS_FILE;
-  if (!configured) {
-    throw new Error("RL_WEIGHTS_FILE is required; refusing to use the process working directory");
-  }
-  if (!path.isAbsolute(configured)) {
-    throw new Error("RL_WEIGHTS_FILE must be an absolute path");
-  }
-
-  const resolved = canonicalPath(configured);
-  if (env.RL_WEIGHTS_REQUIRE_APPROVED === "1" || env.NODE_ENV === "production") {
-    const approved = env.APPROVED_RL_WEIGHTS_FILE;
-    if (!approved) {
-      throw new Error("APPROVED_RL_WEIGHTS_FILE is required when approved-path enforcement is enabled");
+  if (configured) {
+    if (!path.isAbsolute(configured)) {
+      throw new Error("RL_WEIGHTS_FILE must be an absolute path");
     }
-    if (!path.isAbsolute(approved)) {
-      throw new Error("APPROVED_RL_WEIGHTS_FILE must be an absolute path");
-    }
-    if (resolved !== canonicalPath(approved)) {
+    if (canonicalPath(configured) !== resolved) {
       throw new Error("RL_WEIGHTS_FILE does not match APPROVED_RL_WEIGHTS_FILE");
     }
   }
@@ -36,10 +32,10 @@ export function resolveRlWeightsFile(env: Environment = process.env): string {
 export function requireExistingRlWeightsFile(env: Environment = process.env): string {
   const resolved = resolveRlWeightsFile(env);
   if (!fs.existsSync(resolved)) {
-    throw new Error("RL_WEIGHTS_FILE does not exist");
+    throw new Error("APPROVED_RL_WEIGHTS_FILE does not exist");
   }
   if (!fs.statSync(resolved).isFile()) {
-    throw new Error("RL_WEIGHTS_FILE must reference a file");
+    throw new Error("APPROVED_RL_WEIGHTS_FILE must reference a file");
   }
   return resolved;
 }

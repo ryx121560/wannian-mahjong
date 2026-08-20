@@ -59,19 +59,14 @@ function ensureConfiguredDirectory(value: string, field: string): string {
 }
 
 export function resolveGameExportDirectory(env: NodeJS.ProcessEnv = process.env): string {
-  const configured = env.GAME_EXPORT_DIR;
-  if (!configured) throw new Error("GAME_EXPORT_DIR is required");
-  const directory = ensureConfiguredDirectory(configured, "GAME_EXPORT_DIR");
-  const requiresApproval = env.GAME_EXPORT_REQUIRE_APPROVED === "1";
-  if (!requiresApproval) return directory;
-
   const approved = env.APPROVED_GAME_EXPORT_DIR;
   if (!approved) throw new Error("APPROVED_GAME_EXPORT_DIR is required");
   const approvedDirectory = ensureConfiguredDirectory(approved, "APPROVED_GAME_EXPORT_DIR");
-  if (directory !== approvedDirectory) {
+  const configured = env.GAME_EXPORT_DIR;
+  if (configured && ensureConfiguredDirectory(configured, "GAME_EXPORT_DIR") !== approvedDirectory) {
     throw new Error("GAME_EXPORT_DIR does not match APPROVED_GAME_EXPORT_DIR");
   }
-  return directory;
+  return approvedDirectory;
 }
 
 export function validateGameRecordExport(payload: Record<string, unknown>): ValidatedGameRecordExport {
