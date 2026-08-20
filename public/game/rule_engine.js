@@ -1058,8 +1058,16 @@ function canUseDeferredForcedRun(state, playerId) {
     const player = ((_a = state.players) === null || _a === void 0 ? void 0 : _a[playerId]) || { hand: state.hand || [] };
     return (state.kongResources || []).some((resource) => (resource.owner === playerId
         && resource.status === 'active'
-        && state.newDrawnTile === resource.tile
-        && player.hand.includes(resource.tile)));
+        && !!state.newDrawnTile
+        && player.hand.includes(state.newDrawnTile)
+        && player.hand.includes(resource.tile)
+        && !evaluateConditionalKongResource({
+            sourceTile: resource.tile,
+            hand: player.hand,
+            melds: player.melds || [],
+            allowFakeWinRemainder: false,
+            consumeSourceTileFromHand: true,
+        }).canComplete));
 }
 function activeResourceSnapshot(resource) {
     return { ...resource, status: 'active' };

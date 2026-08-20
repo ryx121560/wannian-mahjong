@@ -224,6 +224,16 @@ const forcedRunFailure = resolveKongDraw({
 assert.equal(forcedRunFailure.outcome, 'forcedRunFailureDiscard');
 assert.equal(forcedRunFailure.mustDiscard, true);
 
+const deferredForcedRunFailure = resolveKongDraw({
+  kind: 'forcedRunDeferred',
+  resource,
+  handAfterKong: ['wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6', 'tiao5', 'tiao6', 'tiao8', 'tiao9'],
+  melds: [{ type: 'mingGang', tiles: ['tong6', 'tong6', 'tong6', 'tong6'], fromPlayer: 0 }],
+  drawTile: 'zhong',
+});
+assert.equal(deferredForcedRunFailure.outcome, 'forcedRunFailureDiscard');
+assert.equal(deferredForcedRunFailure.mustDiscard, true);
+
 // The legal highest-scoring decomposition must include peng-peng-hu when available.
 const multiDecomposition = rules.classifyHand(
   ['wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'wan4', 'wan4'],

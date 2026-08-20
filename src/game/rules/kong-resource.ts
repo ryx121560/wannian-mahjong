@@ -295,8 +295,16 @@ export function canUseDeferredForcedRun(state: GameState, playerId: number): boo
   return (state.kongResources || []).some((resource) => (
     resource.owner === playerId
       && resource.status === 'active'
-      && state.newDrawnTile === resource.tile
+      && !!state.newDrawnTile
+      && player.hand.includes(state.newDrawnTile)
       && player.hand.includes(resource.tile)
+      && !evaluateConditionalKongResource({
+        sourceTile: resource.tile,
+        hand: player.hand,
+        melds: player.melds || [],
+        allowFakeWinRemainder: false,
+        consumeSourceTileFromHand: true,
+      }).canComplete
   ));
 }
 

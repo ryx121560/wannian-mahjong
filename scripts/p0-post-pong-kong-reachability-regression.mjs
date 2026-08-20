@@ -53,6 +53,7 @@ function pageState(wallTop = 'wan6') {
     phase: 'discarding', cur: 0, newDrawnTile: tile('wan6'), newDrawnIdx: 1,
     wall: [tile(wallTop)], canK: false, canP: false, canW: false, canWS: false,
     _kongResources: [resource7], _candidateKongResources: [], _kongActionWindow: null, _specialKongChoiceWindow: null,
+    _deferredAllowed: true,
     players: [
       { human: true, hand: postPongHand.map(tile), melds: [meld('tiao7', 3), meld('tiao4', 2)], score: 50 },
       { hand: [], melds: [], score: 50 }, { hand: [], melds: [], score: 50 }, { hand: [], melds: [], score: 50 },
@@ -84,7 +85,7 @@ function makePageContext() {
     preparePageDeferredKongAction: (owner) => {
       const resource = context.GS._kongResources.find((item) => item.owner === owner && item.status === 'active'
         && context.GS.players[owner].hand.some((value) => key(value) === item.tile));
-      return resource && key(context.GS.newDrawnTile) === resource.tile ? { kind: 'forcedRunDeferred', owner, resource } : null;
+      return resource && context.GS._deferredAllowed ? { kind: 'forcedRunDeferred', owner, resource } : null;
     },
     pageRuleState: () => ({}),
     RULE_ENGINE: {
@@ -134,15 +135,16 @@ try {
   assert.deepEqual(rules.canAnGang(postPongHand), [], 'the hand has no concealed four-of-a-kind');
   assert.equal(rules.canMingGang(postPongHand, [pong7], 'tiao7'), 'tiao7', 'the retained 7-tiao physically upgrades the real pong');
   assert.equal(rules.canMingGang(postPongHand, [pong4], 'tiao4'), null, 'the newly ponged 4-tiao has no retained fourth tile');
-  assert.equal(rules.canUseDeferredForcedRun(ruleState, 0), false, 'a retained fourth tile after an unrelated draw must not become a deferred forced run');
-  assert.deepEqual(rules.getLegalActions(ruleState, 0), ['discard', 'addedKong']);
+  assert.equal(rules.canUseDeferredForcedRun(ruleState, 0), true, 'a retained fourth tile remains a deferred forced run when using it as a resource still cannot complete the current structure');
+  assert.deepEqual(rules.getLegalActions(ruleState, 0), ['discard', 'addedKong', 'deferredForcedRunKong']);
 
   const page = makePageContext();
   const beforeQuery = JSON.stringify(page.GS);
   const declarations = page.collectPageKongDeclarations(0);
   assert.deepEqual(plain(declarationSummary(declarations)), [
+    { kind: 'forcedRunDeferred', tile: 'tiao7' },
     { kind: 'addedKong', tile: 'tiao7' },
-  ], 'the common page collector must classify a retained fourth tile after an unrelated draw as ordinary added kong');
+  ], 'the common page collector must retain deferred forced run when the resource structure is incomplete');
   assert.equal(JSON.stringify(page.GS), beforeQuery, 'querying declarations must not mutate game state');
   assert.equal(page.calls.rob + page.calls.deferred + page.calls.addedResolve + page.calls.addedApply + page.calls.win + page.calls.snapshots + page.calls.timers, 0, 'querying declarations must have no execution side effects');
 
@@ -161,23 +163,22 @@ try {
   page.GS.canK = false;
   page.updateBtns();
   assert.equal(page.document.getElementById('bt-kong').disabled, false, 'button refresh must use the common declaration collector instead of stale canK');
-  assert.equal(page.canSelfKong(0).type, 'add', 'the retained fourth tile must keep the ordinary added-kong action category');
+  assert.equal(page.canSelfKong(0).type, 'deferred', 'an incomplete resource structure must keep the deferred forced-run category');
   assert.equal(page.handleKongButton(), true, 'the enabled kong button must execute a restored declaration even when the persisted canK flag is stale');
-  assert.equal(page.calls.rob, 0, 'ordinary added kong must not enter the deferred forced-run rob path');
-  assert.equal(page.calls.deferred, 0, 'ordinary added kong must not use the delayed forced-run executor');
-  assert.equal(page.calls.addedResolve, 1, 'the physical upgrade must resolve once as ordinary added kong');
-  assert.equal(page.calls.addedApply, 1, 'the physical upgrade must commit once as ordinary added kong');
+  assert.equal(page.calls.rob, 1, 'deferred forced run must check rob-kong exactly once');
+  assert.equal(page.calls.deferred, 1, 'the incomplete resource path must enter the delayed forced-run executor once');
+  assert.equal(page.calls.addedResolve, 0, 'the same upgrade must not also execute ordinary added-kong');
+  assert.equal(page.calls.addedApply, 0, 'the same upgrade must not commit ordinary added-kong');
 
   page.GS = pageState();
-  page.GS.newDrawnTile = tile('tiao7');
-  page.GS.newDrawnIdx = 0;
+  page.GS._deferredAllowed = false;
   assert.deepEqual(plain(declarationSummary(page.collectPageKongDeclarations(0))), [
-    { kind: 'forcedRunDeferred', tile: 'tiao7' },
     { kind: 'addedKong', tile: 'tiao7' },
-  ], 'a newly drawn retained resource tile must retain the genuine deferred forced-run declaration');
-  assert.equal(page.canSelfKong(0).type, 'deferred');
+  ], 'a resource-complete structure must retain only the ordinary added-kong declaration');
+  assert.equal(page.canSelfKong(0).type, 'add');
   assert.equal(page.handleKongButton(), true);
-  assert.equal(page.calls.deferred, 1, 'the genuine deferred forced-run path must still execute once');
+  assert.equal(page.calls.addedResolve, 1, 'the resource-complete structure must resolve once as ordinary added kong');
+  assert.equal(page.calls.addedApply, 1, 'the resource-complete structure must commit once as ordinary added kong');
 
   const snapshotContext = { window: {} };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'public/game/session_snapshot.js'), 'utf8'), snapshotContext);
@@ -200,13 +201,14 @@ try {
   assert.equal(restored.state._kongResources[0].tile, 'tiao7', 'the active older resource must survive the round trip');
   const restoredPage = makePageContext();
   restoredPage.GS = restored.state;
+  restoredPage.GS._deferredAllowed = true;
   restoredPage.updateBtns();
   assert.equal(restoredPage.document.getElementById('bt-kong').disabled, false, 'restored declarations must enable the kong button');
   assert.equal(restoredPage.handleKongButton(), true, 'the restored enabled button must reach the self-kong dispatcher');
-  assert.equal(restoredPage.calls.rob, 0);
-  assert.equal(restoredPage.calls.deferred, 0);
-  assert.equal(restoredPage.calls.addedResolve, 1);
-  assert.equal(restoredPage.calls.addedApply, 1);
+  assert.equal(restoredPage.calls.rob, 1);
+  assert.equal(restoredPage.calls.deferred, 1);
+  assert.equal(restoredPage.calls.addedResolve, 0);
+  assert.equal(restoredPage.calls.addedApply, 0);
 
   page.GS = pageState();
   page.GS._kongResources = [];
@@ -254,6 +256,15 @@ try {
   };
   assert.equal(rules.canUseDeferredForcedRun(game61State, 0), false, 'game-61-equivalent unrelated 6-wan draw must not retain a delayed forced-run declaration');
   assert.deepEqual(rules.getLegalActions(game61State, 0), ['discard', 'addedKong']);
+  const game61DongState = {
+    ...game61State,
+    newDrawnTile: 'dong',
+    players: [{ ...game61State.players[0], hand: game61PreKongHand.map((tileKey) => tileKey === 'wan6' ? 'dong' : tileKey) }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }],
+  };
+  assert.equal(rules.canUseDeferredForcedRun(game61DongState, 0), true, 'the same retained resource must become deferred forced run when the current structure remains incomplete');
+  assert.deepEqual(rules.getLegalActions(game61DongState, 0), ['discard', 'addedKong', 'deferredForcedRunKong']);
+  const currentResourceButComplete = { ...game61State, newDrawnTile: 'wan4' };
+  assert.equal(rules.canUseDeferredForcedRun(currentResourceButComplete, 0), false, 'matching the resource tile key alone must not force deferred routing when the resource structure is already complete');
   const game61Resolution = rules.resolveAddedKongDraw({
     owner: 0, kongTile: 'wan4', preKongHand: game61PreKongHand, melds: [game61Peng], drawTile: 'tong8',
     scores: [100, 100, 100, 100], robKongState: game61State, resource: game61Resource,
@@ -269,6 +280,9 @@ try {
   });
   assert.equal(browserGame61.outcome, 'addedKongFakeWin', 'browser rule bundle must keep the game-61-equivalent added-kong fake-win outcome');
   assert.deepEqual(plain(browserGame61.settlement.delta), [6, -2, -2, -2]);
+  assert.equal(browserRuleEngine.canUseDeferredForcedRun(game61State, 0), false, 'browser bundle must classify the resource-complete game-61 state as ordinary added kong');
+  assert.equal(browserRuleEngine.canUseDeferredForcedRun(game61DongState, 0), true, 'browser bundle must classify the incomplete alternate draw as deferred forced run');
+  assert.equal(browserRuleEngine.canUseDeferredForcedRun(currentResourceButComplete, 0), false, 'browser bundle must not route solely on resource tile equality');
   console.log('P0 post-pong kong reachability regression: passed');
 } finally {
   fs.rmSync(compiledDir, { recursive: true, force: true });
