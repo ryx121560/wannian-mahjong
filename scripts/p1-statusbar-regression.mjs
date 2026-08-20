@@ -71,6 +71,7 @@ vm.createContext(scoreContext);
 vm.runInContext(extractFunction('captureSettlementScoreDeltas'), scoreContext, { filename: 'captureSettlementScoreDeltas.js' });
 vm.runInContext(extractFunction('currentGameSequence'), scoreContext, { filename: 'currentGameSequence.js' });
 vm.runInContext(extractFunction('formatCurrentGameLabel'), scoreContext, { filename: 'formatCurrentGameLabel.js' });
+vm.runInContext(extractFunction('topSettlementKongSemantic'), scoreContext, { filename: 'topSettlementKongSemantic.js' });
 vm.runInContext(extractFunction('formatTopSettlementSummary'), scoreContext, { filename: 'formatTopSettlementSummary.js' });
 vm.runInContext(extractFunction('updateTopScoreBar'), scoreContext, { filename: 'updateTopScoreBar.js' });
 vm.runInContext(extractFunction('setMsg'), scoreContext, { filename: 'setMsg.js' });
@@ -105,6 +106,34 @@ assert.doesNotMatch(scoreContext.document.bar.textContent, /turn|response|select
 scoreContext.topSettlement = { type: 'draw', scoreDeltas: [0, 0, 0, 0] };
 scoreContext.updateTopScoreBar();
 assert.match(scoreContext.document.bar.textContent, /\n.*\+0.*\+0.*\+0.*\+0/, 'a structured draw result must append the draw and four seat deltas');
+
+scoreContext.GS.players = [
+  { name: '你', score: 108 }, { name: 'AI下家', score: 96 }, { name: 'AI对家', score: 98 }, { name: 'AI上家', score: 98 },
+];
+for (const fixture of [
+  { kongAction: 'directChisel', kongOutcome: 'directChiselFakeWin', scoreDeltas: [8, -4, -2, -2], label: '直铲·假胡' },
+  { kongAction: 'directChisel', kongOutcome: 'directChiselTrueWin', scoreDeltas: [16, -8, -4, -4], label: '直铲·真胡' },
+  { kongAction: 'concealedKong', kongOutcome: 'concealedKongFakeWin', scoreDeltas: [12, -4, -4, -4], label: '暗杠·假胡' },
+  { kongAction: 'concealedKong', kongOutcome: 'concealedKongTrueWin', scoreDeltas: [24, -8, -8, -8], label: '暗杠·真胡' },
+  { kongAction: 'forcedRunImmediate', kongOutcome: 'forcedRunGangKaiTrueWin', scoreDeltas: [12, -4, -4, -4], label: '强行跑杠开' },
+  { kongAction: 'forcedRunDeferred', kongOutcome: 'forcedRunGangKaiFakeWin', scoreDeltas: [6, -2, -2, -2], label: '强行跑杠开' },
+]) {
+  scoreContext.topSettlement = { type: '杠开', huType: '平胡', winner: 0, ...fixture };
+  scoreContext.updateTopScoreBar();
+  assert.match(scoreContext.document.bar.textContent, new RegExp(`上局：你 平胡（${fixture.label}）`), `${fixture.label} must use the precise action label`);
+}
+
+for (const fixture of [
+  { type: '杠开', huType: '平胡', winner: 0, kongAction: 'addedKong', kongOutcome: 'addedKongImmediateWin', scoreDeltas: [12, -4, -4, -4], expected: '平胡(杠开)' },
+  { type: '点炮', huType: '碰碰胡', winner: 0, scoreDeltas: [4, -4, 0, 0], expected: '碰碰胡(点炮)' },
+  { type: '自摸', huType: '平胡', winner: 0, scoreDeltas: [3, -1, -1, -1], expected: '平胡(自摸)' },
+  { type: '流局', scoreDeltas: [0, 0, 0, 0], expected: '上局：流局' },
+  { type: '杠开', huType: '平胡', winner: 0, kongAction: 'forcedRunImmediate', kongOutcome: 'forcedRunFailureDiscard', scoreDeltas: [0, 0, 0, 0], expected: '平胡(杠开)' },
+]) {
+  scoreContext.topSettlement = fixture;
+  scoreContext.updateTopScoreBar();
+  assert.match(scoreContext.document.bar.textContent, new RegExp(fixture.expected.replace(/[()]/g, '\\$&')), `${fixture.type} wording must remain unchanged`);
+}
 
 scoreContext.topSettlement = null;
 scoreContext.updateTopScoreBar();

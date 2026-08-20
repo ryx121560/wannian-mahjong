@@ -42,7 +42,7 @@ const context = {
   TOP_SETTLEMENT_KEY: 'wannian_top_settlement_summary_v1',
 };
 vm.createContext(context);
-for (const name of ['isTrustedTopSettlementSummary', 'normalizeTopSettlementSummary', 'commitTopSettlementSummary', 'loadTopSettlementSummary', 'currentTopSettlementSummary']) {
+for (const name of ['isTrustedTopSettlementSummary', 'topSettlementKongSemantic', 'normalizeTopSettlementSummary', 'commitTopSettlementSummary', 'loadTopSettlementSummary', 'currentTopSettlementSummary']) {
   vm.runInContext(extractFunction(name), context, { filename: `${name}.js` });
 }
 const first = context.commitTopSettlementSummary({ type: '点炮', huType: '碰碰胡', winner: 0, scoreDeltas: [6, -6, 0, 0] });
@@ -54,5 +54,32 @@ assert.equal(context.loadTopSettlementSummary().huType, '碰碰胡', 'refresh mu
 const next = context.commitTopSettlementSummary({ type: '杠开', huType: '清一色', winner: 1, scoreDeltas: [-8, 24, -8, -8] });
 assert.equal(next.huType, '清一色', 'only a later trusted settlement may replace the summary');
 assert.equal(context.commitTopSettlementSummary({ type: '流局', scoreDeltas: [1, 0, 0, 0] }), null, 'non-zero-sum or untrusted deltas must not replace the summary');
+
+for (const fixture of [
+  { kongAction: 'directChisel', kongOutcome: 'directChiselFakeWin', scoreDeltas: [8, -4, -2, -2], label: 'direct-chisel-fake' },
+  { kongAction: 'directChisel', kongOutcome: 'directChiselTrueWin', scoreDeltas: [16, -8, -4, -4], label: 'direct-chisel-true' },
+  { kongAction: 'concealedKong', kongOutcome: 'concealedKongFakeWin', scoreDeltas: [12, -4, -4, -4], label: 'concealed-kong-fake' },
+  { kongAction: 'concealedKong', kongOutcome: 'concealedKongTrueWin', scoreDeltas: [24, -8, -8, -8], label: 'concealed-kong-true' },
+  { kongAction: 'forcedRunImmediate', kongOutcome: 'forcedRunGangKaiTrueWin', scoreDeltas: [12, -4, -4, -4], label: 'forced-run-immediate-true' },
+  { kongAction: 'forcedRunDeferred', kongOutcome: 'forcedRunGangKaiFakeWin', scoreDeltas: [6, -2, -2, -2], label: 'forced-run-deferred-fake' },
+]) {
+  const committed = context.commitTopSettlementSummary({ type: '杠开', huType: '平胡', winner: 0, ...fixture });
+  assert.equal(committed.kongAction, fixture.kongAction, `${fixture.label} must preserve the known kong action`);
+  assert.equal(committed.kongOutcome, fixture.kongOutcome, `${fixture.label} must preserve the known kong outcome`);
+  context._topSettlementSummary = null;
+  const restored = context.loadTopSettlementSummary();
+  assert.equal(restored.kongAction, fixture.kongAction, `${fixture.label} must survive JSON reload`);
+  assert.equal(restored.kongOutcome, fixture.kongOutcome, `${fixture.label} must survive JSON reload`);
+}
+
+storageData.set(context.TOP_SETTLEMENT_KEY, JSON.stringify({ type: '杠开', huType: '平胡', winner: 0, scoreDeltas: [8, -4, -2, -2] }));
+context._topSettlementSummary = null;
+const legacy = context.loadTopSettlementSummary();
+assert.equal(legacy.kongAction, undefined, 'an older summary without action fields must remain readable');
+assert.equal(legacy.kongOutcome, undefined, 'an older summary without outcome fields must remain readable');
+
+const failedForcedRun = context.commitTopSettlementSummary({ type: '杠开', huType: '平胡', winner: 0, kongAction: 'forcedRunImmediate', kongOutcome: 'forcedRunFailureDiscard', scoreDeltas: [0, 0, 0, 0] });
+assert.equal(failedForcedRun.kongAction, undefined, 'a failed forced run must not acquire a top-summary action label');
+assert.equal(failedForcedRun.kongOutcome, undefined, 'a failed forced run must not acquire a top-summary outcome label');
 
 console.log('P1 top settlement persistence regression: passed');

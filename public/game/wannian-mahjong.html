@@ -1209,9 +1209,22 @@ const TOP_SETTLEMENT_KEY='wannian_top_settlement_summary_v1';
 function isTrustedTopSettlementSummary(result){
   return !!result&&typeof result==='object'&&typeof result.type==='string'&&Array.isArray(result.scoreDeltas)&&result.scoreDeltas.length===4&&result.scoreDeltas.every(Number.isFinite)&&Math.abs(result.scoreDeltas.reduce(function(sum,value){return sum+value;},0))<1e-9&&(!Object.prototype.hasOwnProperty.call(result,'winner')||result.winner===null||Number.isInteger(result.winner)&&result.winner>=0&&result.winner<4);
 }
+function topSettlementKongSemantic(kongAction,kongOutcome){
+  const labels={
+    directChisel:{directChiselTrueWin:'直铲·真胡',directChiselFakeWin:'直铲·假胡'},
+    concealedKong:{concealedKongTrueWin:'暗杠·真胡',concealedKongFakeWin:'暗杠·假胡'},
+    forcedRunImmediate:{forcedRunGangKaiTrueWin:'强行跑杠开',forcedRunGangKaiFakeWin:'强行跑杠开'},
+    forcedRunDeferred:{forcedRunGangKaiTrueWin:'强行跑杠开',forcedRunGangKaiFakeWin:'强行跑杠开'}
+  };
+  const label=labels[kongAction]&&labels[kongAction][kongOutcome];
+  return label?{kongAction:kongAction,kongOutcome:kongOutcome,label:label}:null;
+}
 function normalizeTopSettlementSummary(result){
   if(!isTrustedTopSettlementSummary(result))return null;
-  return {type:result.type,huType:typeof result.huType==='string'?result.huType:'',winner:Number.isInteger(result.winner)?result.winner:null,winnerName:Number.isInteger(result.winner)&&GS.players[result.winner]&&typeof GS.players[result.winner].name==='string'?GS.players[result.winner].name:'',bankrupt:Number.isInteger(result.bankrupt)?result.bankrupt:null,scoreDeltas:result.scoreDeltas.slice()};
+  const summary={type:result.type,huType:typeof result.huType==='string'?result.huType:'',winner:Number.isInteger(result.winner)?result.winner:null,winnerName:Number.isInteger(result.winner)&&GS.players[result.winner]&&typeof GS.players[result.winner].name==='string'?GS.players[result.winner].name:'',bankrupt:Number.isInteger(result.bankrupt)?result.bankrupt:null,scoreDeltas:result.scoreDeltas.slice()};
+  const semantic=topSettlementKongSemantic(result.kongAction,result.kongOutcome);
+  if(semantic){summary.kongAction=semantic.kongAction;summary.kongOutcome=semantic.kongOutcome;}
+  return summary;
 }
 function commitTopSettlementSummary(result){
   const summary=normalizeTopSettlementSummary(result);
@@ -4936,7 +4949,8 @@ function formatTopSettlementSummary(lastResult,players){
   const winner=Number.isInteger(lastResult.winner)&&players[lastResult.winner]?players[lastResult.winner]:null;
   const winnerName=winner&&typeof winner.name==='string'&&winner.name.trim()?winner.name.trim():'玩家';
   const handType=typeof lastResult.huType==='string'&&lastResult.huType?lastResult.huType:'胡牌';
-  const resultLabel=resultType==='流局'||resultType==='draw'?'上局：流局':'上局：'+winnerName+' '+handType+'('+resultType+')';
+  const semantic=topSettlementKongSemantic(lastResult.kongAction,lastResult.kongOutcome);
+  const resultLabel=resultType==='流局'||resultType==='draw'?'上局：流局':'上局：'+winnerName+' '+handType+(semantic?'（'+semantic.label+'）':'('+resultType+')');
   const deltaLabels=['你','下家','对家','上家'];
   const deltaText=lastResult.scoreDeltas.map(function(delta,index){return deltaLabels[index]+(delta>=0?'+':'')+delta;}).join(' | ');
   return resultLabel+' | '+deltaText;
