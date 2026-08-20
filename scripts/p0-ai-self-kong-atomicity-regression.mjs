@@ -17,6 +17,7 @@ function extract(name) {
 function tile(k) { return { k }; }
 function runtime(hand, melds, declaration) {
   const events = [];
+  const calls = [];
   const context = {
     GS: { phase: 'discarding', cur: 2, newDrawnTile: tile('tong9'), newDrawnIdx: hand.length - 1, wall: [tile('wan9')], _kc: [0, 0, 0], players: [null, null, { name: 'AI对家', human: false, hand, melds, score: 100 }] },
     teq: (left, right) => left.k === right.k,
@@ -25,10 +26,11 @@ function runtime(hand, melds, declaration) {
     logAiResponseDecision: () => {}, clearPlayerDrawMarker: () => {}, markPlayerDrawnTile: () => {}, logEvent: (...args) => events.push(args),
     canHuNormal: () => ({ win: false }), concealedHand: (player) => context.GS.players[player].hand, ruleMeldsForPlayer: () => [], meetsThresh: () => false,
     canSelfWinForPlayer: () => false, setMsg: () => {}, render: () => {}, updateBtns: () => {}, saveGameSnapshot: () => {}, clearTimeout: () => {}, gameSetTimeout: () => 0, aiDiscard: () => {}, lbl: (value) => value.k,
+    applyPageNormalConcealedKongAction: (player, info) => { calls.push([player, info]); return true; },
   };
   vm.createContext(context);
   for (const name of ['currentAiSelfKongDeclaration', 'resumeAiDiscardAfterInvalidSelfKong', 'aiSelfKong']) vm.runInContext(extract(name), context);
-  return { context, events };
+  return { context, events, calls };
 }
 
 {
@@ -42,10 +44,11 @@ function runtime(hand, melds, declaration) {
   const hand = [tile('wan1'), tile('wan1'), tile('wan1'), tile('wan1'), tile('tong9')];
   const declaration = { type: 'concealed', tile: tile('wan1') };
   const test = runtime(hand, [], declaration);
-  assert.equal(test.context.aiSelfKong(2, declaration), undefined);
-  assert.deepEqual(test.context.GS.players[2].hand.map((value) => value.k), ['tong9', 'wan9']);
-  assert.equal(test.context.GS.players[2].melds[0].tile.k, 'wan1'); assert.equal(test.context.GS.wall.length, 0);
-  assert.deepEqual(test.events.map((event) => [event[1], event[2].k]), [['暗杠', 'wan1'], ['杠后摸', 'wan9']]);
+  assert.equal(test.context.aiSelfKong(2, declaration), true);
+  assert.deepEqual(test.context.GS.players[2].hand.map((value) => value.k), ['wan1', 'wan1', 'wan1', 'wan1', 'tong9']);
+  assert.equal(test.context.GS.players[2].melds.length, 0); assert.equal(test.context.GS.wall.length, 1);
+  assert.deepEqual(test.calls.map(([player, info]) => [player, info.tile.k]), [[2, 'wan1']]);
+  assert.equal(test.events.length, 0, 'AI must not emit a duplicate manual concealed-kong event');
 }
 {
   const hand = [tile('wan1'), tile('wan1'), tile('wan1'), tile('wan1'), tile('tong9')];

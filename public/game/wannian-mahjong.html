@@ -2719,9 +2719,10 @@ function applyPageNormalConcealedKongAction(p,info){
   let resolution,settlement;
   try{
     resolution=RULE_ENGINE.resolveConcealedKongDraw(action);
-    settlement=RULE_ENGINE.scoreConcealedKongSettlement({action:action,winner:p,scores:GS.players.map(function(item){return item.score;})});
+    if(!resolution||resolution.robKongWindow)return false;
+    settlement=resolution.mustDiscard?null:RULE_ENGINE.scoreConcealedKongSettlement({action:action,winner:p,scores:GS.players.map(function(item){return item.score;})});
   }catch(error){return false;}
-  if(!resolution||resolution.mustDiscard||resolution.robKongWindow||!settlement||!Array.isArray(settlement.after)||settlement.after.length!==GS.players.length)return false;
+  if(!resolution||resolution.robKongWindow||(settlement&&(!Array.isArray(settlement.after)||settlement.after.length!==GS.players.length)))return false;
   const nextHand=handAfterKong.concat([drawTile]);
   player.hand=nextHand;
   player.melds=(player.melds||[]).concat([{tile:tile,count:4,concealed:true}]);
@@ -2729,7 +2730,12 @@ function applyPageNormalConcealedKongAction(p,info){
   GS._kc[p]=(GS._kc[p]||0)+1;
   logEvent(p,'暗杠',tile,{actionKind:'普通暗杠',outcome:resolution.outcome,robKongWindow:false});
   logEvent(p,'杠后摸',drawTile,{actionKind:'普通暗杠',outcome:resolution.outcome,robKongWindow:false});
-  return completePageKongSettlement(p,{kind:'concealedKong'},{resolution:{outcome:resolution.outcome,evaluation:{decomposition:resolution.classification.selectedDecomposition}},settlement:settlement});
+  if(settlement)return completePageKongSettlement(p,{kind:'concealedKong'},{resolution:{outcome:resolution.outcome,evaluation:{decomposition:resolution.classification.selectedDecomposition}},settlement:settlement});
+  resetPageKongResponseState(p);GS.phase='discarding';GS.canK=collectPageKongDeclarations(p).length>0;
+  setMsg(GS.players[p].name+'暗杠补牌未成胡，请出牌');
+  render();updateBtns();saveGameSnapshot('concealed-kong-failure-discard');
+  if(!player.human){clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(function(){aiDiscard(p);},1200);}else updateSuggestion();
+  return true;
 }
 
 function doSelfKong(p){
@@ -3012,6 +3018,10 @@ function resumeAiDiscardAfterInvalidSelfKong(p){
 function aiSelfKong(p,kongInfo){
   const info=currentAiSelfKongDeclaration(p,kongInfo);
   if(!info)return resumeAiDiscardAfterInvalidSelfKong(p);
+  if(info.type==='concealed'){
+    const applied=applyPageNormalConcealedKongAction(p,info);
+    return applied||resumeAiDiscardAfterInvalidSelfKong(p);
+  }
   if((info.type==='addedKongChain')||(info.type==='chain')||(info.type==='deferred')){
     const actionKind=info.type==='addedKongChain'?'addedKongChain':(info.type==='chain'?'chainKong':'forcedRunDeferred');
     logAiResponseDecision(p,'selfKong',info.tile,0,0,'已按统一规则状态机执行'+pageKongActionLabel(actionKind));

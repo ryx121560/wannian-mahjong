@@ -79,6 +79,43 @@ for (const drawTile of ['wan8', 'tong5']) {
   assert.deepEqual(settle(drawTile).delta, [24, -8, -8, -8]);
 }
 
+// Game 29 equivalent: after a legal tong9 concealed kong, nan can replace the
+// unpaired tiao7 and completes 456-tiao plus nan-nan as a resource fake win.
+const game29Action = {
+  owner: 2,
+  kongTile: 'tong9',
+  preKongHand: ['tong9', 'tong9', 'tong9', 'tong9', 'tiao4', 'tiao5', 'tiao6', 'tiao7'],
+  handAfterKong: ['tiao4', 'tiao5', 'tiao6', 'tiao7'],
+  melds: [
+    { type: 'peng', tiles: ['bai', 'bai', 'bai'] },
+    { type: 'peng', tiles: ['tong3', 'tong3', 'tong3'] },
+    { type: 'anGang', tiles: ['tong9', 'tong9', 'tong9', 'tong9'] },
+  ],
+  drawTile: 'nan',
+};
+const game29Fake = rules.resolveConcealedKongDraw(game29Action);
+assert.equal(game29Fake.outcome, 'concealedKongFakeWin');
+assert.equal(game29Fake.mustDiscard, false);
+assert.deepEqual(game29Fake.fakeWinReplacement, { originalTile: 'tiao7', replacedBy: 'nan' });
+assert.deepEqual(rules.scoreConcealedKongSettlement({ action: game29Action, winner: 2, scores }).payments, [4, 4, 0, 4]);
+assert.deepEqual(rules.scoreConcealedKongSettlement({ action: game29Action, winner: 2, scores }).delta, [-4, -4, 12, -4]);
+for (const drawTile of ['tiao4', 'tiao7']) {
+  const trueAction = { ...game29Action, drawTile };
+  assert.equal(rules.resolveConcealedKongDraw(trueAction).outcome, 'concealedKongTrueWin');
+  assert.deepEqual(rules.scoreConcealedKongSettlement({ action: trueAction, winner: 2, scores }).delta, [-8, -8, 24, -8]);
+}
+const nonResourceAction = {
+  owner: 0,
+  kongTile: 'tong9',
+  preKongHand: ['tong9', 'tong9', 'tong9', 'tong9', 'wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6', 'tiao1', 'tiao3', 'tong5', 'tong7'],
+  handAfterKong: ['wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6', 'tiao1', 'tiao3', 'tong5', 'tong7'],
+  melds: [{ type: 'anGang', tiles: ['tong9', 'tong9', 'tong9', 'tong9'] }],
+  drawTile: 'dong',
+};
+assert.equal(rules.resolveConcealedKongDraw(nonResourceAction).outcome, 'concealedKongFailureDiscard');
+assert.equal(rules.resolveConcealedKongDraw(nonResourceAction).mustDiscard, true);
+assert.throws(() => rules.scoreConcealedKongSettlement({ action: nonResourceAction, winner: 0, scores }), /cannot settle/);
+
 // Payment caps apply independently after all hand-type multipliers.
 const capHandAfterKong = ['wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'wan4'];
 const capAction = {
@@ -129,7 +166,8 @@ const normalConcealedExecutor = extractFunction('applyPageNormalConcealedKongAct
 assert.match(normalConcealedExecutor, /RULE_ENGINE\.resolveConcealedKongDraw\(/, 'page must derive the outcome from the rule core');
 assert.match(normalConcealedExecutor, /RULE_ENGINE\.scoreConcealedKongSettlement\(/, 'page must use core-derived payments');
 assert.match(normalConcealedExecutor, /completePageKongSettlement\(p,\{kind:'concealedKong'\}/, 'page must send the trusted core result to the shared settlement path');
-assert.doesNotMatch(normalConcealedExecutor, /GS\.phase='discarding'/, 'ordinary concealed kong must never fall through to discard');
+assert.match(normalConcealedExecutor, /settlement=resolution\.mustDiscard\?null/, 'ordinary concealed kong must only skip settlement for a core-declared discard result');
+assert.match(normalConcealedExecutor, /GS\.phase='discarding'/, 'a core-declared non-resource supplement must continue through the legal discard branch');
 
 const settlementExecutor = extractFunction('completePageKongSettlement');
 assert.match(settlementExecutor, /action\.kind==='concealedKong'\?'concealed-kong-settled':'kong-settled'/, 'settled ordinary concealed kong must persist its trusted summary');
@@ -162,5 +200,53 @@ assert.equal(pageContext.GS.players[0].melds[0].concealed, true, 'page must pers
 assert.equal(pageContext.events.length, 2, 'page must export auditable ordinary concealed-kong and supplement events');
 assert.equal(pageContext.settlementArgs[1].kind, 'concealedKong', 'page must persist the trusted normal concealed-kong settlement category');
 assert.equal(pageContext.settlementArgs[2].resolution.outcome, 'concealedKongFakeWin');
+
+function runPageConcealedKong({ hand, melds, wall, tile: kongTile, human = false }) {
+  const calls = { settlement: 0, timer: 0, discard: 0, snapshot: 0 };
+  const context = {
+    RULE_ENGINE: rules,
+    GS: {
+      phase: 'discarding', cur: 2, players: [
+        { name: 'P0', human: true, hand: [], melds: [], score: 100 },
+        { name: 'P1', human: false, hand: [], melds: [], score: 100 },
+        { name: 'AI对家', human, hand: hand.map((key) => ({ k: key })), melds, score: 100 },
+        { name: 'P3', human: false, hand: [], melds: [], score: 100 },
+      ],
+      wall: wall.map((key) => ({ k: key })), newDrawnTile: { k: kongTile }, newDrawnIdx: hand.length - 1, _kc: [0, 0, 0],
+    },
+    kt: (key) => (typeof key === 'string' ? { k: key } : key), tkey: (tile) => (typeof tile === 'string' ? tile : tile.k),
+    ruleTiles: (tiles) => tiles.map((tile) => (typeof tile === 'string' ? tile : tile.k)), teq: (left, right) => left.k === right.k,
+    ruleMeldsForPlayer: (player) => context.GS.players[player].melds.map((meld) => ({ type: meld.count === 4 && meld.concealed ? 'anGang' : 'peng', tiles: Array(meld.count).fill(meld.tile.k) })),
+    logEvent: (...args) => context.events.push(args), events: [], completePageKongSettlement: (...args) => { calls.settlement += 1; context.settlementArgs = args; context.GS.phase = 'ended'; return true; },
+    settlementArgs: null, resetPageKongResponseState: () => {}, collectPageKongDeclarations: () => [], setMsg: () => {}, render: () => {}, updateBtns: () => {}, updateSuggestion: () => {},
+    saveGameSnapshot: () => { calls.snapshot += 1; }, clearTimeout: () => {}, gameSetTimeout: () => { calls.timer += 1; return 0; }, aiDiscard: () => { calls.discard += 1; },
+  };
+  vm.createContext(context);
+  vm.runInContext(extractFunction('removePageTiles'), context);
+  vm.runInContext(normalConcealedExecutor, context);
+  assert.equal(context.applyPageNormalConcealedKongAction(2, { type: 'concealed', tile: { k: kongTile } }), true);
+  return { context, calls };
+}
+
+const game29Page = runPageConcealedKong({
+  hand: game29Action.preKongHand,
+  melds: [{ tile: { k: 'bai' }, count: 3 }, { tile: { k: 'tong3' }, count: 3 }],
+  wall: ['nan'],
+  tile: 'tong9',
+});
+assert.equal(game29Page.context.GS.phase, 'ended', 'AI resource fake win must end immediately');
+assert.equal(game29Page.calls.settlement, 1);
+assert.equal(game29Page.calls.timer, 0, 'settled AI resource fake win must not schedule an AI discard');
+assert.equal(game29Page.context.settlementArgs[2].settlement.delta[2], 12);
+assert.equal(game29Page.context.settlementArgs[2].resolution.outcome, 'concealedKongFakeWin');
+
+const nonResourcePage = runPageConcealedKong({ hand: nonResourceAction.preKongHand, melds: [], wall: ['dong'], tile: 'tong9' });
+assert.equal(nonResourcePage.context.GS.phase, 'discarding');
+assert.equal(nonResourcePage.calls.settlement, 0, 'non-resource supplement must not settle');
+assert.equal(nonResourcePage.calls.timer, 1, 'AI non-resource supplement must schedule one legal discard');
+assert.equal(nonResourcePage.context.GS.players[2].score, 100);
+assert.equal(nonResourcePage.context.GS.wall.length, 0);
+assert.equal(nonResourcePage.context.GS.players[2].melds[0].concealed, true);
+assert.deepEqual(JSON.parse(JSON.stringify(nonResourcePage.context.GS.players[2].hand.map((tile) => tile.k).sort())), nonResourceAction.handAfterKong.concat('dong').sort());
 
 console.log('normal concealed kong regression: passed');

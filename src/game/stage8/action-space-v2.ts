@@ -62,13 +62,13 @@ export interface Stage8V2NormalConcealedKongSimulation extends Stage8V2ProtocolI
 }
 
 export interface Stage8V2NormalConcealedKongResult {
-  outcome: 'normalConcealedKongTrueWin' | 'normalConcealedKongFakeWin';
-  settlement: ConcealedKongSettlementResult;
+  outcome: 'normalConcealedKongTrueWin' | 'normalConcealedKongFakeWin' | 'normalConcealedKongFailureDiscard';
+  settlement: ConcealedKongSettlementResult | null;
   nextState: GameState;
   robKongWindowOpened: false;
   publicLogSummary: {
     actionType: 'normalConcealedKong';
-    outcome: 'normalConcealedKongTrueWin' | 'normalConcealedKongFakeWin';
+    outcome: 'normalConcealedKongTrueWin' | 'normalConcealedKongFakeWin' | 'normalConcealedKongFailureDiscard';
     payments: number[];
     handTypes: string[];
     decompositionSignature: string;
@@ -171,19 +171,23 @@ export function simulateStage8V2NormalConcealedKong(input: Stage8V2NormalConceal
   }
   const ruleInput = buildRuleInput(input.state, claim);
   const resolution = resolveConcealedKongDraw(ruleInput);
-  const settlement = scoreConcealedKongSettlement({ action: ruleInput, winner: claim.owner, scores: input.state.scores });
+  const settlement = resolution.mustDiscard ? null : scoreConcealedKongSettlement({ action: ruleInput, winner: claim.owner, scores: input.state.scores });
   const players = (input.state.players || []).map((player, index) => index === claim.owner
     ? { ...player, hand: ruleInput.handAfterKong.concat(ruleInput.drawTile), melds: ruleInput.melds.slice() }
     : { ...player, hand: player.hand.slice(), melds: (player.melds || []).slice() });
   const melds = input.state.melds.map((playerMelds, index) => index === claim.owner ? ruleInput.melds.slice() : playerMelds.slice());
-  const outcome = resolution.outcome === 'concealedKongTrueWin' ? 'normalConcealedKongTrueWin' : 'normalConcealedKongFakeWin';
+  const outcome = resolution.outcome === 'concealedKongTrueWin'
+    ? 'normalConcealedKongTrueWin'
+    : resolution.outcome === 'concealedKongFakeWin'
+      ? 'normalConcealedKongFakeWin'
+      : 'normalConcealedKongFailureDiscard';
   const nextState: GameState = {
     ...input.state,
     players,
     melds,
-    scores: settlement.after.slice(),
+    scores: settlement ? settlement.after.slice() : input.state.scores.slice(),
     wallTiles: input.state.wallTiles.slice(0, -1),
-    phase: 'ended',
+    phase: settlement ? 'ended' : 'discarding',
     newDrawnTile: ruleInput.drawTile,
   };
   return {
@@ -194,7 +198,7 @@ export function simulateStage8V2NormalConcealedKong(input: Stage8V2NormalConceal
     publicLogSummary: {
       actionType: 'normalConcealedKong',
       outcome,
-      payments: settlement.payments.slice(),
+      payments: settlement ? settlement.payments.slice() : [],
       handTypes: resolution.classification.handTypes.slice(),
       decompositionSignature: resolution.classification.decompositionSignature,
     },

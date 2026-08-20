@@ -1,8 +1,9 @@
 import { canWin, classifyHand } from './hand-evaluator';
 import { sortTiles } from './tile-utils';
 import type { HandClassification, Meld, Tile } from './types';
+import { resolveWildcard } from './wildcard-resolver';
 
-export type ConcealedKongOutcome = 'concealedKongTrueWin' | 'concealedKongFakeWin';
+export type ConcealedKongOutcome = 'concealedKongTrueWin' | 'concealedKongFakeWin' | 'concealedKongFailureDiscard';
 
 export interface ConcealedKongDrawInput {
   owner: number;
@@ -15,10 +16,11 @@ export interface ConcealedKongDrawInput {
 
 export interface ConcealedKongDrawResolution {
   outcome: ConcealedKongOutcome;
-  mustDiscard: false;
+  mustDiscard: boolean;
   robKongWindow: false;
   handAfterDraw: Tile[];
   classification: HandClassification;
+  fakeWinReplacement?: { originalTile: Tile; replacedBy: Tile };
 }
 
 function sameTiles(left: Tile[], right: Tile[]): boolean {
@@ -57,9 +59,32 @@ export function resolveConcealedKongDraw(input: ConcealedKongDrawInput): Conceal
   if (invalid) throw new Error(`invalid concealed kong context: ${invalid}`);
   const handAfterDraw = input.handAfterKong.concat(input.drawTile);
   const trueWin = canWin(handAfterDraw, { melds: input.melds, winTile: input.drawTile, winType: '杠开' }).canWin;
+  if (trueWin) {
+    return {
+      outcome: 'concealedKongTrueWin',
+      mustDiscard: false,
+      robKongWindow: false,
+      handAfterDraw,
+      classification: classifyHand(handAfterDraw, input.melds, input.drawTile, '杠开'),
+    };
+  }
+  const wildcard = resolveWildcard(handAfterDraw, input.melds, input.drawTile);
+  if (wildcard.isFakeWin && wildcard.fakeWinReplacement) {
+    const replacementIndex = handAfterDraw.indexOf(wildcard.fakeWinReplacement.originalTile);
+    const classifiedHand = handAfterDraw.slice();
+    classifiedHand[replacementIndex] = wildcard.fakeWinReplacement.replacedBy;
+    return {
+      outcome: 'concealedKongFakeWin',
+      mustDiscard: false,
+      robKongWindow: false,
+      handAfterDraw,
+      classification: classifyHand(classifiedHand, input.melds, input.drawTile, '杠开'),
+      fakeWinReplacement: wildcard.fakeWinReplacement,
+    };
+  }
   return {
-    outcome: trueWin ? 'concealedKongTrueWin' : 'concealedKongFakeWin',
-    mustDiscard: false,
+    outcome: 'concealedKongFailureDiscard',
+    mustDiscard: true,
     robKongWindow: false,
     handAfterDraw,
     classification: classifyHand(handAfterDraw, input.melds, input.drawTile, '杠开'),

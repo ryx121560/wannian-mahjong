@@ -90,6 +90,7 @@ export interface ConcealedKongSettlementResult {
 
 export function scoreConcealedKongSettlement(input: ConcealedKongSettlementInput): ConcealedKongSettlementResult {
   const resolution = resolveConcealedKongDraw(input.action);
+  if (resolution.mustDiscard) throw new Error('concealed kong cannot settle a discard outcome');
   const before = input.scores.slice();
   const multiplier = multiplierForHandTypes(resolution.classification.handTypes);
   const basePayment = resolution.outcome === 'concealedKongTrueWin' ? 8 : 4;
