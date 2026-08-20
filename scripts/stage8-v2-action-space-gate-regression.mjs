@@ -245,6 +245,17 @@ const addedState = {
 const addedRuleActions = v2.deriveStage8V2RuleActions({ ...responseProtocol, state: addedState, playerId: 0 });
 assert.ok(addedRuleActions.some((action) => action.actionType === 'addedKong'), 'rule entry must expose addedKong');
 
+const deferredPong = { type: 'peng', tiles: ['wan4', 'wan4', 'wan4'], fromPlayer: 2 };
+const deferredResource = browserRuleEngine.createKongResource({ owner: 0, tile: 'wan4', pongMeld: deferredPong, source: 'pong' });
+const deferredState = {
+  phase: 'discarding', currentPlayer: 0, newDrawnTile: 'wan4',
+  players: [{ hand: ['wan4', 'wan1', 'wan2', 'wan3', 'wan5', 'wan6', 'wan7', 'wan8', 'wan9', 'tong1', 'tong2'], melds: [deferredPong] }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }],
+  melds: [[deferredPong], [], [], []], discards: [[], [], [], []], turn: 0, dealer: 0,
+  scores: [100, 100, 100, 100], wallTiles: ['bai'], passRecords: [], kongResources: [deferredResource],
+};
+const deferredRuleActions = v2.deriveStage8V2RuleActions({ ...responseProtocol, state: deferredState, playerId: 0 });
+assert.ok(deferredRuleActions.some((action) => action.actionType === 'forcedRunDeferred'), 'rule entry must expose forcedRunDeferred only when the current draw is the active resource tile');
+
 const completeRuleActionTypes = new Set([
   ...ruleActions,
   ...forcedRuleActions,
@@ -256,6 +267,7 @@ const completeRuleActionTypes = new Set([
   ...winRuleActions,
   ...normalRuleActions,
   ...addedRuleActions,
+  ...deferredRuleActions,
 ].map((action) => action.actionType));
 assert.deepEqual(
   [...completeRuleActionTypes].sort(),

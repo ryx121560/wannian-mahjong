@@ -101,6 +101,7 @@ const deferredState = {
   ...responseState,
   phase: 'discarding',
   currentPlayer: 1,
+  newDrawnTile: 'tong6',
   players: [{ hand: [] }, { hand: ['tong6', 'wan1'], melds: [tong6Peng] }, { hand: [] }, { hand: [] }],
   kongResources: [resource],
 };

@@ -632,7 +632,7 @@ function preparePageDeferredKongAction(playerIdx){
   const player=GS.players[playerIdx];
   const resource=((player&&player.hand)||[]).map(function(tile){return activePageKongResource(playerIdx,tile);}).find(Boolean);
   const declarationState={
-    phase:GS.phase,currentPlayer:GS.cur,kongResources:pageKongResources(),
+    phase:GS.phase,currentPlayer:GS.cur,newDrawnTile:GS.newDrawnTile?tkey(GS.newDrawnTile):undefined,kongResources:pageKongResources(),
     players:(GS.players||[]).map(function(item,index){return {hand:ruleTiles((item&&item.hand)||[]),melds:ruleMeldsForPlayer(index)};})
   };
   if(!resource||!RULE_ENGINE.canUseDeferredForcedRun(declarationState,playerIdx))return null;

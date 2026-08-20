@@ -293,7 +293,10 @@ export function canUseDeferredForcedRun(state: GameState, playerId: number): boo
   if (state.phase !== 'discarding' || state.currentPlayer !== playerId) return false;
   const player = state.players?.[playerId] || { hand: state.hand || [] };
   return (state.kongResources || []).some((resource) => (
-    resource.owner === playerId && resource.status === 'active' && player.hand.includes(resource.tile)
+    resource.owner === playerId
+      && resource.status === 'active'
+      && state.newDrawnTile === resource.tile
+      && player.hand.includes(resource.tile)
   ));
 }
 

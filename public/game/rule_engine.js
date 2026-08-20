@@ -1056,7 +1056,10 @@ function canUseDeferredForcedRun(state, playerId) {
     if (state.phase !== 'discarding' || state.currentPlayer !== playerId)
         return false;
     const player = ((_a = state.players) === null || _a === void 0 ? void 0 : _a[playerId]) || { hand: state.hand || [] };
-    return (state.kongResources || []).some((resource) => (resource.owner === playerId && resource.status === 'active' && player.hand.includes(resource.tile)));
+    return (state.kongResources || []).some((resource) => (resource.owner === playerId
+        && resource.status === 'active'
+        && state.newDrawnTile === resource.tile
+        && player.hand.includes(resource.tile)));
 }
 function activeResourceSnapshot(resource) {
     return { ...resource, status: 'active' };
