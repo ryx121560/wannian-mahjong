@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/next-with-port.mjs dev",
     "predev": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs",
-    "prebuild": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/clean-next-cache.mjs",
+    "prebuild": "node scripts/assert-browser-build-artifacts-clean.mjs && node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/clean-next-cache.mjs",
     "build": "node scripts/build-production-game.mjs",
     "start": "node scripts/start-production-game.mjs",
     "start:production": "node scripts/start-production-game.mjs",
@@ -54,6 +54,7 @@
     "test:approved-deployment-paths": "node scripts/approved-deployment-paths-regression.mjs",
     "test:production-launch": "node scripts/production-launch-regression.mjs",
     "test:runtime-build-isolation": "node scripts/runtime-build-isolation-regression.mjs",
+    "test:stage1-runtime-hygiene": "node scripts/stage1-runtime-hygiene-regression.mjs",
     "test:production-port-window": "node scripts/production-port-window-regression.mjs",
     "test:normal-concealed-kong": "node scripts/normal-concealed-kong-regression.mjs",
     "test:p2-game-export": "node scripts/p2-game-export-regression.mjs",

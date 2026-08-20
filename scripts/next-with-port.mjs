@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const mode = process.argv[2] || 'dev';
 const allowedModes = new Set(['dev', 'start']);
+const loopbackHost = '127.0.0.1';
+const require = createRequire(import.meta.url);
 const preferredPort = Number.parseInt(process.env.PORT || '18765', 10);
 const portWindow = Number.parseInt(process.env.PORT_WINDOW || '10', 10);
 
@@ -28,11 +31,21 @@ function cleanDevCache() {
 function canListen(port, host) {
   return new Promise((resolve) => {
     const server = net.createServer();
-    server.once('error', () => resolve(false));
+    let settled = false;
+    const finish = (available) => {
+      if (settled) return;
+      settled = true;
+      resolve(available);
+    };
+    server.once('error', () => finish(false));
     server.once('listening', () => {
-      server.close(() => resolve(true));
+      server.close((error) => finish(!error));
     });
-    server.listen({ port, host, exclusive: true });
+    try {
+      server.listen({ port, host, exclusive: true });
+    } catch {
+      finish(false);
+    }
   });
 }
 
@@ -41,19 +54,13 @@ async function findPort() {
   for (let offset = 0; offset <= maxOffset; offset += 1) {
     const port = preferredPort + offset;
     if (port > 65535) break;
-    const ipv6Free = await canListen(port, '::');
-    const ipv4Free = await canListen(port, '0.0.0.0');
-    const localFree = await canListen(port, '127.0.0.1');
-    if (ipv6Free && ipv4Free && localFree) return port;
+    if (await canListen(port, loopbackHost)) return port;
   }
   throw new Error(`No available port from ${preferredPort} to ${preferredPort + maxOffset}`);
 }
 
-function resolveNextBin() {
-  const binName = process.platform === 'win32' ? 'next.cmd' : 'next';
-  const localBin = path.resolve(process.cwd(), 'node_modules', '.bin', binName);
-  if (fs.existsSync(localBin)) return localBin;
-  return process.platform === 'win32' ? 'npx.cmd' : 'npx';
+function resolveNextCli() {
+  return require.resolve('next/dist/bin/next');
 }
 
 function syncDirForStandalone(source, target) {
@@ -83,16 +90,14 @@ function resolveStartCommand(port) {
     return {
       command: process.execPath,
       args: [standaloneServer],
-      env: { ...process.env, PORT: String(port) },
+      env: { ...process.env, PORT: String(port), HOSTNAME: loopbackHost },
     };
   }
 
-  const command = resolveNextBin();
-  const usesNpx = path.basename(command).startsWith('npx');
   return {
-    command,
-    args: usesNpx ? ['next', 'start', '-p', String(port)] : ['start', '-p', String(port)],
-    env: process.env,
+    command: process.execPath,
+    args: [resolveNextCli(), 'start', '-p', String(port), '-H', loopbackHost],
+    env: { ...process.env, HOSTNAME: loopbackHost },
   };
 }
 
@@ -110,12 +115,10 @@ try {
   const startCommand = mode === 'start'
     ? resolveStartCommand(port)
     : (() => {
-        const command = resolveNextBin();
-        const usesNpx = path.basename(command).startsWith('npx');
         return {
-          command,
-          args: usesNpx ? ['next', 'dev', '-p', String(port)] : ['dev', '-p', String(port)],
-          env: process.env,
+          command: process.execPath,
+          args: [resolveNextCli(), 'dev', '-p', String(port), '-H', loopbackHost],
+          env: { ...process.env, HOSTNAME: loopbackHost },
         };
       })();
 
@@ -139,6 +142,7 @@ try {
     process.exit(code ?? 0);
   });
 } catch (error) {
-  console.error(`[next-with-port] ${error.message}`);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[next-with-port] ${message}`);
   process.exit(1);
 }

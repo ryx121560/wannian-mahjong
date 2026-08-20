@@ -21,9 +21,10 @@ try {
     env: { ...process.env, PORT: String(occupiedPort), PORT_WINDOW: '0', CLEAN_NEXT_CACHE: '0' },
     encoding: 'utf8',
   });
+  assert.equal(result.error, undefined, `exact-port launch must start Node successfully: ${result.error?.message || 'unknown spawn error'}`);
   assert.notEqual(result.status, 0, 'exact-port launch must fail while its only permitted port is occupied');
   assert.match(
-    `${result.stdout}\n${result.stderr}`,
+    `${result.stdout || ''}\n${result.stderr || ''}`,
     new RegExp(`No available port from ${occupiedPort} to ${occupiedPort}`),
     'launch failure must report the exact configured port instead of selecting a fallback port',
   );
