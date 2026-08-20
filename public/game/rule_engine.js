@@ -10,6 +10,7 @@ const kong_resource_1 = require("./kong-resource");
 const score_calculator_1 = require("./score-calculator");
 const special_kong_1 = require("./special-kong");
 const tile_utils_1 = require("./tile-utils");
+const wildcard_resolver_1 = require("./wildcard-resolver");
 function sameTiles(left, right) {
     const sortedLeft = (0, tile_utils_1.sortTiles)(left);
     const sortedRight = (0, tile_utils_1.sortTiles)(right);
@@ -46,6 +47,14 @@ function upgradePeng(melds, tile) {
 }
 function effectivePageHand(hand, melds) {
     return hand.concat(melds.flatMap((meld) => meld.tiles.slice(0, 3).filter((tile) => tile != null)));
+}
+function replaceWildcardForClassification(hand, replacement) {
+    const replaced = hand.slice();
+    const index = replaced.indexOf(replacement.originalTile);
+    if (index < 0)
+        return null;
+    replaced[index] = replacement.replacedBy;
+    return replaced;
 }
 function validateInput(input) {
     if (!Number.isInteger(input.owner) || input.owner < 0 || input.owner >= input.scores.length) {
@@ -145,6 +154,29 @@ function resolveAddedKongDraw(input) {
             publicLog: publicLog(input, 'addedKongImmediateWin', classification),
         };
     }
+    const wildcard = (0, wildcard_resolver_1.resolveWildcard)(handAfterDraw, meldsAfterKong, input.drawTile);
+    if (wildcard.isFakeWin && wildcard.fakeWinReplacement) {
+        const classifiedHand = replaceWildcardForClassification(handAfterDraw, wildcard.fakeWinReplacement);
+        if (!classifiedHand)
+            throw new Error('added-kong-fake-win-replacement-invalid');
+        const classification = (0, hand_evaluator_1.classifyHand)(classifiedHand, meldsAfterKong, input.drawTile, '杠开');
+        const settlement = (0, score_calculator_1.scoreSettlement)({
+            winner: input.owner,
+            winType: '杠开',
+            hand: effectivePageHand(classifiedHand, meldsAfterKong),
+            scores: input.scores,
+        });
+        return {
+            outcome: 'addedKongFakeWin',
+            mustDiscard: false,
+            robKongWindow: false,
+            handAfterDraw,
+            melds: meldsAfterKong,
+            classification,
+            settlement,
+            publicLog: publicLog(input, 'addedKongFakeWin', classification),
+        };
+    }
     if (!sameTiles(handAfterDraw, handAfterKong.concat(input.drawTile)))
         throw new Error('added-kong-hand-after-draw-invalid');
     return {
@@ -164,6 +196,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveConcealedKongDraw = resolveConcealedKongDraw;
 const hand_evaluator_1 = require("./hand-evaluator");
 const tile_utils_1 = require("./tile-utils");
+const wildcard_resolver_1 = require("./wildcard-resolver");
 function sameTiles(left, right) {
     const sortedLeft = (0, tile_utils_1.sortTiles)(left);
     const sortedRight = (0, tile_utils_1.sortTiles)(right);
@@ -198,9 +231,32 @@ function resolveConcealedKongDraw(input) {
         throw new Error(`invalid concealed kong context: ${invalid}`);
     const handAfterDraw = input.handAfterKong.concat(input.drawTile);
     const trueWin = (0, hand_evaluator_1.canWin)(handAfterDraw, { melds: input.melds, winTile: input.drawTile, winType: '杠开' }).canWin;
+    if (trueWin) {
+        return {
+            outcome: 'concealedKongTrueWin',
+            mustDiscard: false,
+            robKongWindow: false,
+            handAfterDraw,
+            classification: (0, hand_evaluator_1.classifyHand)(handAfterDraw, input.melds, input.drawTile, '杠开'),
+        };
+    }
+    const wildcard = (0, wildcard_resolver_1.resolveWildcard)(handAfterDraw, input.melds, input.drawTile);
+    if (wildcard.isFakeWin && wildcard.fakeWinReplacement) {
+        const replacementIndex = handAfterDraw.indexOf(wildcard.fakeWinReplacement.originalTile);
+        const classifiedHand = handAfterDraw.slice();
+        classifiedHand[replacementIndex] = wildcard.fakeWinReplacement.replacedBy;
+        return {
+            outcome: 'concealedKongFakeWin',
+            mustDiscard: false,
+            robKongWindow: false,
+            handAfterDraw,
+            classification: (0, hand_evaluator_1.classifyHand)(classifiedHand, input.melds, input.drawTile, '杠开'),
+            fakeWinReplacement: wildcard.fakeWinReplacement,
+        };
+    }
     return {
-        outcome: trueWin ? 'concealedKongTrueWin' : 'concealedKongFakeWin',
-        mustDiscard: false,
+        outcome: 'concealedKongFailureDiscard',
+        mustDiscard: true,
         robKongWindow: false,
         handAfterDraw,
         classification: (0, hand_evaluator_1.classifyHand)(handAfterDraw, input.melds, input.drawTile, '杠开'),
@@ -1125,7 +1181,12 @@ function resolveKongDraw(input) {
     }
     if (!finalEvaluation.canComplete)
         return { outcome: 'forcedRunFailureDiscard', mustDiscard: true, evaluation: finalEvaluation, resourceAfterKong };
-    return { outcome: 'forcedRunGangKaiFakeWin', mustDiscard: false, evaluation: finalEvaluation, resourceAfterKong };
+    return {
+        outcome: (0, hand_evaluator_1.canWin)(handAfterDraw, { melds: input.melds }).canWin ? 'forcedRunGangKaiTrueWin' : 'forcedRunGangKaiFakeWin',
+        mustDiscard: false,
+        evaluation: finalEvaluation,
+        resourceAfterKong,
+    };
 }
 function resolveNearestWinner(state, sourcePlayer, winTile, winType) {
     const players = state.players || [];
@@ -1355,6 +1416,8 @@ function multiplierForHandTypes(handTypes) {
 }
 function scoreConcealedKongSettlement(input) {
     const resolution = (0, concealed_kong_1.resolveConcealedKongDraw)(input.action);
+    if (resolution.mustDiscard)
+        throw new Error('concealed kong cannot settle a discard outcome');
     const before = input.scores.slice();
     const multiplier = multiplierForHandTypes(resolution.classification.handTypes);
     const basePayment = resolution.outcome === 'concealedKongTrueWin' ? 8 : 4;
@@ -1379,10 +1442,11 @@ function scoreConcealedKongSettlement(input) {
 }
 function basePaymentsForKongEvent(event, winner, pointKongPlayer) {
     const payments = [0, 0, 0, 0];
-    if (event === 'forcedRunGangKaiFakeWin') {
+    if (event === 'forcedRunGangKaiTrueWin' || event === 'forcedRunGangKaiFakeWin') {
+        const basePayment = event === 'forcedRunGangKaiTrueWin' ? 4 : 2;
         for (let playerId = 0; playerId < payments.length; playerId += 1)
             if (playerId !== winner)
-                payments[playerId] = 2;
+                payments[playerId] = basePayment;
         return payments;
     }
     if (pointKongPlayer == null || pointKongPlayer === winner)
@@ -1942,15 +2006,29 @@ Object.defineProperty(exports, "__esModule", { value: true });
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveWildcard = resolveWildcard;
 const hand_evaluator_1 = require("./hand-evaluator");
+const tile_utils_1 = require("./tile-utils");
 function resolveWildcard(hand, melds, zhiChanDrawTile) {
     if ((0, hand_evaluator_1.canWin)(hand, { melds }).canWin)
         return { isTrueWin: true, isFakeWin: false };
-    for (let i = 0; i < hand.length; i += 1) {
+    for (let i = hand.length - 1; i >= 0; i -= 1) {
         const originalTile = hand[i];
         const replaced = hand.slice();
         replaced[i] = zhiChanDrawTile;
         if ((0, hand_evaluator_1.canWin)(replaced, { melds, winTile: zhiChanDrawTile }).canWin) {
             return { isTrueWin: false, isFakeWin: true, fakeWinReplacement: { originalTile, replacedBy: zhiChanDrawTile } };
+        }
+    }
+    for (let i = 0; i < hand.length; i += 1) {
+        if (hand[i] !== zhiChanDrawTile)
+            continue;
+        for (const replacement of tile_utils_1.ALL_TILE_KEYS) {
+            if (replacement === zhiChanDrawTile)
+                continue;
+            const replaced = hand.slice();
+            replaced[i] = replacement;
+            if ((0, hand_evaluator_1.canWin)(replaced, { melds, winTile: zhiChanDrawTile }).canWin) {
+                return { isTrueWin: false, isFakeWin: true, fakeWinReplacement: { originalTile: zhiChanDrawTile, replacedBy: replacement } };
+            }
         }
     }
     return { isTrueWin: false, isFakeWin: false };

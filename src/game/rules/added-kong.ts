@@ -3,12 +3,14 @@ import { resolveRobKongWinner, transitionKongResource } from './kong-resource';
 import { scoreSettlement } from './score-calculator';
 import { prepareAddedKongChainWindow } from './special-kong';
 import { sortTiles } from './tile-utils';
+import { resolveWildcard } from './wildcard-resolver';
 import type { GameState, HandClassification, KongResource, Meld, SettlementResult, Tile } from './types';
 
 export type AddedKongDrawOutcome =
   | 'addedKongRobbed'
   | 'addedKongChainWindow'
   | 'addedKongImmediateWin'
+  | 'addedKongFakeWin'
   | 'addedKongContinueDiscard';
 
 export interface AddedKongDrawInput {
@@ -94,6 +96,17 @@ function upgradePeng(melds: Meld[], tile: Tile): Meld[] {
 
 function effectivePageHand(hand: Tile[], melds: Meld[]): Tile[] {
   return hand.concat(melds.flatMap((meld) => meld.tiles.slice(0, 3).filter((tile): tile is Tile => tile != null)));
+}
+
+function replaceWildcardForClassification(
+  hand: Tile[],
+  replacement: { originalTile: Tile; replacedBy: Tile },
+): Tile[] | null {
+  const replaced = hand.slice();
+  const index = replaced.indexOf(replacement.originalTile);
+  if (index < 0) return null;
+  replaced[index] = replacement.replacedBy;
+  return replaced;
 }
 
 function validateInput(input: AddedKongDrawInput): { handAfterKong: Tile[]; meldsAfterKong: Meld[]; upgradedPeng: Meld } {
@@ -195,6 +208,29 @@ export function resolveAddedKongDraw(input: AddedKongDrawInput): AddedKongDrawRe
       classification,
       settlement,
       publicLog: publicLog(input, 'addedKongImmediateWin', classification),
+    };
+  }
+
+  const wildcard = resolveWildcard(handAfterDraw, meldsAfterKong, input.drawTile);
+  if (wildcard.isFakeWin && wildcard.fakeWinReplacement) {
+    const classifiedHand = replaceWildcardForClassification(handAfterDraw, wildcard.fakeWinReplacement);
+    if (!classifiedHand) throw new Error('added-kong-fake-win-replacement-invalid');
+    const classification = classifyHand(classifiedHand, meldsAfterKong, input.drawTile, '杠开');
+    const settlement = scoreSettlement({
+      winner: input.owner,
+      winType: '杠开',
+      hand: effectivePageHand(classifiedHand, meldsAfterKong),
+      scores: input.scores,
+    });
+    return {
+      outcome: 'addedKongFakeWin',
+      mustDiscard: false,
+      robKongWindow: false,
+      handAfterDraw,
+      melds: meldsAfterKong,
+      classification,
+      settlement,
+      publicLog: publicLog(input, 'addedKongFakeWin', classification),
     };
   }
 

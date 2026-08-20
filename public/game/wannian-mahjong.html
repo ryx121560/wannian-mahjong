@@ -737,7 +737,7 @@ function samePageAddedKongRuleResult(left,right){
   }catch(error){return false;}
 }
 function hasPageAddedKongSettlementContract(owner,result){
-  if(!result||result.outcome!=='addedKongImmediateWin'||!result.classification||!result.settlement||!result.publicLog)return false;
+  if(!result||!['addedKongImmediateWin','addedKongFakeWin'].includes(result.outcome)||!result.classification||!result.settlement||!result.publicLog)return false;
   const settlement=result.settlement,classification=result.classification,size=GS.players.length;
   if(settlement.winner!==owner||!Array.isArray(settlement.before)||!Array.isArray(settlement.after)||!Array.isArray(settlement.delta))return false;
   if(settlement.before.length!==size||settlement.after.length!==size||settlement.delta.length!==size)return false;
@@ -780,7 +780,7 @@ function applyPageAddedKongDraw(playerIdx,result){
   if(result.outcome==='addedKongChainWindow'){
     if(!result.chainWindow||!result.resourceAfterKong||!result.chainWindow.chainPongMeld)return false;
     if(result.chainWindow.firstDrawTile!==action.drawTile)return false;
-  }else if(result.outcome==='addedKongImmediateWin'){
+  }else if(['addedKongImmediateWin','addedKongFakeWin'].includes(result.outcome)){
     if(!hasPageAddedKongSettlementContract(playerIdx,result))return false;
   }else if(result.outcome!=='addedKongContinueDiscard')return false;
   player.hand=nextHand;player.melds=nextMelds;GS.wall=GS.wall.slice(0,-1);GS.newDrawnTile=currentDraw;GS.newDrawnIdx=nextHand.length-1;
@@ -795,7 +795,7 @@ function applyPageAddedKongDraw(playerIdx,result){
   }
   logEvent(playerIdx,'加杠',tile,{actionKind:'addedKong',outcome:result.outcome,decompositionSignature:result.classification&&result.classification.decompositionSignature});
   logEvent(playerIdx,'杠后摸',currentDraw,{actionKind:'addedKong',outcome:result.outcome});
-  if(result.outcome==='addedKongImmediateWin'){
+  if(['addedKongImmediateWin','addedKongFakeWin'].includes(result.outcome)){
     return completePageAddedKongSettlement(playerIdx,result);
   }
   GS.phase='discarding';GS.canP=GS.canK=GS.canW=false;

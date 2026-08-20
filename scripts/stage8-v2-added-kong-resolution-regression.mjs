@@ -47,11 +47,11 @@ try {
   const continueInput = {
     owner: 0,
     kongTile: 'tong1',
-    preKongHand: ['tong1', 'wan1', 'wan2', 'wan3', 'tiao1', 'tiao2', 'tiao3', 'tiao4', 'tiao5', 'tiao6', 'zhong'],
+    preKongHand: ['tong1', 'wan1', 'wan2', 'wan4', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao9', 'zhong', 'fa'],
     melds: [pengTong1],
     drawTile: 'bai',
     scores,
-    robKongState: { phase: 'discarding', currentPlayer: 0, players: [{ hand: ['tong1', 'wan1', 'wan2', 'wan3', 'tiao1', 'tiao2', 'tiao3', 'tiao4', 'tiao5', 'tiao6', 'zhong'], melds: [pengTong1] }, ...emptyOpponents.slice(1)], melds: [[pengTong1], [], [], []], discards: [[], [], [], []], turn: 0, dealer: 0, scores, wallTiles: [], passRecords: [] },
+    robKongState: { phase: 'discarding', currentPlayer: 0, players: [{ hand: ['tong1', 'wan1', 'wan2', 'wan4', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao9', 'zhong', 'fa'], melds: [pengTong1] }, ...emptyOpponents.slice(1)], melds: [[pengTong1], [], [], []], discards: [[], [], [], []], turn: 0, dealer: 0, scores, wallTiles: [], passRecords: [] },
   };
   const continuation = rules.resolveAddedKongDraw(continueInput);
   assert.equal(continuation.outcome, 'addedKongContinueDiscard', 'non-chain non-winning added kong must continue to discard');
@@ -71,6 +71,24 @@ try {
   assert.equal(immediate.mustDiscard, false);
   assert.ok(immediate.settlement, 'immediate added-kong win must have a settlement');
   assert.ok(immediate.classification.decompositionSignature, 'immediate added-kong output must bind a decomposition signature');
+
+  const fakeInput = {
+    owner: 0,
+    kongTile: 'tiao9',
+    preKongHand: ['tong3', 'tiao8', 'tiao4', 'tong3', 'tong5', 'tiao3', 'tong7', 'tiao6', 'tiao2', 'tiao7', 'tiao9'],
+    melds: [{ type: 'peng', tiles: ['tiao9', 'tiao9', 'tiao9'], fromPlayer: 2 }],
+    drawTile: 'tiao5',
+    scores,
+    robKongState: { phase: 'discarding', currentPlayer: 0, players: [{ hand: ['tong3', 'tiao8', 'tiao4', 'tong3', 'tong5', 'tiao3', 'tong7', 'tiao6', 'tiao2', 'tiao7', 'tiao9'], melds: [{ type: 'peng', tiles: ['tiao9', 'tiao9', 'tiao9'], fromPlayer: 2 }] }, ...emptyOpponents.slice(1)], melds: [[{ type: 'peng', tiles: ['tiao9', 'tiao9', 'tiao9'], fromPlayer: 2 }], [], [], []], discards: [[], [], [], []], turn: 0, dealer: 0, scores, wallTiles: [], passRecords: [] },
+  };
+  const fake = rules.resolveAddedKongDraw(fakeInput);
+  assert.equal(fake.outcome, 'addedKongFakeWin', 'the post-added-kong supplement must resolve through the resource fake-win branch');
+  assert.equal(fake.mustDiscard, false);
+  assert.deepEqual(fake.handAfterDraw, fakeInput.preKongHand.filter((tile, index) => !(tile === 'tiao9' && index === 10)).concat('tiao5'), 'resource classification must not forge the physical supplement tile');
+  assert.deepEqual(fake.classification.handTypes, ['平胡']);
+  assert.match(fake.classification.decompositionSignature, /pair=tong3,tong3/);
+  assert.deepEqual(fake.settlement.delta, [6, -2, -2, -2], 'ordinary added-kong fake wins use the ordinary kong-kai settlement');
+  assert.equal(fake.publicLog.outcome, 'addedKongFakeWin');
 
   const chainInput = {
     owner: 0,

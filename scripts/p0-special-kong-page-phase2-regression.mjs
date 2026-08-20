@@ -344,6 +344,7 @@ assert.equal(routeContext.doSelfKong(0), true, 'manual matching-pong chain must 
 assert.equal(routedAddedChain.kind, 'addedKongChain', 'manual matching-pong chain must use the dedicated action path');
 let aiAddedChainRoutes = 0;
 const aiAddedChainContext = {
+  currentAiSelfKongDeclaration: (_playerId, info) => info,
   logAiResponseDecision: () => {},
   pageKongActionLabel: (kind) => kind,
   doSelfKong: () => { aiAddedChainRoutes += 1; return 'routed'; },

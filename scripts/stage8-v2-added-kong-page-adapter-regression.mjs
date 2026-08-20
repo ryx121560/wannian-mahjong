@@ -131,6 +131,7 @@ function pageCommit(rules, input, suppliedResult) {
     commitTopSettlementSummary: () => {}, finalizeRecommendationSummary: () => {},
     renderFinalRecommendationPanel: () => {}, persistSettledScores: () => -1,
     saveGameLog: () => {}, _spOnGameEnd: () => {},
+    revealAiHandsForNormalEnd: () => {},
     gameSetTimeout: () => { calls.timers += 1; return 1; },
     startSelfPlayGame: () => {}, showWinDlg: () => {},
   };
@@ -165,12 +166,16 @@ try {
   });
   const fixtures = [
     {
-      owner: 0, kongTile: 'tong1', preKongHand: ['tong1', 'wan1', 'wan2', 'wan3', 'tiao1', 'tiao2', 'tiao3', 'tiao4', 'tiao5', 'tiao6', 'zhong'], melds: [pengTong1], drawTile: 'bai', scores,
-      robKongState: sharedState(['tong1', 'wan1', 'wan2', 'wan3', 'tiao1', 'tiao2', 'tiao3', 'tiao4', 'tiao5', 'tiao6', 'zhong'], [pengTong1]), expected: 'addedKongContinueDiscard',
+      owner: 0, kongTile: 'tong1', preKongHand: ['tong1', 'wan1', 'wan2', 'wan4', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao9', 'zhong', 'fa'], melds: [pengTong1], drawTile: 'bai', scores,
+      robKongState: sharedState(['tong1', 'wan1', 'wan2', 'wan4', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao9', 'zhong', 'fa'], [pengTong1]), expected: 'addedKongContinueDiscard',
     },
     {
       owner: 0, kongTile: 'tong1', preKongHand: ['tong1', 'wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'wan4'], melds: [pengTong1], drawTile: 'wan4', scores,
       robKongState: sharedState(['tong1', 'wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'wan4'], [pengTong1]), expected: 'addedKongImmediateWin',
+    },
+    {
+      owner: 0, kongTile: 'tiao9', preKongHand: ['tong3', 'tiao8', 'tiao4', 'tong3', 'tong5', 'tiao3', 'tong7', 'tiao6', 'tiao2', 'tiao7', 'tiao9'], melds: [{ type: 'peng', tiles: ['tiao9', 'tiao9', 'tiao9'], fromPlayer: 2 }], drawTile: 'tiao5', scores,
+      robKongState: sharedState(['tong3', 'tiao8', 'tiao4', 'tong3', 'tong5', 'tiao3', 'tong7', 'tiao6', 'tiao2', 'tiao7', 'tiao9'], [{ type: 'peng', tiles: ['tiao9', 'tiao9', 'tiao9'], fromPlayer: 2 }]), expected: 'addedKongFakeWin',
     },
     {
       owner: 0, kongTile: 'tong1', preKongHand: ['tong1', 'wan2', 'wan3', 'wan4', 'tiao4', 'tiao5', 'tiao6', 'tiao7', 'tiao8', 'zhong', 'fa'], melds: [pengTong1, pengWan2], drawTile: 'wan2', scores,
@@ -201,6 +206,19 @@ try {
   assert.deepEqual(immediateCommit.state.players[0].hand.map((tile) => tile.k).sort(), immediate.handAfterDraw.slice().sort(), 'page hand transition must match the pure result');
   assert.equal(immediateCommit.state.players[0].melds[0].count, 4, 'page must upgrade the real peng to a four-tile kong');
   assert.equal(immediateCommit.state.wall.length, 0, 'page must consume exactly one supplement tile');
+
+  const fakeFixture = fixtures.find((fixture) => fixture.expected === 'addedKongFakeWin');
+  const fake = rules.resolveAddedKongDraw(fakeFixture);
+  const fakeCommit = pageCommit(rules, fakeFixture, fake);
+  assert.equal(fakeCommit.applied, true, 'page must commit a valid added-kong resource fake-win settlement');
+  assert.equal(fakeCommit.calls.applyWin, 0, 'page must not rerun generic win scoring for an added-kong resource fake win');
+  assert.deepEqual(fakeCommit.state.players.map((player) => player.score), fake.settlement.after);
+  assert.deepEqual(fakeCommit.state._lastResult.scoreDeltas, [6, -2, -2, -2]);
+  assert.deepEqual(fakeCommit.state._lastResult.handTypes, ['平胡']);
+  assert.equal(fakeCommit.state.players[0].hand.filter((tile) => tile.k === 'tiao5').length, 1, 'page must retain the physical supplement tile after resource classification');
+  assert.equal(fakeCommit.state.players[0].hand.some((tile) => tile.k === 'tong6'), false, 'page must not persist a substituted classification tile');
+  assert.equal(fakeCommit.state.players[0].melds[0].count, 4);
+  assert.equal(fakeCommit.state.wall.length, 0);
 
   const chainFixture = fixtures.find((fixture) => fixture.expected === 'addedKongChainWindow');
   const chain = rules.resolveAddedKongDraw(chainFixture);

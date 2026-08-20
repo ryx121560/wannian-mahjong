@@ -24,7 +24,11 @@ assert.doesNotMatch(wrapper, /npx\.cmd|next\.cmd/);
 assert.doesNotMatch(wrapper, /canListen\(port, '::'\)|canListen\(port, '0\.0\.0\.0'\)/);
 assert.match(prebuildGuard, /Generated browser artifacts must be clean before build/);
 assert.match(prebuildGuard, /'-c', `safe\.directory=\$\{process\.cwd\(\)\}`/);
-assert.match(buildScript, /runGit\(\['restore', '--source=HEAD', '--worktree', '--', \.\.\.generatedBrowserFiles\]\)/);
+assert.match(prebuildGuard, /Verified intentional browser rule engine override before build/);
+assert.match(prebuildGuard, /scripts\/build-browser-rule-engine\.mjs', '--check'/);
+assert.match(buildScript, /function hasVerifiedRuleEngineOverride\(\)/);
+assert.match(buildScript, /preserveRuleEngineOverride/);
+assert.match(buildScript, /file !== 'public\/game\/rule_engine\.js'/);
 assert.match(buildScript, /'-c', `safe\.directory=\$\{process\.cwd\(\)\}`/);
 for (const file of generatedBrowserFiles) assert.match(buildScript, new RegExp(file.replaceAll('.', '\\.')));
 

@@ -72,6 +72,7 @@ function runPageRestore(restoredState) {
     updateBtns: () => events.push('buttons'),
     _spUpdateScore: () => events.push('score'),
     updateSuggestion: () => events.push('suggestion'),
+    revealAiHandsForNormalEnd: () => false,
     resumeRestoredGame: () => events.push('resume'),
     document: { getElementById: () => ({ textContent: '', style: {} }) },
     console: { info: (...args) => events.push(['info', ...args]), warn: () => {} }
