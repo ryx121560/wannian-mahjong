@@ -102,6 +102,8 @@ function makePageContext() {
     resolvePageAddedKongDraw() { calls.added += 1; return null; },
     applyPageAddedKongDraw() { calls.added += 1; return false; },
     applyPageNormalConcealedKongAction() { throw new Error('unexpected concealed execution'); },
+    recordRecommendationChoice() {},
+    doKong() { throw new Error('unexpected response kong execution'); },
     document: {
       getElementById(id) {
         if (!this.nodes) this.nodes = {};
@@ -111,7 +113,7 @@ function makePageContext() {
     },
   };
   vm.createContext(context);
-  for (const name of ['collectPageKongDeclarations', 'canSelfKong', 'doSelfKong', 'updateBtns']) {
+  for (const name of ['collectPageKongDeclarations', 'canSelfKong', 'doSelfKong', 'updateBtns', 'handleKongButton']) {
     vm.runInContext(extractFunction(name), context, { filename: `${name}.js` });
   }
   return context;
@@ -161,17 +163,46 @@ try {
   page.updateBtns();
   assert.equal(page.document.getElementById('bt-kong').disabled, false, 'button refresh must use the common declaration collector instead of stale canK');
   assert.equal(page.canSelfKong(0).type, 'deferred', 'the published deterministic priority must keep deferred forced run ahead of physical added-kong');
-  assert.equal(page.doSelfKong(0), true, 'the common kong button must execute the selected declaration');
+  assert.equal(page.handleKongButton(), true, 'the enabled kong button must execute a restored declaration even when the persisted canK flag is stale');
   assert.equal(page.calls.rob, 1, 'deferred forced run must still check rob-kong exactly once');
   assert.equal(page.calls.deferred, 1, 'the physical upgrade must commit exactly once');
   assert.equal(page.calls.added, 0, 'the same upgrade must not also execute the lower-priority added-kong path');
 
+  const snapshotContext = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/game/session_snapshot.js'), 'utf8'), snapshotContext);
+  const snapshotState = pageState();
+  snapshotState.players.forEach((player, index) => {
+    player.name = index === 0 ? 'you' : 'ai-' + index;
+    player.human = index === 0;
+  });
+  Object.assign(snapshotState, {
+    discards: [], playerDiscards: [[], [], [], []], lastDiscard: null, lastDiscardP: -1,
+    dealer: 0, turn: 95, _resp: null, _respP: -1, _responseKind: null, _kc: {}, _hasWild: {},
+    _gameLog: null, _lastResult: null,
+  });
+  const snapshot = snapshotContext.window.GameSessionSnapshot.create(snapshotState, {
+    selfPlayRunning: false, totalGames: 0, gameSequence: 16, topSettlement: null,
+  }, key);
+  const restored = snapshotContext.window.GameSessionSnapshot.restore(JSON.parse(JSON.stringify(snapshot)), tile);
+  assert.equal(restored.ok, true, 'the stale action flag fixture must complete a real snapshot round trip');
+  assert.equal(restored.state.canK, false, 'the round trip intentionally preserves the stale false action flag');
+  assert.equal(restored.state._kongResources[0].tile, 'tiao7', 'the active older resource must survive the round trip');
+  const restoredPage = makePageContext();
+  restoredPage.GS = restored.state;
+  restoredPage.updateBtns();
+  assert.equal(restoredPage.document.getElementById('bt-kong').disabled, false, 'restored declarations must enable the kong button');
+  assert.equal(restoredPage.handleKongButton(), true, 'the restored enabled button must reach the self-kong dispatcher');
+  assert.equal(restoredPage.calls.rob, 1);
+  assert.equal(restoredPage.calls.deferred, 1);
+
   page.GS = pageState();
   page.GS._kongResources = [];
   page.GS.players[0].hand = page.GS.players[0].hand.filter((value) => key(value) !== 'tiao7');
+  page.GS.canK = true;
   assert.deepEqual(plain(page.collectPageKongDeclarations(0)), [], 'without an active retained resource or any other kong, the button must remain disabled');
   page.updateBtns();
   assert.equal(page.document.getElementById('bt-kong').disabled, true);
+  assert.equal(page.handleKongButton(), false, 'a stale true canK flag must not execute without a current declaration');
 
   const protocol = { actionSpaceVersion: v2.STAGE8_ACTION_SPACE_V2_VERSION };
   const browserContext = { globalThis: {} };
@@ -196,6 +227,8 @@ try {
   assert.match(extractFunction('canSelfKong'), /collectPageKongDeclarations/);
   assert.match(extractFunction('doSelfKong'), /collectPageKongDeclarations/);
   assert.match(extractFunction('updateBtns'), /collectPageKongDeclarations/);
+  assert.match(extractFunction('handleKongButton'), /collectPageKongDeclarations/);
+  assert.doesNotMatch(extractFunction('handleKongButton'), /phase==='discarding'&&GS\.canK/, 'discarding click must not trust a persisted action flag');
   console.log('P0 post-pong kong reachability regression: passed');
 } finally {
   fs.rmSync(compiledDir, { recursive: true, force: true });

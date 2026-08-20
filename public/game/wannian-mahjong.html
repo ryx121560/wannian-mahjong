@@ -4933,7 +4933,7 @@ function handleKongButton(){
   if(GS.phase==='responding'&&GS._respP===0&&GS.canK){
     recordRecommendationChoice('response','杠');doKong(0);return true;
   }
-  if(GS.phase==='discarding'&&GS.canK&&GS.players[GS.cur]&&GS.players[GS.cur].human){
+  if(GS.phase==='discarding'&&GS.players[GS.cur]&&GS.players[GS.cur].human&&collectPageKongDeclarations(GS.cur).length){
     recordRecommendationChoice('response','杠');doSelfKong(GS.cur);return true;
   }
   return false;
