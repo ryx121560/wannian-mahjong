@@ -51,8 +51,8 @@ export interface KongResource {
 }
 
 export type KongClaimKind = 'directChisel' | 'forcedRunImmediate' | 'forcedRunDeferred' | 'chainKong';
-export type KongDrawOutcome = 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiFakeWin' | 'forcedRunFailureDiscard' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin';
-export type KongWinEvent = Extract<KongDrawOutcome, 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiFakeWin' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin'>;
+export type KongDrawOutcome = 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiTrueWin' | 'forcedRunGangKaiFakeWin' | 'forcedRunFailureDiscard' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin';
+export type KongWinEvent = Extract<KongDrawOutcome, 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiTrueWin' | 'forcedRunGangKaiFakeWin' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin'>;
 
 export interface GameState {
   hand?: Tile[];

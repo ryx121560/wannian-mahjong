@@ -372,7 +372,7 @@ function isPageKongCommitResultValid(action,result){
   if(action.kind==='chainKong')return (outcome==='directChiselChainTrueWin'||outcome==='directChiselChainFakeWin')&&hasSettlement;
   if(action.kind==='forcedRunImmediate'||action.kind==='forcedRunDeferred'){
     if(outcome==='forcedRunFailureDiscard')return !result.settlement;
-    return outcome==='forcedRunGangKaiFakeWin'&&hasSettlement;
+    return (outcome==='forcedRunGangKaiTrueWin'||outcome==='forcedRunGangKaiFakeWin')&&hasSettlement;
   }
   return false;
 }
@@ -585,7 +585,7 @@ function pageKongActionLabel(kind){
 function pageKongResolutionLogMeta(action,resolution){
   const forced=action&&((action.kind==='forcedRunImmediate')||(action.kind==='forcedRunDeferred'));
   if(!forced)return {actionKind:pageKongActionLabel(action&&action.kind),outcome:resolution&&resolution.outcome};
-  const success=resolution&&resolution.outcome==='forcedRunGangKaiFakeWin';
+  const success=resolution&&(resolution.outcome==='forcedRunGangKaiTrueWin'||resolution.outcome==='forcedRunGangKaiFakeWin');
   return {
     actionKind:pageKongActionLabel(action.kind),
     outcome:resolution&&resolution.outcome,

@@ -430,6 +430,8 @@ assert.equal(pageKongExecutors.isPageKongCommitResultValid(chainAction, chainFak
 assert.equal(pageKongExecutors.isPageKongCommitResultValid(forcedAction, forcedSuccess), true, 'a successful forced run must require and accept its valid settlement');
 assert.equal(pageKongExecutors.isPageKongCommitResultValid(forcedAction, forcedFailure), true, 'a real forced-run failure without settlement must retain the legal discard branch');
 assert.equal(pageKongExecutors.isPageKongCommitResultValid(forcedAction, { resolution: minimalResolution('forcedRunFailureDiscard'), settlement: chainFake.settlement }), false, 'a failed forced run carrying settlement must be rejected');
+assert.match(extractFunction('isPageKongCommitResultValid'), /forcedRunGangKaiTrueWin/, 'the page commit contract must accept a true forced-run gang-kai settlement');
+assert.match(extractFunction('pageKongResolutionLogMeta'), /forcedRunGangKaiTrueWin/, 'the page log contract must preserve a true forced-run gang-kai success');
 
 const session = loadSessionSnapshot();
 const snapshotState = {

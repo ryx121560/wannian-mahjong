@@ -114,8 +114,9 @@ export function scoreConcealedKongSettlement(input: ConcealedKongSettlementInput
 
 function basePaymentsForKongEvent(event: KongWinEvent, winner: number, pointKongPlayer?: number): number[] {
   const payments = [0, 0, 0, 0];
-  if (event === 'forcedRunGangKaiFakeWin') {
-    for (let playerId = 0; playerId < payments.length; playerId += 1) if (playerId !== winner) payments[playerId] = 2;
+  if (event === 'forcedRunGangKaiTrueWin' || event === 'forcedRunGangKaiFakeWin') {
+    const basePayment = event === 'forcedRunGangKaiTrueWin' ? 4 : 2;
+    for (let playerId = 0; playerId < payments.length; playerId += 1) if (playerId !== winner) payments[playerId] = basePayment;
     return payments;
   }
   if (pointKongPlayer == null || pointKongPlayer === winner) throw new Error('pointKongPlayer required for direct chisel kong settlement');

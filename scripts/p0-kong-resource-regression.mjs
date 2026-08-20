@@ -161,6 +161,42 @@ const delayedResourceA = resolveKongDraw({
 assert.equal(delayedResourceA.outcome, 'forcedRunGangKaiFakeWin');
 assert.equal(delayedResourceA.mustDiscard, false);
 
+// Game 25 equivalent: a deferred forced run may end in a real standard hand.
+// The real hand must not be mislabeled or settled as a resource-only fake win.
+const game25Resource = rules.createKongResource({
+  owner: 0,
+  tile: 'tiao6',
+  pongMeld: { type: 'peng', tiles: ['tiao6', 'tiao6', 'tiao6'], fromPlayer: 1 },
+  source: 'pong',
+});
+const game25Action = {
+  kind: 'forcedRunDeferred',
+  owner: 0,
+  resource: game25Resource,
+  preKongHand: ['tiao6', 'wan9', 'tiao8', 'xi', 'wan8', 'bei', 'nan', 'wan7'],
+  handAfterKong: ['wan9', 'tiao8', 'xi', 'wan8', 'bei', 'nan', 'wan7'],
+  melds: [
+    { type: 'mingGang', tiles: ['tiao6', 'tiao6', 'tiao6', 'tiao6'], fromPlayer: 1 },
+    { type: 'peng', tiles: ['tiao9', 'tiao9', 'tiao9'], fromPlayer: 3 },
+  ],
+  drawTile: 'tiao8',
+};
+const game25Resolution = rules.resolveKongDraw(game25Action);
+assert.equal(game25Resolution.outcome, 'forcedRunGangKaiTrueWin');
+assert.equal(game25Resolution.mustDiscard, false);
+assert.deepEqual(game25Resolution.evaluation.classification.handTypes, ['平胡']);
+assert.equal(
+  game25Resolution.evaluation.classification.decompositionSignature,
+  'pair=tiao8,tiao8|groups=nan,xi,bei;wan7,wan8,wan9|melds=mingGang:tiao6,tiao6,tiao6,tiao6;peng:tiao9,tiao9,tiao9|resource=none|remainder=none',
+);
+const game25Settlement = rules.scoreKongSettlement({
+  action: game25Action,
+  winner: 0,
+  scores: [100, 100, 100, 100],
+});
+assert.deepEqual(game25Settlement.payments, [0, 4, 4, 4]);
+assert.deepEqual(game25Settlement.delta, [12, -4, -4, -4]);
+
 for (const drawTile of ['fa', 'tiao6', 'tiao9']) {
   const delayedResourceB = resolveKongDraw({
     kind: 'forcedRunDeferred',
@@ -169,7 +205,11 @@ for (const drawTile of ['fa', 'tiao6', 'tiao9']) {
     melds: [{ type: 'mingGang', tiles: ['tong6', 'tong6', 'tong6', 'tong6'], fromPlayer: 0 }],
     drawTile,
   });
-  assert.equal(delayedResourceB.outcome, 'forcedRunGangKaiFakeWin', `expected delayed ${drawTile} to run successfully`);
+  const expectedOutcome = rules.canWin(
+    ['fa', 'fa', 'wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6', 'tiao7', 'tiao8', drawTile],
+    { melds: [{ type: 'mingGang', tiles: ['tong6', 'tong6', 'tong6', 'tong6'], fromPlayer: 0 }] },
+  ).canWin ? 'forcedRunGangKaiTrueWin' : 'forcedRunGangKaiFakeWin';
+  assert.equal(delayedResourceB.outcome, expectedOutcome, `expected delayed ${drawTile} to preserve its real/fake win classification`);
   assert.equal(delayedResourceB.mustDiscard, false);
 }
 

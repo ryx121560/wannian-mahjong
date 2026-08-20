@@ -413,7 +413,12 @@ export function resolveKongDraw(input: KongDrawResolutionInput): {
     };
   }
   if (!finalEvaluation.canComplete) return { outcome: 'forcedRunFailureDiscard', mustDiscard: true, evaluation: finalEvaluation, resourceAfterKong };
-  return { outcome: 'forcedRunGangKaiFakeWin', mustDiscard: false, evaluation: finalEvaluation, resourceAfterKong };
+  return {
+    outcome: canWin(handAfterDraw, { melds: input.melds }).canWin ? 'forcedRunGangKaiTrueWin' : 'forcedRunGangKaiFakeWin',
+    mustDiscard: false,
+    evaluation: finalEvaluation,
+    resourceAfterKong,
+  };
 }
 
 function resolveNearestWinner(state: GameState, sourcePlayer: number, winTile: Tile, winType: '点炮' | '抢杠'): number | null {
