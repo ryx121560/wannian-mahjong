@@ -2958,7 +2958,7 @@ function removeTilesForSelfKong(hand,tile,count){
 }
 
 function evaluateAiSelfKong(p,kongInfo){
-  const t=GS.newDrawnTile;
+  const t=kongInfo&&kongInfo.tile;
   const hand=GS.players[p].hand;
   const preDrawHand=removeTilesForSelfKong(hand,t,1);
   const before=aiBestShantenForPlayer(preDrawHand,p);
@@ -2992,14 +2992,31 @@ function evaluateAiSelfKong(p,kongInfo){
 }
 
 // AI self-kong with shanten guard.
+function currentAiSelfKongDeclaration(p,kongInfo){
+  const player=GS.players[p],tile=kongInfo&&kongInfo.tile;
+  if(!player||player.human||GS.cur!==p||GS.phase!=='discarding'||!tile)return null;
+  const info=(collectPageKongDeclarations(p).find(function(item){return item&&item.info&&item.info.type===kongInfo.type&&teq(item.info.tile,tile);})||{}).info;
+  if(!info)return null;
+  const count=player.hand.filter(function(item){return teq(item,tile);}).length;
+  if(info.type==='concealed'&&count!==4)return null;
+  if(info.type==='add'&&(!Array.isArray(player.melds)||!player.melds.some(function(meld){return meld&&meld.count===3&&teq(meld.tile,tile);})||count!==1))return null;
+  return info;
+}
+function resumeAiDiscardAfterInvalidSelfKong(p){
+  if(GS.phase!=='discarding'||GS.cur!==p||!GS.players[p]||GS.players[p].human)return false;
+  clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(function(){if(GS.phase==='discarding'&&GS.cur===p&&GS.players[p]&&!GS.players[p].human)aiDiscard(p);},600);
+  return false;
+}
 function aiSelfKong(p,kongInfo){
-  if(kongInfo&&((kongInfo.type==='addedKongChain')||(kongInfo.type==='chain')||(kongInfo.type==='deferred'))){
-    const actionKind=kongInfo.type==='addedKongChain'?'addedKongChain':(kongInfo.type==='chain'?'chainKong':'forcedRunDeferred');
-    logAiResponseDecision(p,'selfKong',kongInfo.tile,0,0,'已按统一规则状态机执行'+pageKongActionLabel(actionKind));
+  const info=currentAiSelfKongDeclaration(p,kongInfo);
+  if(!info)return resumeAiDiscardAfterInvalidSelfKong(p);
+  if((info.type==='addedKongChain')||(info.type==='chain')||(info.type==='deferred')){
+    const actionKind=info.type==='addedKongChain'?'addedKongChain':(info.type==='chain'?'chainKong':'forcedRunDeferred');
+    logAiResponseDecision(p,'selfKong',info.tile,0,0,'已按统一规则状态机执行'+pageKongActionLabel(actionKind));
     return doSelfKong(p);
   }
-  const t=GS.newDrawnTile,pl=GS.players[p];
-  const evalInfo=evaluateAiSelfKong(p,kongInfo);
+  const t=info.tile,pl=GS.players[p];
+  const evalInfo=evaluateAiSelfKong(p,info);
   const evalCandidate={action:evalInfo.allow?'selfKong':'skipSelfKong',shantenAfter:evalInfo.afterShanten,rawAfterShanten:evalInfo.rawAfterShanten,routeAfter:evalInfo.routeAfter,type:kongInfo.type,waitBefore:evalInfo.waitBefore,waitAfter:evalInfo.waitAfter,lostWaits:evalInfo.lostWaits};
   if(!evalInfo.allow){
     logAiResponseDecision(p,'skipSelfKong',t,evalInfo.beforeShanten,evalInfo.afterShanten,evalInfo.reason,{candidates:[evalCandidate]});
@@ -3009,7 +3026,7 @@ function aiSelfKong(p,kongInfo){
     return;
   }
   logAiResponseDecision(p,'selfKong',t,evalInfo.beforeShanten,evalInfo.afterShanten,evalInfo.reason,{candidates:[evalCandidate]});
-  if(kongInfo.type==='add'){
+  if(info.type==='add'){
     for(let m of pl.melds){if(m.count===3&&teq(m.tile,t)){m.count=4;break;}}
     for(let i=pl.hand.length-1;i>=0;i--){if(teq(pl.hand[i],t)){pl.hand.splice(i,1);break;}}
   }else{
@@ -3020,7 +3037,7 @@ function aiSelfKong(p,kongInfo){
   }
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   clearPlayerDrawMarker(p);
-  logEvent(p,kongInfo.type==='add'?'加杠':'暗杠',t);
+  logEvent(p,info.type==='add'?'加杠':'暗杠',t);
   if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
   const wr=canHuNormal(concealedHand(p),false,ruleMeldsForPlayer(p),_winTileK,'杠开');
@@ -3029,7 +3046,7 @@ function aiSelfKong(p,kongInfo){
   GS.canWS=canSelfWinForPlayer(p,_winTileK,'杠开');
   setMsg(`${pl.name}开杠${lbl(t)}，请出牌`);
   render();updateBtns();
-  saveGameSnapshot(kongInfo.type==='add'?'ai-add-kong':'ai-concealed-kong');
+  saveGameSnapshot(info.type==='add'?'ai-add-kong':'ai-concealed-kong');
   clearTimeout(GS._aiActionTimer);GS._aiActionTimer=gameSetTimeout(()=>{if(GS.players[p]&&!GS.players[p].human)aiDiscard(p);},1200);
 }
 

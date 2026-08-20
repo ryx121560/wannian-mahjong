@@ -42,6 +42,7 @@
     "test:p0-special-kong-visible-declarations": "node scripts/p0-special-kong-visible-declarations-regression.mjs",
     "test:p0-live-drawn-tile-face": "node scripts/p0-live-drawn-tile-face-regression.mjs",
     "test:p0-post-pong-kong-reachability": "node scripts/p0-post-pong-kong-reachability-regression.mjs",
+    "test:p0-ai-self-kong-atomicity": "node scripts/p0-ai-self-kong-atomicity-regression.mjs",
     "test:p1-statusbar": "node scripts/p1-statusbar-regression.mjs",
     "test:p1-top-settlement-persistence": "node scripts/p1-top-settlement-persistence-regression.mjs",
     "test:p1-score-baseline-reset": "node scripts/p1-score-baseline-reset-regression.mjs",
