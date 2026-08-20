@@ -991,23 +991,24 @@ function markPlayerDrawnTile(playerIdx,tile){
 function aiDisplayHand(playerIdx){
   const player=GS.players&&GS.players[playerIdx];
   const hand=[...(player&&player.hand?player.hand:[])];
-  const markerKey=player&&player.lastDrawnTileKey;
-  if(!markerKey)return hand.sort(tcmp);
-  let drawn=null;
-  for(let i=hand.length-1;i>=0;i--){
-    if(tkey(hand[i])===markerKey){
-      drawn=hand.splice(i,1)[0];
-      break;
-    }
-  }
-  hand.sort(tcmp);
-  if(drawn)hand.push(drawn);
-  return hand;
+  const drawn=aiNewDrawnTileForDisplay(playerIdx);
+  if(drawn)hand.splice(drawn.index,1);
+  return hand.sort(tcmp);
+}
+
+function aiNewDrawnTileForDisplay(playerIdx){
+  const player=GS.players&&GS.players[playerIdx];
+  if(!player||player.human||GS.phase!=='discarding'||GS.cur!==playerIdx||!GS.newDrawnTile)return null;
+  const index=GS.newDrawnIdx,hand=player.hand;
+  if(!Array.isArray(hand)||!Number.isInteger(index)||index<0||index>=hand.length)return null;
+  const tile=hand[index];
+  if(!tile||tkey(tile)!==tkey(GS.newDrawnTile))return null;
+  return {tile:tile,index:index};
 }
 
 function aiDrawHighlight(playerIdx,tile){
-  const player=GS.players&&GS.players[playerIdx];
-  return !!(GS.showAI&&player&&player.lastDrawnTileKey&&tile&&tkey(tile)===player.lastDrawnTileKey);
+  const drawn=aiNewDrawnTileForDisplay(playerIdx);
+  return !!(GS.showAI&&drawn&&tile===drawn.tile);
 }
 
 function clearGameTimers(){
@@ -1759,6 +1760,15 @@ function drawKongSupplementLabel(x,y,label){
   ctx.restore();
 }
 
+function drawHandSeparator(x1,y1,x2,y2){
+  ctx.strokeStyle='rgba(255,255,255,0.3)';
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x2,y2);
+  ctx.stroke();
+}
+
 function render(){
   updateTopScoreBar();
   ctx.clearRect(0,0,W,H);
@@ -1812,12 +1822,7 @@ function render(){
     
     // 绘制分隔线
     const sepX = sx + ph.length*(TW+GAP) + newTileGap/2 - 1;
-    ctx.strokeStyle='rgba(255,255,255,0.3)';
-    ctx.lineWidth=1;
-    ctx.beginPath();
-    ctx.moveTo(sepX, H-TH-45-10);
-    ctx.lineTo(sepX, H-TH-45+TH+10);
-    ctx.stroke();
+    drawHandSeparator(sepX,H-TH-45-10,sepX,H-TH-45+TH+10);
   }
 
   // 碰/杠展示 - 底部玩家 (p=0)
@@ -1839,6 +1844,12 @@ function render(){
   for(let i=0;i<h2.length;i++){
     const yo=(GS._aiDiscardAnim&&GS._aiDiscardAnim.p===2&&GS._aiDiscardAnim.idx===i)?+12:0;
     drawTile(sx2+i*(TW+GAP),45+yo,h2[i],{face:!!GS.showAI,hl:aiDrawHighlight(2,h2[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===2&&GS._aiDiscardAnim.idx===i)});
+  }
+  const drawn2=aiNewDrawnTileForDisplay(2);
+  if(drawn2){
+    const gap=30,newX2=Math.min(W-TW-24,sx2+h2.length*(TW+GAP)+gap),sepX2=sx2+h2.length*(TW+GAP)+gap/2-1;
+    drawTile(newX2,45,drawn2.tile,{face:!!GS.showAI,hl:true});
+    drawHandSeparator(sepX2,35,sepX2,45+TH+10);
   }
   
   // 碰/杠展示 - 顶部玩家 (p=2)
@@ -1863,6 +1874,12 @@ function render(){
     ctx.rotate(Math.PI/2);
     drawTile(0,-TH+lift,h3[i],{face:!!GS.showAI,hl:aiDrawHighlight(3,h3[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===3&&GS._aiDiscardAnim.idx===i)});
     ctx.restore();
+  }
+  const drawn3=aiNewDrawnTileForDisplay(3);
+  if(drawn3){
+    const gap=30,newY3=Math.min(H-TW-24,startY3+h3.length*(TW+GAP)+gap),sepY3=startY3+h3.length*(TW+GAP)+gap/2-1;
+    ctx.save();ctx.translate(35,newY3);ctx.rotate(Math.PI/2);drawTile(0,-TH,drawn3.tile,{face:!!GS.showAI,hl:true});ctx.restore();
+    drawHandSeparator(25,sepY3,35+TH+10,sepY3);
   }
   
   // 碰/杠展示 - 左侧玩家 (p=3)
@@ -1894,6 +1911,12 @@ function render(){
     ctx.rotate(Math.PI/2);
     drawTile(0,0+lift,h1[i],{face:!!GS.showAI,hl:aiDrawHighlight(1,h1[i]),disc:!!(GS.showAI&&GS._aiDiscardAnim&&GS._aiDiscardAnim.p===1&&GS._aiDiscardAnim.idx===i)});
     ctx.restore();
+  }
+  const drawn1=aiNewDrawnTileForDisplay(1);
+  if(drawn1){
+    const gap=30,newY1=Math.min(H-TW-24,startY1+h1.length*(TW+GAP)+gap),sepY1=startY1+h1.length*(TW+GAP)+gap/2-1;
+    ctx.save();ctx.translate(W-45,newY1);ctx.rotate(Math.PI/2);drawTile(0,0,drawn1.tile,{face:!!GS.showAI,hl:true});ctx.restore();
+    drawHandSeparator(W-45-TH-10,sepY1,W-35,sepY1);
   }
 
   // 碰/杠展示 - 右侧玩家 (p=1)
@@ -3050,7 +3073,7 @@ function aiSelfKong(p,kongInfo){
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   clearPlayerDrawMarker(p);
   logEvent(p,info.type==='add'?'加杠':'暗杠',t);
-  if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS._kc[p]=(GS._kc[p]||0)+1;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
+  if(GS.wall.length>0){const dt=GS.wall.pop();pl.hand.push(dt);GS.newDrawnTile=dt;GS.newDrawnIdx=pl.hand.length-1;GS._kc[p]=(GS._kc[p]||0)+1;logEvent(p,'杠后摸',dt);if(!pl.human)markPlayerDrawnTile(p,dt);}
   const _winTileK=GS.players[p].hand[GS.players[p].hand.length-1];
   const wr=canHuNormal(concealedHand(p),false,ruleMeldsForPlayer(p),_winTileK,'杠开');
   if(wr&&wr.win&&_winTileK&&meetsThresh(concealedHand(p),_winTileK,'杠开')){GS.phase='ended';applyWin(p,'杠开');return;}

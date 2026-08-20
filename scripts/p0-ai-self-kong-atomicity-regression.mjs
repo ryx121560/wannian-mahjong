@@ -64,6 +64,8 @@ function runtime(hand, melds, declaration) {
   assert.deepEqual(test.context.GS.players[2].hand.map((value) => value.k), ['tong9', 'wan9']);
   assert.equal(test.context.GS.players[2].melds[0].count, 4); assert.equal(test.context.GS.players[2].melds[0].tile.k, 'wan1');
   assert.equal(test.events[0][2].k, 'wan1');
+  assert.equal(test.context.GS.newDrawnTile.k, 'wan9', 'an AI added-kong supplement must remain the shared live-draw marker');
+  assert.equal(test.context.GS.newDrawnIdx, 1, 'an AI added-kong supplement must retain its hand index for rendering and snapshot restore');
 }
 
 console.log('P0 AI self-kong atomicity regression passed');

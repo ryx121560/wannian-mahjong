@@ -40,22 +40,28 @@ function baseState(drawnTile) {
 function renderState(state, selectedTile = null) {
   const drawCalls = [];
   const labels = [];
+  const strokes = [];
+  let path = [];
   const gradient = { addColorStop() {} };
   const ctx = {
-    clearRect() {}, createRadialGradient() { return gradient; }, fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+    clearRect() {}, createRadialGradient() { return gradient; }, fillRect() {}, strokeRect() {}, beginPath() { path = []; }, moveTo(x, y) { path.push({ x, y }); }, lineTo(x, y) { path.push({ x, y }); }, stroke() { strokes.push(path); },
     save() {}, restore() {}, translate() {}, rotate() {}, fillText() {},
   };
   const context = {
     GS: state, ctx, W: 1366, H: 768, TW: 56, TH: 78, GAP: 2,
     updateTopScoreBar() {}, tcmp: (a, b) => a.k.localeCompare(b.k), tkey: (value) => value.k,
     getSelectedTile: () => selectedTile, drawTile: (x, y, value, opts = {}) => drawCalls.push({ x, y, tile: value, opts }),
-    drawKongSupplementLabel: (x, y, label) => labels.push({ x, y, label }), aiDisplayHand: () => [], aiDrawHighlight: () => false,
+    drawKongSupplementLabel: (x, y, label) => labels.push({ x, y, label }),
   };
   vm.createContext(context);
+  vm.runInContext(extractFunction('aiNewDrawnTileForDisplay'), context, { filename: 'ai-new-drawn-tile-for-display.js' });
+  vm.runInContext(extractFunction('aiDisplayHand'), context, { filename: 'ai-display-hand.js' });
+  vm.runInContext(extractFunction('aiDrawHighlight'), context, { filename: 'ai-draw-highlight.js' });
   vm.runInContext(extractFunction('resolveEndedKongSupplement'), context, { filename: 'resolve-ended-kong-supplement.js' });
+  vm.runInContext(extractFunction('drawHandSeparator'), context, { filename: 'draw-hand-separator.js' });
   vm.runInContext(extractFunction('render'), context, { filename: 'render.js' });
   context.render();
-  return { drawCalls, labels, hot: state._hot };
+  return { drawCalls, labels, strokes, hot: state._hot };
 }
 
 function independentCall(result, expectedTile) {
@@ -127,5 +133,79 @@ ordinaryEndedState._lastResult = { type: '自摸', winner: 0 };
 rendered = renderState(ordinaryEndedState);
 assert.equal(rendered.drawCalls.some((entry) => entry.opts.hl === true), false, 'ordinary ended states must not synthesize an independent tile');
 assert.equal(rendered.labels.length, 0, 'ordinary ended states must not show an empty kong supplement label');
+
+function aiDrawState(playerIdx, drawnTile) {
+  const state = baseState(tile('bai'));
+  state.players[0].hand = [tile('wan1'), tile('wan2')];
+  const normal = [tile('wan1'), tile('wan2')];
+  state.players[playerIdx].hand = normal.concat([drawnTile]);
+  state.cur = playerIdx;
+  state.phase = 'discarding';
+  state.newDrawnTile = drawnTile;
+  state.newDrawnIdx = 2;
+  state.showAI = true;
+  return state;
+}
+
+function assertAiIndependentDraw(playerIdx, label = `AI ${playerIdx}`) {
+  const drawnTile = tile(`tong${playerIdx + 1}`);
+  const state = aiDrawState(playerIdx, drawnTile);
+  const result = renderState(state);
+  const calls = result.drawCalls.filter((entry) => entry.tile === drawnTile);
+  assert.equal(calls.length, 1, `${label} must render its current draw exactly once`);
+  assert.equal(calls[0].opts.hl, true, `${label} current draw must be independently highlighted`);
+  assert.equal(calls[0].opts.face, true, `${label} draw must use the already visible hand face setting`);
+  assert.equal(result.strokes.length, 1, `${label} current draw must render exactly one separator`);
+  const separator = result.strokes[0];
+  assert.equal(separator.length, 2, `AI ${playerIdx} separator must be a single line`);
+  if (playerIdx === 2) assert.equal(separator[0].x, separator[1].x, 'the opposite AI separator must be vertical');
+  else assert.equal(separator[0].y, separator[1].y, `side AI ${playerIdx} separator must follow the vertical hand layout`);
+  return { state, result, drawnTile };
+}
+
+for (const playerIdx of [1, 2, 3]) assertAiIndependentDraw(playerIdx);
+
+const addedKongDraw = assertAiIndependentDraw(2, 'an AI normal added-kong supplement');
+addedKongDraw.state.phase = 'drawing';
+let addedKongRendered = renderState(addedKongDraw.state);
+assert.equal(addedKongRendered.drawCalls.some((entry) => entry.tile === addedKongDraw.drawnTile && entry.opts.hl), false, 'an AI added-kong supplement must clear its independent display after discard');
+assert.equal(addedKongRendered.strokes.length, 0, 'an AI added-kong supplement must clear its separator after discard');
+
+const endedAddedKongState = aiDrawState(2, tile('tong3'));
+endedAddedKongState.phase = 'ended';
+endedAddedKongState.newDrawnTile = null;
+endedAddedKongState.newDrawnIdx = -1;
+addedKongRendered = renderState(endedAddedKongState);
+assert.equal(addedKongRendered.drawCalls.some((entry) => entry.opts.hl), false, 'a settled AI added-kong supplement must not remain independently displayed');
+assert.equal(addedKongRendered.strokes.length, 0, 'a settled AI added-kong supplement must not retain a separator');
+
+const aiDiscardState = aiDrawState(1, tile('tong2'));
+aiDiscardState.phase = 'drawing';
+let aiRendered = renderState(aiDiscardState);
+assert.equal(aiRendered.drawCalls.filter((entry) => entry.tile === aiDiscardState.newDrawnTile).length, 1, 'a non-discarding AI state must retain one normal hand tile');
+assert.equal(aiRendered.drawCalls.some((entry) => entry.tile === aiDiscardState.newDrawnTile && entry.opts.hl), false, 'a non-discarding AI state must not retain an independent draw');
+assert.equal(aiRendered.strokes.length, 0, 'a non-discarding AI state must not retain a separator');
+
+const responseState = aiDrawState(2, tile('tong3'));
+responseState.phase = 'responding';
+aiRendered = renderState(responseState);
+assert.equal(aiRendered.drawCalls.some((entry) => entry.tile === responseState.newDrawnTile && entry.opts.hl), false, 'a response state must not retain an AI independent draw');
+assert.equal(aiRendered.strokes.length, 0, 'a response state must not retain an AI separator');
+
+const endedAiState = aiDrawState(1, tile('tong2'));
+endedAiState.phase = 'ended';
+endedAiState.newDrawnTile = null;
+endedAiState.newDrawnIdx = -1;
+aiRendered = renderState(endedAiState);
+assert.equal(aiRendered.drawCalls.some((entry) => entry.opts.hl), false, 'an ended AI state must not retain an independent draw');
+assert.equal(aiRendered.strokes.length, 0, 'an ended AI state must not retain an AI separator');
+
+const restoredAiSource = aiDrawState(3, tile('tong4'));
+const restoredAiSnapshot = snapshotContext.window.GameSessionSnapshot.create(restoredAiSource, { totalGames: 1, selfPlayRunning: false }, (value) => value.k);
+const restoredAi = snapshotContext.window.GameSessionSnapshot.restore(restoredAiSnapshot, (key) => tile(key));
+assert.equal(restoredAi.ok, true, 'an AI live draw snapshot must restore');
+aiRendered = renderState(restoredAi.state);
+assert.equal(aiRendered.drawCalls.filter((entry) => entry.tile === restoredAi.state.newDrawnTile).length, 1, 'a restored AI live draw must not duplicate the independent tile');
+assert.equal(aiRendered.strokes.length, 1, 'a restored AI live draw must retain exactly one separator');
 
 console.log('p0 live drawn tile face regression passed');
