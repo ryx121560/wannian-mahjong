@@ -6,6 +6,7 @@ const root = process.cwd();
 const wrapper = fs.readFileSync(path.join(root, 'scripts', 'next-with-port.mjs'), 'utf8');
 const buildScript = fs.readFileSync(path.join(root, 'scripts', 'build-production-game.mjs'), 'utf8');
 const prebuildGuard = fs.readFileSync(path.join(root, 'scripts', 'assert-browser-build-artifacts-clean.mjs'), 'utf8');
+const ruleEngineBuild = fs.readFileSync(path.join(root, 'scripts', 'build-browser-rule-engine.mjs'), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const generatedBrowserFiles = [
   'public/game/rule_engine.js',
@@ -26,6 +27,10 @@ assert.match(prebuildGuard, /Generated browser artifacts must be clean before bu
 assert.match(prebuildGuard, /'-c', `safe\.directory=\$\{process\.cwd\(\)\}`/);
 assert.match(prebuildGuard, /Verified intentional browser rule engine override before build/);
 assert.match(prebuildGuard, /scripts\/build-browser-rule-engine\.mjs', '--check'/);
+assert.match(ruleEngineBuild, /function normalizeLineEndings\(value\)/);
+assert.match(ruleEngineBuild, /function outputLineEnding\(currentBundle\)/);
+assert.match(ruleEngineBuild, /normalizeLineEndings\(currentBundle\) !== bundle/);
+assert.match(ruleEngineBuild, /bundle\.replace\(\/\\n\/g, outputLineEnding\(currentBundle\)\)/);
 assert.match(buildScript, /function hasVerifiedRuleEngineOverride\(\)/);
 assert.match(buildScript, /preserveRuleEngineOverride/);
 assert.match(buildScript, /file !== 'public\/game\/rule_engine\.js'/);

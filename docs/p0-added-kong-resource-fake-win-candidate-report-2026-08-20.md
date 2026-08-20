@@ -75,3 +75,7 @@ GREEN：受控生成后，`test:p0-added-kong-wildcard-browser-parity` 同时验
 - `docs/p0-added-kong-resource-fake-win-candidate-report-2026-08-20.md`
 
 候选未提交、未推送、未部署；没有启动服务或访问浏览器 Storage、用户页面或用户导出。
+
+## 发布前 EOL 可复现性补正
+
+发布树复验发现 Windows checkout 的 `CRLF` 与生成器固定输出的 `LF` 会导致无语义差异的规则包被标记为脏，并使按字节比较的 `--check` 失败。补正后生成器会保留现有规则包的换行风格，并在 `--check` 时按规范化换行符验证内容；规则模块和运行时语义不变。Stage1 卫生回归锁定该边界。此补正不改写此前提交，作为后续普通提交发布。
