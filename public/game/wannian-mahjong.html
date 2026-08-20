@@ -2442,6 +2442,8 @@ function canSelfKong(p){
 function doPong(p){
   if(GS._respTimer){clearTimeout(GS._respTimer);GS._respTimer=null;}
   clearSelectedTile();
+  const directChiselAction=preparePageInitialKongAction(p);
+  if(directChiselAction&&directChiselAction.kind==='directChisel')return doKong(p);
   const t=GS.lastDiscard,sourcePlayer=GS.lastDiscardP;let c=0;
   for(let i=GS.players[p].hand.length-1;i>=0;i--){if(teq(GS.players[p].hand[i],t)){GS.players[p].hand.splice(i,1);c++;if(c===2)break;}}
   // remove the consumed discard from original player's discard row
