@@ -995,7 +995,9 @@ function aiDisplayHand(playerIdx){
   if(drawn)hand.splice(drawn.index,1);
   else{
     const supplement=resolveEndedKongSupplement();
-    if(supplement&&supplement.owner===playerIdx)hand.splice(supplement.handIndex,1);
+    const selfDraw=resolveEndedAiSelfDraw();
+    const independent=supplement&&supplement.owner===playerIdx?supplement:(selfDraw&&selfDraw.owner===playerIdx?selfDraw:null);
+    if(independent)hand.splice(independent.handIndex,1);
   }
   return hand.sort(tcmp);
 }
@@ -1185,6 +1187,7 @@ function restoreGameSession(snapshot){
   configureAiLearning(_selfPlay.running);
   document.getElementById('bt-selfplay').textContent=_selfPlay.running?'停止':'自弈';
   setSelfPlayUiState();
+  revealAiHandsForNormalEnd();
   restoredPhaseMessage();
   render();updateBtns();
   if(GS.players[GS.cur]&&GS.players[GS.cur].human&&(GS.phase==='discarding'||GS.phase==='responding'))updateSuggestion();
@@ -1770,6 +1773,37 @@ function resolveEndedKongSupplement(){
   return {owner:supplement.owner,tile:tile,handIndex:index,label:'杠开补牌'};
 }
 
+function captureSettledAiSelfDraw(winner,wt){
+  if(wt!=='自摸'||GS.phase!=='discarding'||GS.cur!==winner||!Number.isInteger(winner)||!GS.players)return null;
+  const player=GS.players[winner],tile=GS.newDrawnTile,index=GS.newDrawnIdx;
+  if(!player||player.human||!Array.isArray(player.hand)||!tile||!Number.isInteger(index)||index<0||index>=player.hand.length||player.hand[index]!==tile)return null;
+  return {owner:winner,tileKey:tkey(tile),handIndex:index};
+}
+
+function resolveEndedAiSelfDraw(){
+  if(GS.phase!=='ended'||!GS._lastResult||GS._lastResult.type!=='自摸')return null;
+  const selfDraw=GS._lastResult.aiSelfDraw;
+  if(!selfDraw||!Number.isInteger(selfDraw.owner)||selfDraw.owner<0||selfDraw.owner>=4||selfDraw.owner!==GS._lastResult.winner)return null;
+  const player=GS.players&&GS.players[selfDraw.owner],index=selfDraw.handIndex;
+  if(!player||player.human||!Array.isArray(player.hand)||!Number.isInteger(index)||index<0||index>=player.hand.length)return null;
+  const tile=player.hand[index];
+  if(!tile||typeof selfDraw.tileKey!=='string'||tkey(tile)!==selfDraw.tileKey)return null;
+  return {owner:selfDraw.owner,tile:tile,handIndex:index};
+}
+
+function revealAiHandsForNormalEnd(){
+  const result=GS._lastResult,winner=result&&result.winner;
+  const isDraw=result&&result.type==='流局';
+  const isWin=result&&['自摸','点炮','杠开'].includes(result.type)&&Number.isInteger(winner)&&winner>=0&&winner<4&&GS.players&&GS.players[winner];
+  if(GS.phase!=='ended'||!result||typeof result.type!=='string'||(!isDraw&&!isWin))return false;
+  GS.showAI=true;
+  if(typeof document!=='undefined'){
+    const eye=document.getElementById('bt-eye');
+    if(eye)eye.classList.add('on');
+  }
+  return true;
+}
+
 function drawKongSupplementLabel(x,y,label,rotation,offsetX,offsetY){
   ctx.save();
   ctx.fillStyle='#ffcc00';ctx.font='bold 16px "Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
@@ -1805,6 +1839,7 @@ function render(){
   // player hand (bottom)
   // 构建手牌副本，排除新摸的牌（已在手牌中，单独显示）
   const endedKongSupplement=resolveEndedKongSupplement();
+  const endedAiSelfDraw=resolveEndedAiSelfDraw();
   const fullHand = [...GS.players[0].hand];
   const hasNewDrawn = GS.phase==='discarding' && GS.newDrawnTile && GS.cur===0;
   if(hasNewDrawn){
@@ -1863,7 +1898,8 @@ function render(){
   }
   const drawn2=aiNewDrawnTileForDisplay(2);
   const settled2=endedKongSupplement&&endedKongSupplement.owner===2?endedKongSupplement:null;
-  const independent2=drawn2||settled2;
+  const selfDraw2=endedAiSelfDraw&&endedAiSelfDraw.owner===2?endedAiSelfDraw:null;
+  const independent2=drawn2||settled2||selfDraw2;
   if(independent2){
     const gap=30,newX2=Math.min(W-TW-24,sx2+h2.length*(TW+GAP)+gap),sepX2=sx2+h2.length*(TW+GAP)+gap/2-1;
     drawTile(newX2,45,independent2.tile,{face:!!GS.showAI,hl:!!GS.showAI});
@@ -1896,7 +1932,8 @@ function render(){
   }
   const drawn3=aiNewDrawnTileForDisplay(3);
   const settled3=endedKongSupplement&&endedKongSupplement.owner===3?endedKongSupplement:null;
-  const independent3=drawn3||settled3;
+  const selfDraw3=endedAiSelfDraw&&endedAiSelfDraw.owner===3?endedAiSelfDraw:null;
+  const independent3=drawn3||settled3||selfDraw3;
   if(independent3){
     const gap=30,newY3=Math.min(H-TW-24,startY3+h3.length*(TW+GAP)+gap),sepY3=startY3+h3.length*(TW+GAP)+gap/2-1;
     ctx.save();ctx.translate(35,newY3);ctx.rotate(Math.PI/2);drawTile(0,-TH,independent3.tile,{face:!!GS.showAI,hl:!!GS.showAI});ctx.restore();
@@ -1936,7 +1973,8 @@ function render(){
   }
   const drawn1=aiNewDrawnTileForDisplay(1);
   const settled1=endedKongSupplement&&endedKongSupplement.owner===1?endedKongSupplement:null;
-  const independent1=drawn1||settled1;
+  const selfDraw1=endedAiSelfDraw&&endedAiSelfDraw.owner===1?endedAiSelfDraw:null;
+  const independent1=drawn1||settled1||selfDraw1;
   if(independent1){
     const gap=30,newY1=Math.min(H-TW-24,startY1+h1.length*(TW+GAP)+gap),sepY1=startY1+h1.length*(TW+GAP)+gap/2-1;
     ctx.save();ctx.translate(W-45,newY1);ctx.rotate(Math.PI/2);drawTile(0,0,independent1.tile,{face:!!GS.showAI,hl:!!GS.showAI});ctx.restore();
@@ -2470,6 +2508,7 @@ function drawGame(){
   // 每局结束保存RL权重
   window.RL&&RL.saveAll();
   GS._lastResult={title:bankrupt>=0?'流局，积分已重置':'荒牌流局',type:'流局',pts:0,bankrupt:bankrupt,scoreDeltas:[0,0,0,0]};commitTopSettlementSummary(GS._lastResult);
+  revealAiHandsForNormalEnd();
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'draw-settled');
   _spOnGameEnd(-1);
   GS._preWinScores=GS.players.map(function(p){return p.score;});
@@ -2555,6 +2594,7 @@ function completePageKongSettlement(owner,action,result){
   const gain=settlement.delta[owner];
   GS._lastResult={title:GS.players[owner].name+'杠开胡了！',type:'杠开',huType:settlement.handTypes.join('+'),handTypes:settlement.handTypes.slice(),decompositionSignature:decompositionSignature,pts:gain,winner:owner,kongAction:action.kind,kongOutcome:result.resolution.outcome,scoreDeltas:settlement.delta.slice(),displayText:formatWinSettlementText(GS.players[owner].name+'杠开胡了！',actionKind+'('+result.resolution.outcome+')',gain)};commitTopSettlementSummary(GS._lastResult);
   GS._lastResult.kongSupplement=kongSupplement;
+  revealAiHandsForNormalEnd();
   finalizeRecommendationSummary();
   renderFinalRecommendationPanel();
   if(window.RL&&RL.useRL){
@@ -2851,6 +2891,7 @@ function applyWin(winner,wt){
     saveGameSnapshot('invalid-win-blocked');
     return;
   }
+  const aiSelfDraw=captureSettledAiSelfDraw(winner,wt);
   GS.phase='ended';GS.canP=GS.canK=GS.canW=GS.canWS=false;GS._resp=null;GS._respP=-1;GS._responseKind=null;GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   updateBtns();
   invalidatePageKongResources();
@@ -2895,7 +2936,10 @@ function applyWin(winner,wt){
   // 每局结束保存RL权重
   window.RL&&RL.saveAll();
   const resultTitle=GS.players[winner].name+'胡了！';
-  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:huType,pts:pts,winner:winner,bankrupt:bankrupt,scoreDeltas:settlementScoreDeltas,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,huType+'('+wt+')',pts)};commitTopSettlementSummary(GS._lastResult);
+  GS._lastResult={title:bankrupt>=0?resultTitle+' 积分已重置':resultTitle,type:wt,huType:huType,pts:pts,winner:winner,bankrupt:bankrupt,scoreDeltas:settlementScoreDeltas,displayText:formatWinSettlementText(bankrupt>=0?resultTitle+' 积分已重置':resultTitle,huType+'('+wt+')',pts)};
+  if(aiSelfDraw)GS._lastResult.aiSelfDraw=aiSelfDraw;
+  commitTopSettlementSummary(GS._lastResult);
+  revealAiHandsForNormalEnd();
   saveGameSnapshot(bankrupt>=0?'bankruptcy-reset':'win-settled');
   _spOnGameEnd(winner);
   setMsg(GS._lastResult.displayText);

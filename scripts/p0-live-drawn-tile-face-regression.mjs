@@ -58,6 +58,7 @@ function renderState(state, selectedTile = null) {
   vm.runInContext(extractFunction('aiDisplayHand'), context, { filename: 'ai-display-hand.js' });
   vm.runInContext(extractFunction('aiDrawHighlight'), context, { filename: 'ai-draw-highlight.js' });
   vm.runInContext(extractFunction('resolveEndedKongSupplement'), context, { filename: 'resolve-ended-kong-supplement.js' });
+  vm.runInContext(extractFunction('resolveEndedAiSelfDraw'), context, { filename: 'resolve-ended-ai-self-draw.js' });
   vm.runInContext(extractFunction('drawHandSeparator'), context, { filename: 'draw-hand-separator.js' });
   vm.runInContext(extractFunction('render'), context, { filename: 'render.js' });
   context.render();
@@ -134,6 +135,104 @@ ordinaryEndedState._lastResult = { type: '自摸', winner: 0 };
 rendered = renderState(ordinaryEndedState);
 assert.equal(rendered.drawCalls.some((entry) => entry.opts.hl === true), false, 'ordinary ended states must not synthesize an independent tile');
 assert.equal(rendered.labels.length, 0, 'ordinary ended states must not show an empty kong supplement label');
+
+function aiSelfDrawEndedState(playerIdx, drawnTile) {
+  const state = aiDrawState(playerIdx, drawnTile);
+  state.phase = 'ended';
+  state.newDrawnTile = null;
+  state.newDrawnIdx = -1;
+  state.showAI = false;
+  state._lastResult = { type: '自摸', winner: playerIdx, aiSelfDraw: { owner: playerIdx, tileKey: drawnTile.k, handIndex: 2 } };
+  return state;
+}
+
+function revealAiHandsForNormalEnd(state) {
+  const context = { GS: state };
+  vm.createContext(context);
+  vm.runInContext(extractFunction('revealAiHandsForNormalEnd'), context, { filename: 'reveal-ai-hands-for-normal-end.js' });
+  assert.equal(context.revealAiHandsForNormalEnd(), true, 'a normal ended result must force open AI hands');
+}
+
+for (const playerIdx of [1, 2, 3]) {
+  const selfDrawTile = tile(`tiao${playerIdx + 4}`);
+  const state = aiSelfDrawEndedState(playerIdx, selfDrawTile);
+  revealAiHandsForNormalEnd(state);
+  const result = renderState(state);
+  const calls = result.drawCalls.filter((entry) => entry.tile === selfDrawTile);
+  assert.equal(calls.length, 1, `AI ${playerIdx} self draw must render exactly once at the independent position`);
+  assert.equal(calls[0].opts.face, true, `AI ${playerIdx} self draw must reveal its face at settlement`);
+  assert.equal(calls[0].opts.hl, true, `AI ${playerIdx} self draw must retain the independent draw treatment`);
+  assert.equal(result.strokes.length, 1, `AI ${playerIdx} self draw must render one separator`);
+  assert.equal(result.labels.length, 0, `AI ${playerIdx} self draw must not reuse the kong supplement label`);
+}
+
+const aiPointWinState = aiDrawState(2, tile('wan4'));
+aiPointWinState.phase = 'ended';
+aiPointWinState.newDrawnTile = null;
+aiPointWinState.newDrawnIdx = -1;
+aiPointWinState._lastResult = { type: '点炮', winner: 2 };
+revealAiHandsForNormalEnd(aiPointWinState);
+rendered = renderState(aiPointWinState);
+assert.equal(rendered.drawCalls.filter((entry) => entry.tile === aiPointWinState.players[2].hand[2]).length, 1, 'an AI point win must retain its complete normal hand');
+assert.equal(rendered.drawCalls.some((entry) => entry.opts.hl === true), false, 'an AI point win must not synthesize a self-draw tile');
+assert.equal(rendered.strokes.length, 0, 'an AI point win must not synthesize a separator');
+
+const humanSelfDrawState = baseState(tile('tiao6'));
+humanSelfDrawState.phase = 'ended';
+humanSelfDrawState.newDrawnTile = null;
+humanSelfDrawState.newDrawnIdx = -1;
+humanSelfDrawState._lastResult = { type: '自摸', winner: 0, aiSelfDraw: { owner: 0, tileKey: 'tiao6', handIndex: 2 } };
+rendered = renderState(humanSelfDrawState);
+assert.equal(rendered.drawCalls.filter((entry) => entry.tile === humanSelfDrawState.players[0].hand[2]).length, 1, 'a human self draw must retain the existing normal ended layout');
+assert.equal(rendered.drawCalls.some((entry) => entry.opts.hl === true), false, 'a human self draw must not gain an independent AI tile');
+assert.equal(rendered.strokes.length, 0, 'a human self draw must not gain an AI separator');
+
+for (const type of ['自摸', '点炮', '杠开']) {
+  const humanWin = baseState(tile('wan3'));
+  humanWin.phase = 'ended';
+  humanWin.newDrawnTile = null;
+  humanWin.newDrawnIdx = -1;
+  humanWin.showAI = false;
+  humanWin._lastResult = { type, winner: 0 };
+  revealAiHandsForNormalEnd(humanWin);
+  assert.equal(humanWin.showAI, true, `a human ${type} win must open all AI hands`);
+
+  const aiWin = aiDrawState(1, tile('wan4'));
+  aiWin.phase = 'ended';
+  aiWin.newDrawnTile = null;
+  aiWin.newDrawnIdx = -1;
+  aiWin.showAI = false;
+  aiWin._lastResult = { type, winner: 1 };
+  revealAiHandsForNormalEnd(aiWin);
+  assert.equal(aiWin.showAI, true, `an AI ${type} win must open all AI hands`);
+}
+
+const drawEndedState = baseState(tile('wan6'));
+drawEndedState.phase = 'ended';
+drawEndedState.newDrawnTile = null;
+drawEndedState.newDrawnIdx = -1;
+drawEndedState.showAI = false;
+drawEndedState._lastResult = { type: '流局', scoreDeltas: [0, 0, 0, 0] };
+revealAiHandsForNormalEnd(drawEndedState);
+assert.equal(drawEndedState.showAI, true, 'a normal draw must open all AI hands');
+rendered = renderState(drawEndedState);
+assert.equal(rendered.drawCalls.some((entry) => entry.opts.hl === true), false, 'a draw must not synthesize a self-draw tile');
+assert.equal(rendered.strokes.length, 0, 'a draw must not synthesize a self-draw separator');
+
+const midGameState = aiDrawState(1, tile('wan7'));
+midGameState.showAI = false;
+midGameState._lastResult = { type: '流局', scoreDeltas: [0, 0, 0, 0] };
+assert.equal((() => { const context = { GS: midGameState }; vm.createContext(context); vm.runInContext(extractFunction('revealAiHandsForNormalEnd'), context); return context.revealAiHandsForNormalEnd(); })(), false, 'a non-ended state must not change AI-hand visibility');
+assert.equal(midGameState.showAI, false, 'a non-ended state must retain hidden AI hands');
+
+const unknownEndedState = baseState(tile('wan8'));
+unknownEndedState.phase = 'ended';
+unknownEndedState.newDrawnTile = null;
+unknownEndedState.newDrawnIdx = -1;
+unknownEndedState.showAI = false;
+unknownEndedState._lastResult = { type: 'unknown-ended-result', winner: 0 };
+assert.equal((() => { const context = { GS: unknownEndedState }; vm.createContext(context); vm.runInContext(extractFunction('revealAiHandsForNormalEnd'), context); return context.revealAiHandsForNormalEnd(); })(), false, 'an unknown ended result must not reveal AI hands');
+assert.equal(unknownEndedState.showAI, false, 'an unknown ended result must retain hidden AI hands');
 
 const restoredEndedSnapshot = snapshotContext.window.GameSessionSnapshot.create(settledState, { totalGames: 1, selfPlayRunning: false }, (value) => value.k);
 const restoredEnded = snapshotContext.window.GameSessionSnapshot.restore(restoredEndedSnapshot, (key) => tile(key));
@@ -284,5 +383,22 @@ assert.equal(restoredAi.ok, true, 'an AI live draw snapshot must restore');
 aiRendered = renderState(restoredAi.state);
 assert.equal(aiRendered.drawCalls.filter((entry) => entry.tile === restoredAi.state.newDrawnTile).length, 1, 'a restored AI live draw must not duplicate the independent tile');
 assert.equal(aiRendered.strokes.length, 1, 'a restored AI live draw must retain exactly one separator');
+
+const restoredAiSelfDrawSource = aiSelfDrawEndedState(3, tile('wan9'));
+const restoredAiSelfDrawSnapshot = snapshotContext.window.GameSessionSnapshot.create(restoredAiSelfDrawSource, { totalGames: 1, selfPlayRunning: false }, (value) => value.k);
+const restoredAiSelfDraw = snapshotContext.window.GameSessionSnapshot.restore(restoredAiSelfDrawSnapshot, (key) => tile(key));
+assert.equal(restoredAiSelfDraw.ok, true, 'an AI self-draw ended snapshot must restore');
+revealAiHandsForNormalEnd(restoredAiSelfDraw.state);
+aiRendered = renderState(restoredAiSelfDraw.state);
+assert.equal(aiRendered.drawCalls.filter((entry) => entry.tile === restoredAiSelfDraw.state.players[3].hand[2]).length, 1, 'a restored AI self draw must remain independently rendered exactly once');
+assert.equal(aiRendered.strokes.length, 1, 'a restored AI self draw must retain one separator');
+assert.equal(aiRendered.labels.length, 0, 'a restored AI self draw must not gain a kong label');
+
+const restoredDrawSnapshot = snapshotContext.window.GameSessionSnapshot.create(drawEndedState, { totalGames: 1, selfPlayRunning: false }, (value) => value.k);
+const restoredDraw = snapshotContext.window.GameSessionSnapshot.restore(restoredDrawSnapshot, (key) => tile(key));
+assert.equal(restoredDraw.ok, true, 'a normal draw snapshot must restore');
+restoredDraw.state.showAI = false;
+revealAiHandsForNormalEnd(restoredDraw.state);
+assert.equal(restoredDraw.state.showAI, true, 'a restored normal draw must reopen AI hands');
 
 console.log('p0 live drawn tile face regression passed');
