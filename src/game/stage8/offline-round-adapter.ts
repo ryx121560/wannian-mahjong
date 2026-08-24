@@ -1,5 +1,5 @@
 import { transitionRound } from '../rules/round-transition';
-import type { GameState, RoundTransitionAction, RoundTransitionResult, Tile } from '../rules';
+import type { GameState, RoundTransitionAction, RoundTransitionResult, SpecialKongActionIdentity, Tile } from '../rules';
 import { deriveStage8V2RoundEngineActions } from './round-engine-v2';
 import { STAGE8_ACTION_SPACE_V2_VERSION } from './action-registry-v2';
 import type { CanonicalStage8V2Action } from './action-registry-v2';
@@ -59,11 +59,68 @@ function replacePeng(melds: Meld[], tile: Tile): Meld[] | null { const index = m
 export function prepareStage8OfflineSpecialKongDeclaration(input: {
   state: GameState; action: CanonicalStage8V2Action; candidateKongResources?: CandidateConcealedKongResource[]; addedKongChainWindows?: AddedKongChainWindowInput[];
 }): SpecialKongDeclarationAction | null {
-  const actor = input.action.context.actor; const player = input.state.players?.[actor]; const tile = input.action.tile;
+  const actor = input.action.context.actor; const player = input.state.players?.[actor]; const tile = input.action.tile || (input.action.actionType === 'doublePongForcedRun' ? input.action.context.resourceSignature?.split('|')[0]?.split(':')[1] as Tile | undefined : undefined);
   if (!player || !tile) return null; const melds = (player.melds || input.state.melds[actor] || []).map((meld) => ({ ...meld, tiles: meld.tiles.slice() as Meld['tiles'] }));
   if (input.action.actionType === 'forcedRunConcealed') { const handAfterKong = removeTiles(player.hand, tile, 4); if (!handAfterKong) return null; return { kind: 'forcedRunConcealed', input: { owner: actor, kongTile: tile, preKongHand: player.hand.slice(), handAfterKong, melds: melds.concat([{ type: 'anGang', tiles: [tile, tile, tile, tile] }]) } }; }
   if (input.action.actionType === 'postPongCandidateConcealedKong') { const resource = input.candidateKongResources?.find((item) => item.owner === actor && item.candidateKongTile === tile && item.status === 'active'); const handAfterKong = removeTiles(player.hand, tile, 4); if (!resource || !handAfterKong) return null; return { kind: 'postPongCandidateConcealedKong', input: { owner: actor, resource, preKongHand: player.hand.slice(), handAfterKong, melds: melds.concat([{ type: 'anGang', tiles: [tile, tile, tile, tile] }]) } }; }
   if (input.action.actionType === 'doublePongForcedRun') { const signature = input.action.context.resourceSignature; const [selectedTile, conditionalTile] = signature ? signature.split('|').map((part) => part.split(':')[1] as Tile) : []; const selectedResource = input.state.kongResources?.find((item) => item.owner === actor && item.tile === selectedTile && item.status === 'active'); const conditionalResource = input.state.kongResources?.find((item) => item.owner === actor && item.tile === conditionalTile && item.status === 'active'); const handAfterKong = selectedTile ? removeTiles(player.hand, selectedTile, 1) : null; const nextMelds = selectedTile ? replacePeng(melds, selectedTile) : null; if (!selectedResource || !conditionalResource || !handAfterKong || !nextMelds) return null; return { kind: 'doublePongForcedRun', input: { owner: actor, selectedResource, conditionalResource, preKongHand: player.hand.slice(), handAfterKong, melds: nextMelds } }; }
   if (input.action.actionType === 'chainKong') { const window = input.addedKongChainWindows?.find((item) => item.owner === actor && item.chainPongMeld.tiles[0] === tile); const handAfterChainKong = removeTiles(player.hand, tile, 1); const nextMelds = replacePeng(melds, tile); if (!window || !handAfterChainKong || !nextMelds) return null; return { kind: 'addedKongChain', input: { ...window, handBeforeChainKong: player.hand.slice(), handAfterChainKong, melds: nextMelds } }; }
   return null;
+}
+
+function sameCanonicalAction(left: CanonicalStage8V2Action, right: CanonicalStage8V2Action): boolean {
+  return left.actionSpaceVersion === right.actionSpaceVersion
+    && left.actionType === right.actionType
+    && left.actionId === right.actionId
+    && left.tile === right.tile
+    && left.context.actor === right.context.actor
+    && left.context.declarationWindow === right.context.declarationWindow
+    && left.context.ownTileCount === right.context.ownTileCount
+    && left.context.robKongWindow === right.context.robKongWindow
+    && left.context.resourceSignature === right.context.resourceSignature;
+}
+
+function specialIdentity(action: CanonicalStage8V2Action): SpecialKongActionIdentity | null {
+  const tile = action.tile || (action.actionType === 'doublePongForcedRun' ? action.context.resourceSignature?.split('|')[0]?.split(':')[1] as Tile | undefined : undefined);
+  if (!tile) return null;
+  if (action.actionType === 'forcedRunConcealed') return { actionType: 'forcedRunConcealed', actionId: action.actionId, tile, resourceSignature: action.context.resourceSignature || '' };
+  if (action.actionType === 'postPongCandidateConcealedKong') return { actionType: 'postPongCandidateConcealedKong', actionId: action.actionId, tile, resourceSignature: action.context.resourceSignature || '' };
+  if (action.actionType === 'doublePongForcedRun') return { actionType: 'doublePongForcedRun', actionId: action.actionId, tile, resourceSignature: action.context.resourceSignature || '' };
+  if (action.actionType === 'chainKong') return { actionType: 'chainKong', actionId: action.actionId, tile, resourceSignature: action.context.resourceSignature || '' };
+  return null;
+}
+
+/** Converts only an exact current canonical action into a rules transition. */
+export function executeStage8OfflineCanonicalAction(input: {
+  state: GameState;
+  action: CanonicalStage8V2Action;
+  candidateKongResources?: CandidateConcealedKongResource[];
+  addedKongChainWindows?: AddedKongChainWindowInput[];
+}): RoundTransitionResult {
+  const legal = deriveStage8OfflineActions({ state: input.state, actor: input.action.context.actor, candidateKongResources: input.candidateKongResources, addedKongChainWindows: input.addedKongChainWindows });
+  if (!legal.some((candidate) => sameCanonicalAction(candidate, input.action))) {
+    return { ok: false, state: input.state, reason: 'stage8-offline-canonical-action-illegal' };
+  }
+  const actor = input.action.context.actor;
+  let transition: RoundTransitionAction | null = null;
+  if (input.action.actionType === 'pass') transition = { type: 'pass', actor };
+  else if (input.action.actionType === 'discard' && input.action.tile) transition = { type: 'discard', actor, tile: input.action.tile };
+  else if (input.action.actionType === 'pong') transition = { type: 'pong', actor };
+  else if (input.action.actionType === 'win') transition = input.state.phase === 'discarding'
+    ? { type: 'selfWin', actor }
+    : input.state.pendingKong?.kind === 'specialKong' || input.state.pendingKong?.kind === 'addedKong'
+      ? { type: 'robKongWin', actor }
+      : { type: 'discardWin', actor };
+  else if (input.action.actionType === 'normalConcealedKong' && input.action.tile) transition = { type: 'concealedKong', actor, tile: input.action.tile };
+  else if (input.action.actionType === 'addedKong' && input.action.tile) transition = { type: 'addedKong', actor, tile: input.action.tile };
+  else if (input.action.actionType === 'directChisel') transition = { type: 'directChisel', actor };
+  else if (input.action.actionType === 'forcedRunImmediate') transition = { type: 'forcedRunImmediate', actor };
+  else if (input.action.actionType === 'forcedRunDeferred' && input.action.tile) transition = { type: 'forcedRunDeferred', actor, tile: input.action.tile };
+  else {
+    const declaration = prepareStage8OfflineSpecialKongDeclaration(input);
+    const identity = specialIdentity(input.action);
+    if (declaration && identity) transition = { type: 'specialKong', actor, declaration, canonicalAction: identity };
+  }
+  if (!transition) return { ok: false, state: input.state, reason: 'stage8-offline-canonical-action-unmapped' };
+  return executeStage8OfflineRoundAction(input.state, transition);
 }

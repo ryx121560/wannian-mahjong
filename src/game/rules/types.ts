@@ -50,6 +50,24 @@ export interface KongResource {
   status: KongResourceStatus;
 }
 
+/** Serializable identity for a special-kong declaration awaiting rob-kong responses. */
+export interface SpecialKongActionIdentity {
+  actionType: 'forcedRunConcealed' | 'postPongCandidateConcealedKong' | 'doublePongForcedRun' | 'chainKong';
+  actionId: number;
+  tile: Tile;
+  resourceSignature: string;
+}
+
+/** Internal pending state only. The declaration is revalidated against current rules before commit. */
+export interface PendingSpecialKong {
+  kind: 'specialKong';
+  owner: number;
+  tile: Tile;
+  declaration: unknown;
+  canonicalAction: SpecialKongActionIdentity;
+  preStateIdentity: string;
+}
+
 export type KongClaimKind = 'directChisel' | 'forcedRunImmediate' | 'forcedRunDeferred' | 'chainKong';
 export type KongDrawOutcome = 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiTrueWin' | 'forcedRunGangKaiFakeWin' | 'forcedRunFailureDiscard' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin';
 export type KongWinEvent = Extract<KongDrawOutcome, 'directChiselTrueWin' | 'directChiselFakeWin' | 'forcedRunGangKaiTrueWin' | 'forcedRunGangKaiFakeWin' | 'directChiselChainTrueWin' | 'directChiselChainFakeWin'>;
@@ -73,7 +91,7 @@ export interface GameState {
   /** Ordered responders for a pure offline discard-response window. */
   responseQueue?: number[];
   /** A declared added kong awaiting the same ordered rob-kong response window. */
-  pendingKong?: { kind: 'addedKong'; owner: number; tile: Tile };
+  pendingKong?: { kind: 'addedKong'; owner: number; tile: Tile } | PendingSpecialKong;
 }
 
 export interface WinContext {

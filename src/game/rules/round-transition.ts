@@ -2,13 +2,14 @@ import { resolveAddedKongDraw } from './added-kong';
 import { resolveConcealedKongDraw } from './concealed-kong';
 import { canWin } from './hand-evaluator';
 import { canPeng } from './meld-validator';
-import { canUseDeferredForcedRun, classifyDiscardKongClaim, createKongResource, resolveKongDraw, resolveRobKongWinner } from './kong-resource';
+import { canUseDeferredForcedRun, classifyDiscardKongClaim, createKongResource, resolveKongDraw } from './kong-resource';
 import { getLegalActions } from './index';
 import { scoreConcealedKongSettlement, scoreKongSettlement, scoreSettlement, scoreSpecialKongSettlement } from './score-calculator';
 import type { ConcealedKongSettlementResult, SpecialKongSettlementResult } from './score-calculator';
-import { resolveSpecialKongAction } from './special-kong';
+import { canDeclareSpecialKongAction, resolveSpecialKongAction } from './special-kong';
 import type { SpecialKongDeclarationAction } from './special-kong';
-import type { DrawSettlementResult, GameState, KongSettlementResult, Meld, SettlementResult, Tile } from './types';
+import type { DrawSettlementResult, GameState, KongSettlementResult, Meld, SettlementResult, SpecialKongActionIdentity, Tile } from './types';
+import { ALL_TILE_KEYS } from './tile-utils';
 
 export type RoundTransitionAction =
   | { type: 'draw'; actor: number }
@@ -23,13 +24,15 @@ export type RoundTransitionAction =
   | { type: 'directChisel'; actor: number }
   | { type: 'forcedRunImmediate'; actor: number }
   | { type: 'forcedRunDeferred'; actor: number; tile: Tile }
-  | { type: 'specialKong'; actor: number; declaration: SpecialKongDeclarationAction };
+  | { type: 'specialKong'; actor: number; declaration: SpecialKongDeclarationAction; canonicalAction?: SpecialKongActionIdentity; skipRobWindow?: true };
 
 export interface RoundPublicEvent {
   type: RoundTransitionAction['type'] | 'wallExhausted';
   actor: number | null;
   tile?: Tile;
   outcome?: string;
+  canonicalAction?: SpecialKongActionIdentity;
+  committed?: boolean;
 }
 
 export type RoundSettlement = SettlementResult | KongSettlementResult | ConcealedKongSettlementResult | SpecialKongSettlementResult | DrawSettlementResult;
@@ -44,7 +47,7 @@ function cloneState(state: GameState): GameState {
     players: state.players?.map((player) => ({ ...player, hand: player.hand.slice(), melds: (player.melds || []).map(cloneMeld) })),
     melds: state.melds.map((melds) => melds.map(cloneMeld)),
     discards: state.discards.map((discards) => discards.slice()),
-    scores: state.scores.slice(), wallTiles: state.wallTiles.slice(), passRecords: state.passRecords.slice(), kongResources: state.kongResources?.map((resource) => ({ ...resource, pongMeld: cloneMeld(resource.pongMeld) })), responseQueue: state.responseQueue?.slice(), pendingKong: state.pendingKong ? { ...state.pendingKong } : undefined,
+    scores: state.scores.slice(), wallTiles: state.wallTiles.slice(), passRecords: state.passRecords.slice(), kongResources: state.kongResources?.map((resource) => ({ ...resource, pongMeld: cloneMeld(resource.pongMeld) })), responseQueue: state.responseQueue?.slice(), pendingKong: state.pendingKong ? JSON.parse(JSON.stringify(state.pendingKong)) : undefined,
   };
 }
 function failed(state: GameState, reason: string): RoundTransitionResult { return { ok: false, state, reason }; }
@@ -103,6 +106,22 @@ function specialRobTile(declaration: SpecialKongDeclarationAction): Tile | null 
   if (declaration.kind === 'addedKongChain') return declaration.input.chainPongMeld.tiles[0];
   return null;
 }
+function specialIdentity(declaration: SpecialKongDeclarationAction): SpecialKongActionIdentity {
+  const index = (tile: Tile): number => ALL_TILE_KEYS.indexOf(tile);
+  if (declaration.kind === 'forcedRunConcealed') return { actionType: 'forcedRunConcealed', actionId: 1100 + index(declaration.input.kongTile), tile: declaration.input.kongTile, resourceSignature: '' };
+  if (declaration.kind === 'postPongCandidateConcealedKong') return { actionType: 'postPongCandidateConcealedKong', actionId: 1200 + index(declaration.input.resource.candidateKongTile), tile: declaration.input.resource.candidateKongTile, resourceSignature: `${declaration.input.resource.owner}:${declaration.input.resource.pongMeld.tiles[0]}:${declaration.input.resource.candidateKongTile}` };
+  if (declaration.kind === 'doublePongForcedRun') return { actionType: 'doublePongForcedRun', actionId: 1300 + index(declaration.input.selectedResource.tile) * ALL_TILE_KEYS.length + index(declaration.input.conditionalResource.tile), tile: declaration.input.selectedResource.tile, resourceSignature: `${declaration.input.selectedResource.owner}:${declaration.input.selectedResource.tile}|${declaration.input.conditionalResource.owner}:${declaration.input.conditionalResource.tile}` };
+  return { actionType: 'chainKong', actionId: 900 + index(declaration.input.chainPongMeld.tiles[0]), tile: declaration.input.chainPongMeld.tiles[0], resourceSignature: `${declaration.input.initialResource.owner}:${declaration.input.initialResource.tile}>${declaration.input.chainPongMeld.tiles[0]}` };
+}
+function sameSpecialIdentity(left: SpecialKongActionIdentity, right: SpecialKongActionIdentity): boolean {
+  return left.actionType === right.actionType && left.actionId === right.actionId && left.tile === right.tile && left.resourceSignature === right.resourceSignature;
+}
+function stateIdentity(state: GameState): string {
+  const source = JSON.stringify({ phase: state.phase, currentPlayer: state.currentPlayer, players: state.players?.map((entry) => ({ hand: entry.hand, melds: entry.melds })), melds: state.melds, discards: state.discards, scores: state.scores, wallTiles: state.wallTiles, kongResources: state.kongResources, lastDiscard: state.lastDiscard, lastDiscardPlayer: state.lastDiscardPlayer });
+  let value = 2166136261;
+  for (let index = 0; index < source.length; index += 1) value = Math.imul(value ^ source.charCodeAt(index), 16777619);
+  return `fnv1a-${(value >>> 0).toString(16).padStart(8, '0')}`;
+}
 
 /** Pure rules transition. Invalid input returns the original state without mutation. */
 export function transitionRound(state: GameState, action: RoundTransitionAction): RoundTransitionResult {
@@ -133,8 +152,9 @@ export function transitionRound(state: GameState, action: RoundTransitionAction)
       if (next.responseQueue!.length) { next.currentPlayer = next.responseQueue![0]; return { ok: true, state: next, event: { type: 'pass', actor: action.actor }, settlement: null }; }
       const pendingKong = next.pendingKong;
       if (pendingKong) {
-        next.currentPlayer = pendingKong.owner; next.phase = 'discarding'; next.pendingKong = undefined; closeResponseWindow(next);
-        return transitionRound(next, { type: 'addedKong', actor: pendingKong.owner, tile: pendingKong.tile });
+        next.currentPlayer = pendingKong.owner; next.phase = 'discarding'; closeResponseWindow(next);
+        if (pendingKong.kind === 'addedKong') { next.pendingKong = undefined; return transitionRound(next, { type: 'addedKong', actor: pendingKong.owner, tile: pendingKong.tile }); }
+        return transitionRound(next, { type: 'specialKong', actor: pendingKong.owner, declaration: pendingKong.declaration as SpecialKongDeclarationAction, canonicalAction: pendingKong.canonicalAction, skipRobWindow: true });
       }
       next.currentPlayer = (next.lastDiscardPlayer + 1) % 4; next.phase = 'drawing'; closeResponseWindow(next);
       return { ok: true, state: next, event: { type: 'pass', actor: action.actor }, settlement: null };
@@ -187,20 +207,32 @@ export function transitionRound(state: GameState, action: RoundTransitionAction)
     if (action.type === 'specialKong') {
       const declaration = action.declaration;
       if (specialOwner(declaration) !== action.actor || next.phase !== 'discarding' || next.currentPlayer !== action.actor) return failed(state, 'round-transition-special-kong-owner-invalid');
+      if (!canDeclareSpecialKongAction(declaration)) return failed(state, 'round-transition-special-kong-declaration-invalid');
+      const canonicalAction = specialIdentity(declaration);
+      if (action.canonicalAction && !sameSpecialIdentity(action.canonicalAction, canonicalAction)) return failed(state, 'round-transition-special-kong-canonical-identity-invalid');
+      if (action.skipRobWindow) {
+        const pending = next.pendingKong;
+        const allPassed = !!pending && pending.kind === 'specialKong' && sameSpecialIdentity(pending.canonicalAction, canonicalAction)
+          && [1, 2, 3].every((offset) => next.passRecords.some((record) => record.player === (action.actor + offset) % 4 && record.tile === pending.tile && record.round === next.turn));
+        if (!allPassed) return failed(state, 'round-transition-special-kong-commit-invalid');
+        next.pendingKong = undefined;
+      }
       const preKongHand = declaration.kind === 'addedKongChain' ? declaration.input.handBeforeChainKong : declaration.input.preKongHand;
       if (!sameTiles(current.hand, preKongHand)) return failed(state, 'round-transition-special-kong-stale-hand');
       const drawTile = next.wallTiles.at(-1); if (!drawTile) return failed(state, 'round-transition-special-kong-supplement-unavailable');
       const robTile = specialRobTile(declaration);
-      if (robTile) {
-        const robWinner = resolveRobKongWinner(next, action.actor, robTile);
-        if (robWinner != null) return failed(state, 'round-transition-special-kong-rob-window-requires-explicit-response');
+      if (robTile && action.canonicalAction && !action.skipRobWindow) {
+        next.phase = 'responding'; next.lastDiscard = robTile; next.lastDiscardPlayer = action.actor;
+        next.pendingKong = { kind: 'specialKong', owner: action.actor, tile: robTile, declaration: JSON.parse(JSON.stringify(declaration)), canonicalAction, preStateIdentity: stateIdentity(state) };
+        next.responseQueue = [1, 2, 3].map((offset) => (action.actor + offset) % 4); next.currentPlayer = next.responseQueue[0];
+        return { ok: true, state: next, event: { type: 'specialKong', actor: action.actor, tile: robTile, outcome: 'specialKongRobWindow', canonicalAction, committed: false }, settlement: null };
       }
       const resolvedAction = { kind: declaration.kind, input: { ...declaration.input, drawTile } } as Parameters<typeof resolveSpecialKongAction>[0];
       const resolution = resolveSpecialKongAction(resolvedAction);
       current.hand = specialHandAfter(declaration).concat(drawTile); setMelds(next, action.actor, resolvedAction.input.melds); next.wallTiles.pop(); next.newDrawnTile = drawTile;
-      if (resolution.mustDiscard) { next.phase = 'discarding'; return { ok: true, state: next, event: { type: 'specialKong', actor: action.actor, outcome: resolution.outcome }, settlement: null }; }
+      if (resolution.mustDiscard) { next.phase = 'discarding'; return { ok: true, state: next, event: { type: 'specialKong', actor: action.actor, tile: canonicalAction.tile, outcome: resolution.outcome, canonicalAction, committed: true }, settlement: null }; }
       const settlement = scoreSpecialKongSettlement({ action: resolvedAction, winner: action.actor, scores: state.scores });
-      return normalEnd(next, action.actor, settlement, { type: 'specialKong', actor: action.actor, outcome: resolution.outcome });
+      return normalEnd(next, action.actor, settlement, { type: 'specialKong', actor: action.actor, tile: canonicalAction.tile, outcome: resolution.outcome, canonicalAction, committed: true });
     }
     if (action.type === 'forcedRunDeferred') {
       if (next.phase !== 'discarding' || next.currentPlayer !== action.actor || !getLegalActions(next, action.actor).includes('deferredForcedRunKong') || !canUseDeferredForcedRun(next, action.actor)) return failed(state, 'round-transition-deferred-forced-run-illegal');
