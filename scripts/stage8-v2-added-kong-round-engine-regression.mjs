@@ -61,7 +61,11 @@ try {
   const fixtures = [
     {
       kongTile: 'tong1', hand: ['tong1', 'wan1', 'wan2', 'wan3', 'tiao1', 'tiao2', 'tiao3', 'tiao4', 'tiao5', 'tiao6', 'zhong'],
-      melds: [pengTong1], drawTile: 'bai', expected: 'addedKongContinueDiscard',
+      melds: [pengTong1], drawTile: 'bai', expected: 'addedKongFakeWin', expectFakeWin: true,
+    },
+    {
+      kongTile: 'tong1', hand: ['tong1', 'wan1', 'wan2', 'wan4', 'tiao1', 'tiao3', 'tiao5', 'tiao7', 'tiao9', 'zhong', 'fa'],
+      melds: [pengTong1], drawTile: 'bai', expected: 'addedKongContinueDiscard', expectContinueDiscard: true,
     },
     {
       kongTile: 'tong1', hand: ['tong1', 'wan1', 'wan1', 'wan1', 'wan2', 'wan2', 'wan2', 'wan3', 'wan3', 'wan3', 'wan4'],
@@ -96,6 +100,20 @@ try {
     assert.equal(actual.outcome, fixture.expected);
     assert.deepEqual(visibleResult(actual), visibleResult(expected), 'round engine must reproduce complete public result for ' + fixture.expected);
     assert.equal(JSON.stringify(state), before, 'round execution must remain pure');
+    if (fixture.expectFakeWin) {
+      assert.equal(actual.mustDiscard, false, 'fake-win supplement must settle immediately');
+      assert.deepEqual(actual.classification.handTypes, ['平胡']);
+      assert.deepEqual(actual.publicLog.handTypes, ['平胡']);
+      assert.equal(actual.settlement.winner, 0);
+      assert.deepEqual(actual.settlement.before, [100, 100, 100, 100]);
+      assert.deepEqual(actual.settlement.after, [106, 98, 98, 98]);
+      assert.deepEqual(actual.settlement.delta, [6, -2, -2, -2]);
+    }
+    if (fixture.expectContinueDiscard) {
+      assert.equal(actual.mustDiscard, true, 'a non-winning non-fake supplement must continue to discard');
+      assert.equal(actual.classification, undefined);
+      assert.equal(actual.settlement, undefined);
+    }
     if (fixture.expected === 'addedKongChainWindow') chainInput = input;
   }
 
