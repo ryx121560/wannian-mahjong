@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { hashStage8TrainingManifestPayload, validateStage8TrainingControlManifest, type Stage8TrainingControlManifest } from './training-control-protocol';
 import type { Stage8ArtifactRootPreflightInput } from './artifact-root-preflight';
+import type { CanonicalStage8V2Action } from './action-registry-v2';
+import { stage8CanonicalActionKey } from './offline-action-identity';
+import { validateStage8OfflineSmokeControl, type Stage8OfflineSmokeControlManifest } from './offline-selfplay-control';
 
-export const STAGE8_SAMPLE_REPLAY_PROTOCOL_VERSION = 'stage8-sample-replay-model-v1';
+export const STAGE8_SAMPLE_REPLAY_PROTOCOL_VERSION = 'stage8-sample-replay-model-v2';
 
 export interface Stage8ModelPackageIdentity {
   modelFileSha256: string;
@@ -30,9 +33,12 @@ export interface Stage8ActionEvidence {
   legalActionIds: string[];
   legalActionSetSha256: string;
   candidateActionIds: string[];
+  canonicalActions: CanonicalStage8V2Action[];
   mctsDistribution: Record<string, number>;
   behaviorActionDistribution: Record<string, number>;
   selectedActionId: string;
+  selectedCanonicalAction: CanonicalStage8V2Action;
+  selectedActionIdentitySha256: string;
   behaviorActionProbability: number;
   behaviorActionSource: string;
   exploration: boolean;
@@ -50,6 +56,9 @@ export interface Stage8ReplayEnvelope {
   publicEventSha256: string;
   executionDomainSha256: string;
   visibleStateSha256: string;
+  smokeControlSha256: string;
+  episodeContextSha256: string;
+  traceStep: number;
   episodeReward: Stage8EpisodeReward;
   replaySha256: string;
 }
@@ -58,6 +67,7 @@ export interface Stage8OfflineSample {
   sampleId: string;
   batchId: string;
   manifest: Stage8TrainingControlManifest;
+  smokeControl: Stage8OfflineSmokeControlManifest;
   model: Stage8ModelPackageIdentity;
   visibleState: Stage8VisibleSampleState;
   action: Stage8ActionEvidence;
@@ -116,26 +126,32 @@ export function validateStage8OfflineSample(input: { sample: Stage8OfflineSample
   if (!sample || typeof sample !== 'object' || typeof sample.sampleId !== 'string' || typeof sample.batchId !== 'string') return fail(sample?.sampleId, 'sample-identity-invalid');
   const control = validateStage8TrainingControlManifest({ manifest: sample.manifest, artifactRoot: input.artifactRoot });
   if (!control.ok) return fail(sample.sampleId, `sample-training-control-${control.reason}`);
+  const smokeControl = validateStage8OfflineSmokeControl({ manifest: sample.smokeControl, artifactRoot: input.artifactRoot });
+  if (!smokeControl.ok) return fail(sample.sampleId, `sample-${smokeControl.decision.reason}`);
   const manifestPayload = { protocolVersion: sample.manifest.protocolVersion, identity: sample.manifest.identity, authorization: sample.manifest.authorization, maxSteps: sample.manifest.maxSteps, phase: sample.manifest.phase, allowSmoke: sample.manifest.allowSmoke, allowPilot: sample.manifest.allowPilot, allowArena: sample.manifest.allowArena, allowChampion: sample.manifest.allowChampion, allowRuntime: sample.manifest.allowRuntime };
   if (sample.manifest.manifestSha256 !== hashStage8TrainingManifestPayload(manifestPayload)) return fail(sample.sampleId, 'sample-training-manifest-mismatch');
   const identity = sample.manifest.identity;
   if (!isSha256(identity.rulesSha256) || !isSha256(identity.actionSpaceSha256) || !isSha256(identity.legalActionMaskSha256) || !isSha256(identity.featureSha256) || !isSha256(identity.visibleInformationSha256) || !isSha256(identity.sampleSchemaSha256)) return fail(sample.sampleId, 'sample-identity-hash-invalid');
   if (identity.legalActionMaskSha256 !== identity.actionSpaceSha256 || identity.visibleInformationSha256 !== identity.featureSha256) return fail(sample.sampleId, 'sample-visible-or-mask-identity-mismatch');
+  const smokeIdentity = sample.smokeControl.identity;
+  if (smokeIdentity.runId !== identity.runId || smokeIdentity.runDomainSha256 !== identity.runDomainSha256 || smokeIdentity.rulesSha256 !== identity.rulesSha256 || smokeIdentity.actionSpaceSha256 !== identity.actionSpaceSha256 || smokeIdentity.legalActionMaskSha256 !== identity.legalActionMaskSha256 || smokeIdentity.featureSha256 !== identity.featureSha256 || smokeIdentity.visibleInformationSha256 !== identity.visibleInformationSha256 || smokeIdentity.sampleProtocolSha256 !== identity.sampleSchemaSha256 || smokeIdentity.modelFileSha256 !== identity.modelSha256) return fail(sample.sampleId, 'sample-smoke-training-identity-mismatch');
   if (!isSha256(sample.model.modelFileSha256) || !isSha256(sample.model.onnxBinarySha256) || !isSha256(sample.model.modelManifestSha256) || !validVersionedUri(sample.model.versionedExternalUri)) return fail(sample.sampleId, 'sample-model-package-identity-invalid');
   if (sample.model.modelFileSha256 !== identity.modelSha256) return fail(sample.sampleId, 'sample-model-manifest-incompatible');
+  if (sample.model.modelFileSha256 !== smokeIdentity.modelFileSha256 || sample.model.onnxBinarySha256 !== smokeIdentity.onnxBinarySha256 || sample.model.modelManifestSha256 !== smokeIdentity.modelManifestSha256 || sample.model.versionedExternalUri !== smokeIdentity.versionedModelUri) return fail(sample.sampleId, 'sample-smoke-model-package-incompatible');
   if (!new RegExp(`^${identity.runId}-batch-[0-9]{6}$`).test(sample.batchId)) return fail(sample.sampleId, 'sample-batch-manifest-incompatible');
   if (!validVisibleState(sample.visibleState)) return fail(sample.sampleId, 'sample-visible-state-schema-invalid');
   const visibleHash = hash(sample.visibleState); if (sample.replay.visibleStateSha256 !== visibleHash) return fail(sample.sampleId, 'sample-visible-state-hash-mismatch');
   const action = sample.action;
   if (!Array.isArray(action.legalActionIds) || !isSortedUnique(action.legalActionIds) || !isSha256(action.legalActionSetSha256) || action.legalActionSetSha256 !== hash(action.legalActionIds)) return fail(sample.sampleId, 'sample-legal-action-set-invalid');
   if (!Array.isArray(action.candidateActionIds) || !isSortedUnique(action.candidateActionIds) || !sameArray(action.candidateActionIds, action.legalActionIds)) return fail(sample.sampleId, 'sample-candidate-action-set-mismatch');
+  if (!Array.isArray(action.canonicalActions) || action.canonicalActions.length !== action.legalActionIds.length || !sameArray(action.canonicalActions.map(stage8CanonicalActionKey).sort(), action.legalActionIds)) return fail(sample.sampleId, 'sample-canonical-action-set-mismatch');
   if (!validDistribution(action.mctsDistribution, action.candidateActionIds) || !validDistribution(action.behaviorActionDistribution, action.candidateActionIds)) return fail(sample.sampleId, 'sample-action-distribution-invalid');
-  if (!isCanonicalActionId(action.selectedActionId) || !action.candidateActionIds.includes(action.selectedActionId) || !finiteProbability(action.behaviorActionProbability) || action.behaviorActionProbability !== action.behaviorActionDistribution[action.selectedActionId] || typeof action.behaviorActionSource !== 'string' || !action.behaviorActionSource || typeof action.exploration !== 'boolean') return fail(sample.sampleId, 'sample-selected-action-invalid');
+  if (!isCanonicalActionId(action.selectedActionId) || !action.candidateActionIds.includes(action.selectedActionId) || stage8CanonicalActionKey(action.selectedCanonicalAction) !== action.selectedActionId || action.selectedActionIdentitySha256 !== hash(action.selectedCanonicalAction) || !finiteProbability(action.behaviorActionProbability) || action.behaviorActionProbability !== action.behaviorActionDistribution[action.selectedActionId] || !['mcts','curriculum-exploration'].includes(action.behaviorActionSource) || typeof action.exploration !== 'boolean' || action.exploration !== (action.behaviorActionSource === 'curriculum-exploration')) return fail(sample.sampleId, 'sample-selected-action-invalid');
   const replay = sample.replay;
-  if (!Number.isInteger(replay.fixedSeed) || replay.fixedSeed < 0 || replay.canonicalActionId !== action.selectedActionId || ![replay.preStateSha256, replay.postStateSha256, replay.publicEventSha256, replay.executionDomainSha256, replay.visibleStateSha256].every(isSha256) || replay.executionDomainSha256 !== identity.runDomainSha256) return fail(sample.sampleId, 'sample-replay-identity-invalid');
+  if (!Number.isInteger(replay.fixedSeed) || replay.fixedSeed < 0 || !Number.isInteger(replay.traceStep) || replay.traceStep < 1 || replay.canonicalActionId !== action.selectedActionId || ![replay.preStateSha256, replay.postStateSha256, replay.publicEventSha256, replay.executionDomainSha256, replay.visibleStateSha256, replay.smokeControlSha256, replay.episodeContextSha256].every(isSha256) || replay.executionDomainSha256 !== identity.runDomainSha256 || replay.smokeControlSha256 !== sample.smokeControl.manifestSha256) return fail(sample.sampleId, 'sample-replay-identity-invalid');
   if (replay.episodeReward.terminal) { const delta = replay.episodeReward.terminalDelta; if (!Array.isArray(delta) || delta.length !== 4 || !delta.every((value) => typeof value === 'number' && Number.isFinite(value)) || delta.reduce((sum, value) => sum + value, 0) !== 0) return fail(sample.sampleId, 'sample-terminal-reward-invalid'); }
   else if (typeof replay.episodeReward.episodeId !== 'string' || !replay.episodeReward.episodeId || !isSha256(replay.episodeReward.terminalRewardReferenceSha256)) return fail(sample.sampleId, 'sample-terminal-reward-reference-invalid');
-  const replayPayload = { fixedSeed: replay.fixedSeed, canonicalActionId: replay.canonicalActionId, preStateSha256: replay.preStateSha256, postStateSha256: replay.postStateSha256, publicEventSha256: replay.publicEventSha256, executionDomainSha256: replay.executionDomainSha256, visibleStateSha256: replay.visibleStateSha256, episodeReward: replay.episodeReward };
+  const replayPayload = { fixedSeed: replay.fixedSeed, canonicalActionId: replay.canonicalActionId, preStateSha256: replay.preStateSha256, postStateSha256: replay.postStateSha256, publicEventSha256: replay.publicEventSha256, executionDomainSha256: replay.executionDomainSha256, visibleStateSha256: replay.visibleStateSha256, smokeControlSha256: replay.smokeControlSha256, episodeContextSha256: replay.episodeContextSha256, traceStep: replay.traceStep, episodeReward: replay.episodeReward };
   if (replay.replaySha256 !== hash(replayPayload)) return fail(sample.sampleId, 'sample-replay-hash-mismatch');
   return { ok: true, value: { sampleSha256: hash({ sampleId: sample.sampleId, batchId: sample.batchId, manifestSha256: sample.manifest.manifestSha256, model: sample.model, visibleStateSha256: replay.visibleStateSha256, legalActionSetSha256: action.legalActionSetSha256, replaySha256: replay.replaySha256 }) } };
 }

@@ -82,6 +82,9 @@
     "test:stage8-offline-trajectory-executor": "node scripts/stage8-offline-trajectory-executor-regression.mjs",
     "test:stage8-training-control-protocol": "node scripts/stage8-training-control-protocol-regression.mjs",
     "test:stage8-sample-replay-model-protocol": "node scripts/stage8-sample-replay-model-protocol-regression.mjs",
+    "test:stage8-offline-selfplay-smoke": "node scripts/stage8-offline-selfplay-smoke-regression.mjs",
+    "test:stage8-fixed-curriculum-smoke": "node scripts/stage8-fixed-curriculum-smoke-regression.mjs",
+    "test:stage8-offline-selfplay-preflight": "node scripts/stage8-offline-selfplay-preflight-gate.mjs",
     "stage8:c4:value-calibration:preflight": "node scripts/stage8-c4-value-calibration-preflight.mjs"
   },
   "dependencies": {
