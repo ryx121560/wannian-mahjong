@@ -438,6 +438,7 @@ function resolveNearestWinner(state: GameState, sourcePlayer: number, winTile: T
     const playerId = (sourcePlayer + offset) % 4;
     const player = players[playerId];
     if (!player) continue;
+    if ((state.passRecords || []).some((record) => record.player === playerId && record.tile === winTile && record.round === state.turn)) continue;
     const canClaimWin = canWin(player.hand.concat(winTile), {
       winTile,
       winType,

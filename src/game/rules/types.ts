@@ -70,6 +70,10 @@ export interface GameState {
   lastDiscardPlayer?: number;
   newDrawnTile?: Tile;
   kongResources?: KongResource[];
+  /** Ordered responders for a pure offline discard-response window. */
+  responseQueue?: number[];
+  /** A declared added kong awaiting the same ordered rob-kong response window. */
+  pendingKong?: { kind: 'addedKong'; owner: number; tile: Tile };
 }
 
 export interface WinContext {
@@ -214,6 +218,14 @@ export interface SettlementResult {
   baseScore?: number;
   points: number;
   reason: string;
+}
+
+/** A zero-sum terminal result that is not a win. */
+export interface DrawSettlementResult {
+  before: number[];
+  after: number[];
+  delta: number[];
+  reason: '墙尽流局';
 }
 
 export interface KongSettlementInput {

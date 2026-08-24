@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/next-with-port.mjs dev",
     "predev": "node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs",
-    "prebuild": "node scripts/assert-browser-build-artifacts-clean.mjs && node scripts/build-browser-rule-engine.mjs && node scripts/build-browser-strong-rule-ai.mjs && node scripts/build-browser-recommendation-engine.mjs && node scripts/build-browser-mcts-enhancement-engine.mjs && node scripts/clean-next-cache.mjs",
+    "prebuild": "node scripts/prepare-browser-build-artifacts.mjs",
     "build": "node scripts/build-production-game.mjs",
     "start": "node scripts/start-production-game.mjs",
     "start:production": "node scripts/start-production-game.mjs",
@@ -74,6 +74,11 @@
     "test:stage8-preflight-p0-index": "node scripts/stage8-preflight-p0-index.mjs",
     "test:stage8-preflight-rule-state-machine": "node scripts/stage8-preflight-rule-state-machine.mjs",
     "test:stage8-preflight-automation": "node scripts/stage8-preflight-automation-gate.mjs",
+    "test:stage8-offline-round-integrity": "node scripts/stage8-offline-round-integrity-regression.mjs",
+    "test:stage8-offline-four-player-batch": "node scripts/stage8-offline-four-player-batch-regression.mjs",
+    "test:stage8-offline-coverage-matrix": "node scripts/stage8-offline-coverage-matrix.mjs",
+    "test:stage8-artifact-root-preflight": "node scripts/stage8-artifact-root-preflight-regression.mjs",
+    "test:stage8-offline-integrity": "node scripts/stage8-offline-integrity-gate.mjs",
     "stage8:c4:value-calibration:preflight": "node scripts/stage8-c4-value-calibration-preflight.mjs"
   },
   "dependencies": {

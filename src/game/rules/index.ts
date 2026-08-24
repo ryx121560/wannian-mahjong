@@ -9,6 +9,7 @@ export * from './kong-resource';
 export * from './concealed-kong';
 export * from './added-kong';
 export * from './special-kong';
+export * from './round-transition';
 
 import { canPeng, canAnGang, canMingGang } from './meld-validator';
 import { canWin } from './hand-evaluator';
