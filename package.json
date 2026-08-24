@@ -79,6 +79,7 @@
     "test:stage8-offline-coverage-matrix": "node scripts/stage8-offline-coverage-matrix.mjs",
     "test:stage8-artifact-root-preflight": "node scripts/stage8-artifact-root-preflight-regression.mjs",
     "test:stage8-offline-integrity": "node scripts/stage8-offline-integrity-gate.mjs",
+    "test:stage8-training-control-protocol": "node scripts/stage8-training-control-protocol-regression.mjs",
     "stage8:c4:value-calibration:preflight": "node scripts/stage8-c4-value-calibration-preflight.mjs"
   },
   "dependencies": {
