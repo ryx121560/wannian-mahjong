@@ -71,6 +71,9 @@
     "test:stage8-c4-value-calibration-readiness": "node scripts/stage8-c4-value-calibration-readiness-regression.mjs",
     "test:stage8-c4-value-calibration-preflight": "node scripts/stage8-c4-value-calibration-preflight-regression.mjs",
     "test:stage8-c4-diagnostic-actor": "node scripts/stage8-c4-diagnostic-actor-runtime-regression.mjs",
+    "test:stage8-preflight-p0-index": "node scripts/stage8-preflight-p0-index.mjs",
+    "test:stage8-preflight-rule-state-machine": "node scripts/stage8-preflight-rule-state-machine.mjs",
+    "test:stage8-preflight-automation": "node scripts/stage8-preflight-automation-gate.mjs",
     "stage8:c4:value-calibration:preflight": "node scripts/stage8-c4-value-calibration-preflight.mjs"
   },
   "dependencies": {

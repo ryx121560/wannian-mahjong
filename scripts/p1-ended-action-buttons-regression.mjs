@@ -38,6 +38,7 @@ function makeContext(phase) {
     recordRecommendationChoice: () => { calls.recommendation += 1; },
     doPong: () => { calls.pong += 1; }, doKong: () => { calls.kong += 1; }, doSelfKong: () => { calls.selfKong += 1; },
     applyWin: () => { calls.win += 1; }, canSelfWinForPlayer: () => true,
+    collectPageKongDeclarations: () => [{ info: { type: 'concealedKong', tile: 'dong' } }],
     recordPass: () => { calls.writes += 1; }, nextTurn: () => { calls.pass += 1; },
   };
   vm.createContext(context);
