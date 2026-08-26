@@ -5,6 +5,9 @@ import ts from 'typescript';
 const scripts = [
   'scripts/stage8-fixed-curriculum-smoke-regression.mjs',
   'scripts/stage8-offline-selfplay-smoke-regression.mjs',
+  'scripts/stage8-canonical-mcts-provider-regression.mjs',
+  'scripts/stage8-offline-smoke-runtime-preflight-regression.mjs',
+  'scripts/stage8-offline-smoke-runner-regression.mjs',
   'scripts/stage8-sample-replay-model-protocol-regression.mjs',
   'scripts/stage8-offline-trajectory-executor-regression.mjs',
   'scripts/stage8-v2-action-space-gate-regression.mjs',
@@ -32,4 +35,4 @@ if (diagnostics.length) {
   throw new Error(`stage8 offline selfplay preflight typecheck failed\n${formatted}`);
 }
 
-console.log(JSON.stringify({ passed: true, formalSmokeGamesExecuted: 0, selfplayStarted: false, trainingStarted: false, artifactsWritten: false, note: 'This gate validates pure in-memory capability only and is not Smoke authorization.' }, null, 2));
+console.log(JSON.stringify({ passed: true, formalSmokeGamesExecuted: 0, inMemoryTrueSourceGamesExecuted: 2, selfplayStarted: false, trainingStarted: false, artifactsWritten: false, note: 'This gate validates temporary-fixture and in-memory capability only and is not Smoke authorization.' }, null, 2));

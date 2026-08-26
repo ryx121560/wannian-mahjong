@@ -8,6 +8,10 @@ export const STAGE8_OFFLINE_SMOKE_GAMES_PER_CANDIDATE_SEAT = 250;
 export const STAGE8_OFFLINE_SMOKE_EXPLORATION_RATE = 0.2;
 export const STAGE8_OFFLINE_SMOKE_CURRICULUM = 'kong-zhichan-chain';
 
+export type Stage8OfflineSmokeAuthorizationScope =
+  | 'fixed-course-smoke-preflight'
+  | 'fixed-course-smoke-run';
+
 export interface Stage8OfflineSmokeIdentity {
   runId: string;
   runDomainSha256: string;
@@ -35,7 +39,7 @@ export interface Stage8OfflineSmokeControlManifest {
   authorization: {
     approvalId: string;
     granted: boolean;
-    scope: 'fixed-course-smoke-preflight';
+    scope: Stage8OfflineSmokeAuthorizationScope;
   };
   curriculum: typeof STAGE8_OFFLINE_SMOKE_CURRICULUM;
   plannedGames: typeof STAGE8_OFFLINE_SMOKE_PLAN_GAME_COUNT;
@@ -44,7 +48,7 @@ export interface Stage8OfflineSmokeControlManifest {
   targetedExplorationRate: typeof STAGE8_OFFLINE_SMOKE_EXPLORATION_RATE;
   allowFixedCourseSmoke: true;
   allowTraining: false;
-  allowSelfplayRuntime: false;
+  allowSelfplayRuntime: boolean;
   allowReplayRuntime: false;
   allowModelRuntime: false;
   allowOnnxRuntime: false;
@@ -117,7 +121,7 @@ export function validateStage8OfflineSmokeControl(input: {
   if (!artifact.ok) return fail(runId, `smoke-${artifact.reason}`);
   if (!manifest || manifest.protocolVersion !== STAGE8_OFFLINE_SMOKE_CONTROL_VERSION) return fail(runId, 'smoke-control-version-invalid');
   if (!validId(runId)) return fail(runId, 'smoke-run-id-invalid');
-  if (!manifest.authorization.granted || !validId(manifest.authorization.approvalId) || manifest.authorization.scope !== 'fixed-course-smoke-preflight') return fail(runId, 'smoke-explicit-authorization-required');
+  if (!manifest.authorization.granted || !validId(manifest.authorization.approvalId) || !['fixed-course-smoke-preflight', 'fixed-course-smoke-run'].includes(manifest.authorization.scope)) return fail(runId, 'smoke-explicit-authorization-required');
   if (identityHashes(manifest.identity).some((value) => !isSha256(value))) return fail(runId, 'smoke-identity-hash-invalid');
   if (!validVersionedUri(manifest.identity.versionedModelUri)) return fail(runId, 'smoke-model-uri-invalid');
   if (manifest.identity.visibleInformationSha256 !== manifest.identity.featureSha256) return fail(runId, 'smoke-visible-feature-unbound');
@@ -126,7 +130,8 @@ export function validateStage8OfflineSmokeControl(input: {
   if (manifest.candidateSeatGames.length !== 4 || manifest.candidateSeatGames.some((count) => count !== STAGE8_OFFLINE_SMOKE_GAMES_PER_CANDIDATE_SEAT)) return fail(runId, 'smoke-candidate-seat-balance-invalid');
   if (manifest.scenarioRatio.forcedRunKong !== 2 || manifest.scenarioRatio.zhichan !== 2 || manifest.scenarioRatio.chainKong !== 1) return fail(runId, 'smoke-course-ratio-invalid');
   if (manifest.targetedExplorationRate !== STAGE8_OFFLINE_SMOKE_EXPLORATION_RATE) return fail(runId, 'smoke-exploration-rate-invalid');
-  if (!manifest.allowFixedCourseSmoke || manifest.allowTraining || manifest.allowSelfplayRuntime || manifest.allowReplayRuntime || manifest.allowModelRuntime || manifest.allowOnnxRuntime || manifest.allowCheckpoint || manifest.allowPilot || manifest.allowArena || manifest.allowChampion || manifest.allowProductionRuntime) return fail(runId, 'smoke-downstream-flow-forbidden');
+  const runtimeAuthorized = manifest.authorization.scope === 'fixed-course-smoke-run';
+  if (!manifest.allowFixedCourseSmoke || manifest.allowSelfplayRuntime !== runtimeAuthorized || manifest.allowTraining || manifest.allowReplayRuntime || manifest.allowModelRuntime || manifest.allowOnnxRuntime || manifest.allowCheckpoint || manifest.allowPilot || manifest.allowArena || manifest.allowChampion || manifest.allowProductionRuntime) return fail(runId, 'smoke-downstream-flow-forbidden');
   const { manifestSha256: _manifestSha256, ...payload } = manifest;
   if (manifest.manifestSha256 !== hashStage8OfflineSmokeControlManifestPayload(payload)) return fail(runId, 'smoke-control-manifest-hash-mismatch');
   return { ok: true, value: { artifactRoot: artifact.artifactRoot, identitySha256: hashStage8OfflineIdentity(manifest.identity) } };

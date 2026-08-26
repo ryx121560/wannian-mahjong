@@ -103,6 +103,13 @@ interface ScoredCandidate extends MctsCandidate {
   mainRisk: string;
 }
 
+export interface MctsCandidateValue {
+  id: string;
+  action: MctsActionType;
+  value: number;
+  mainRisk: string;
+}
+
 const WEAK_GAP = 1.5;
 const STAGE6_MODEL_VERSION = 'stage6-lightweight-strategy-v1';
 const STAGE6_TRAINING_DATA_VERSION = 'stage6-mcts-selfplay-50000-v1';
@@ -353,6 +360,19 @@ function scoreCandidate(candidate: MctsCandidate, context: MctsDecisionContext):
       + actionPriorityAdjustment(candidate, context)
     : -Infinity;
   return { ...candidate, value, mainRisk: mainRisk(candidate, context) };
+}
+
+/** Exposes the complete existing MCTS score surface without changing final-decision semantics. */
+export function scoreMctsCandidateValues(context: MctsDecisionContext): MctsCandidateValue[] {
+  return (context.candidates || [])
+    .map((candidate) => scoreCandidate(candidate, context))
+    .filter((candidate) => candidate.legal)
+    .map((candidate) => ({
+      id: candidate.id,
+      action: candidate.action,
+      value: candidate.value,
+      mainRisk: candidate.mainRisk,
+    }));
 }
 
 function modelScore(candidate: ScoredCandidate, context: MctsDecisionContext): number {
