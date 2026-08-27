@@ -12,6 +12,13 @@ import {
   type Stage8FrozenModelIdentityPackage,
 } from './offline-frozen-model-inference';
 import {
+  STAGE8_ONNX_EXECUTION_PROVIDER,
+  STAGE8_ONNX_RUNTIME_PACKAGE,
+  STAGE8_ONNX_RUNTIME_VERSION,
+  hashStage8OnnxSessionOptions,
+  hashStage8OnnxTensorContract,
+} from './offline-onnx-tensor-contract';
+import {
   STAGE8_OFFLINE_SMOKE_CURRICULUM,
   validateStage8OfflineSmokeControl,
   type Stage8OfflineSmokeControlManifest,
@@ -49,6 +56,11 @@ export interface Stage8ModelPackageManifest {
   inputSchemaVersion: typeof STAGE8_MODEL_INPUT_SCHEMA_VERSION;
   policyOutputVersion: typeof STAGE8_MODEL_POLICY_OUTPUT_VERSION;
   valueOutputVersion: typeof STAGE8_MODEL_VALUE_OUTPUT_VERSION;
+  tensorContractSha256: Stage8FrozenModelIdentityPackage['tensorContractSha256'];
+  onnxRuntimePackage: Stage8FrozenModelIdentityPackage['onnxRuntimePackage'];
+  onnxRuntimeVersion: Stage8FrozenModelIdentityPackage['onnxRuntimeVersion'];
+  onnxExecutionProvider: Stage8FrozenModelIdentityPackage['onnxExecutionProvider'];
+  onnxSessionOptionsSha256: Stage8FrozenModelIdentityPackage['onnxSessionOptionsSha256'];
   inferenceContractSha256: string;
 }
 
@@ -261,6 +273,11 @@ export function preflightStage8FormalSmokeRuntime(input: {
     modelManifestSha256: identity.modelManifestSha256,
   };
   if (!validateStage8FrozenModelIdentityPackage(modelIdentity)) return fail(runId, 'smoke-model-package-inference-contract-invalid');
+  if (modelPackage.tensorContractSha256 !== hashStage8OnnxTensorContract()
+    || modelPackage.onnxRuntimePackage !== STAGE8_ONNX_RUNTIME_PACKAGE
+    || modelPackage.onnxRuntimeVersion !== STAGE8_ONNX_RUNTIME_VERSION
+    || modelPackage.onnxExecutionProvider !== STAGE8_ONNX_EXECUTION_PROVIDER
+    || modelPackage.onnxSessionOptionsSha256 !== hashStage8OnnxSessionOptions()) return fail(runId, 'smoke-model-package-onnx-runtime-contract-invalid');
   if (modelPackage.modelFileSha256 !== identity.modelFileSha256 || modelPackage.onnxBinarySha256 !== identity.onnxBinarySha256 || modelPackage.rulesSha256 !== identity.rulesSha256 || modelPackage.actionSpaceSha256 !== identity.actionSpaceSha256 || modelPackage.legalActionMaskSha256 !== identity.legalActionMaskSha256 || modelPackage.featureSha256 !== identity.featureSha256 || modelPackage.visibleInformationSha256 !== identity.visibleInformationSha256 || modelPackage.versionedModelUri !== identity.versionedModelUri) return fail(runId, 'smoke-model-package-manifest-identity-mismatch');
   const providerSourceError = validateSourceBundle({ files: runtime.providerSources, expectedBundleSha256: runtime.providerSourceBundleSha256, fileSystem: input.fileSystem });
   if (providerSourceError) return fail(runId, providerSourceError);

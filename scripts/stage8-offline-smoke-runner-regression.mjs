@@ -39,6 +39,7 @@ try {
   const providerTools = require(path.join(temp, 'game/stage8/offline-canonical-mcts-provider.js'));
   const identities = require(path.join(temp, 'game/stage8/offline-action-identity.js'));
   const inferenceTools = require(path.join(temp, 'game/stage8/offline-frozen-model-inference.js'));
+  const tensorTools = require(path.join(temp, 'game/stage8/offline-onnx-tensor-contract.js'));
   const plan = curriculum.createStage8FixedCurriculumPlan(20260824);
   const fixed = sha('fixed');
   const providerIdentity = sha('provider-source-bundle');
@@ -70,6 +71,11 @@ try {
     inputSchemaVersion: inferenceTools.STAGE8_MODEL_INPUT_SCHEMA_VERSION,
     policyOutputVersion: inferenceTools.STAGE8_MODEL_POLICY_OUTPUT_VERSION,
     valueOutputVersion: inferenceTools.STAGE8_MODEL_VALUE_OUTPUT_VERSION,
+    tensorContractSha256: tensorTools.hashStage8OnnxTensorContract(),
+    onnxRuntimePackage: tensorTools.STAGE8_ONNX_RUNTIME_PACKAGE,
+    onnxRuntimeVersion: tensorTools.STAGE8_ONNX_RUNTIME_VERSION,
+    onnxExecutionProvider: tensorTools.STAGE8_ONNX_EXECUTION_PROVIDER,
+    onnxSessionOptionsSha256: tensorTools.hashStage8OnnxSessionOptions(),
     inferenceContractSha256: inferenceTools.hashStage8FrozenModelInferenceContract(),
   };
   const modelInference = async (request) => {

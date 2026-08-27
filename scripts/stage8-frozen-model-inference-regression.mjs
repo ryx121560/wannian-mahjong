@@ -26,6 +26,7 @@ try {
   const inference = require(path.join(temp, 'game/stage8/offline-frozen-model-inference.js'));
   const actions = require(path.join(temp, 'game/stage8/action-registry-v2.js'));
   const identities = require(path.join(temp, 'game/stage8/offline-action-identity.js'));
+  const tensorTools = require(path.join(temp, 'game/stage8/offline-onnx-tensor-contract.js'));
   const h = identities.hashStage8OfflineIdentity;
   const model = {
     protocolVersion: inference.STAGE8_FROZEN_MODEL_PACKAGE_VERSION,
@@ -37,6 +38,11 @@ try {
     inputSchemaVersion: inference.STAGE8_MODEL_INPUT_SCHEMA_VERSION,
     policyOutputVersion: inference.STAGE8_MODEL_POLICY_OUTPUT_VERSION,
     valueOutputVersion: inference.STAGE8_MODEL_VALUE_OUTPUT_VERSION,
+    tensorContractSha256: tensorTools.hashStage8OnnxTensorContract(),
+    onnxRuntimePackage: tensorTools.STAGE8_ONNX_RUNTIME_PACKAGE,
+    onnxRuntimeVersion: tensorTools.STAGE8_ONNX_RUNTIME_VERSION,
+    onnxExecutionProvider: tensorTools.STAGE8_ONNX_EXECUTION_PROVIDER,
+    onnxSessionOptionsSha256: tensorTools.hashStage8OnnxSessionOptions(),
     inferenceContractSha256: inference.hashStage8FrozenModelInferenceContract(),
   };
   const legalActions = [

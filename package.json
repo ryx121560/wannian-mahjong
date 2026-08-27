@@ -88,12 +88,14 @@
     "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",
+    "test:stage8-onnx-inference-adapter": "node scripts/stage8-onnx-inference-adapter-regression.mjs",
     "test:stage8-offline-selfplay-preflight": "node scripts/stage8-offline-selfplay-preflight-gate.mjs",
     "stage8:smoke:run": "node scripts/stage8-offline-smoke-runner.mjs",
     "stage8:c4:value-calibration:preflight": "node scripts/stage8-c4-value-calibration-preflight.mjs"
   },
   "dependencies": {
     "next": "^15.2.0",
+    "onnxruntime-node": "1.27.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

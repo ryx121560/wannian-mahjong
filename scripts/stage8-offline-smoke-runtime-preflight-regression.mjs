@@ -36,6 +36,7 @@ try {
   const curriculum = require(path.join(compiled, 'game/stage8/offline-curriculum-kong-zhichan-chain.js'));
   const providerTools = require(path.join(compiled, 'game/stage8/offline-canonical-mcts-provider.js'));
   const inferenceTools = require(path.join(compiled, 'game/stage8/offline-frozen-model-inference.js'));
+  const tensorTools = require(path.join(compiled, 'game/stage8/offline-onnx-tensor-contract.js'));
 
   const modelPath = path.join(modelDirectory, 'candidate.model');
   const onnxPath = path.join(modelDirectory, 'candidate.onnx');
@@ -61,6 +62,11 @@ try {
     inputSchemaVersion: inferenceTools.STAGE8_MODEL_INPUT_SCHEMA_VERSION,
     policyOutputVersion: inferenceTools.STAGE8_MODEL_POLICY_OUTPUT_VERSION,
     valueOutputVersion: inferenceTools.STAGE8_MODEL_VALUE_OUTPUT_VERSION,
+    tensorContractSha256: tensorTools.hashStage8OnnxTensorContract(),
+    onnxRuntimePackage: tensorTools.STAGE8_ONNX_RUNTIME_PACKAGE,
+    onnxRuntimeVersion: tensorTools.STAGE8_ONNX_RUNTIME_VERSION,
+    onnxExecutionProvider: tensorTools.STAGE8_ONNX_EXECUTION_PROVIDER,
+    onnxSessionOptionsSha256: tensorTools.hashStage8OnnxSessionOptions(),
     inferenceContractSha256: inferenceTools.hashStage8FrozenModelInferenceContract(),
   };
   fs.writeFileSync(manifestPath, JSON.stringify(modelPackage));
@@ -169,7 +175,7 @@ try {
   fs.writeFileSync(onnxPath, 'tampered-onnx');
   await assertCliFailsBeforeTemporaryWrites(control, runtime, 'smoke-model-package-file-hash-mismatch');
   fs.writeFileSync(onnxPath, originalOnnx);
-  await assertCliFailsBeforeTemporaryWrites(control, runtime, 'formal-smoke-model-inference-port-required');
+  await assertCliFailsBeforeTemporaryWrites(control, runtime, 'formal-smoke-model-inference-port-initialization-failed');
 
   fs.writeFileSync(controlPath, JSON.stringify(control));
   fs.writeFileSync(runtimePath, JSON.stringify(runtime));
@@ -207,7 +213,7 @@ try {
   assert.deepEqual(Object.fromEntries(changingReads), { [modelPath]: 1, [onnxPath]: 1, [manifestPath]: 1 }, 'verified assets must be read exactly once');
   assert.deepEqual(temporaryWrites, { mkdtempSync: 0, compileTree: 0, writeFileSync: 0 });
 
-  console.log(JSON.stringify({ passed: true, controls: ['existing-absolute-root','prebuilt-empty-run-directory','model-file-hash','onnx-hash','model-manifest-hash','verified-immutable-byte-snapshot','single-read-no-toctou','model-inference-contract','model-policy-weight','source-bundle-hashes','run-authorization','runtime-fingerprint','downstream-deny','cli-full-preflight-before-mkdtemp','cli-model-inference-port-required-before-mkdtemp','cli-preflight-failure-zero-temp-write'], formalSmokeGamesExecuted: 0, writerAvailableDuringPreflight: false, cliTemporaryWritesOnFailure: 0, artifactsWritten: false }, null, 2));
+  console.log(JSON.stringify({ passed: true, controls: ['existing-absolute-root','prebuilt-empty-run-directory','model-file-hash','onnx-hash','model-manifest-hash','verified-immutable-byte-snapshot','single-read-no-toctou','model-inference-contract','model-policy-weight','source-bundle-hashes','run-authorization','runtime-fingerprint','downstream-deny','cli-full-preflight-before-mkdtemp','cli-onnx-session-init-before-mkdtemp','cli-preflight-failure-zero-temp-write'], formalSmokeGamesExecuted: 0, writerAvailableDuringPreflight: false, cliTemporaryWritesOnFailure: 0, artifactsWritten: false }, null, 2));
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

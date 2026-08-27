@@ -86,6 +86,7 @@ export async function runStage8OfflineSmokeCli(options = {}) {
   const compileRuntimeTree = options.compileRuntimeTree ?? compileTree;
   const createArtifactWriter = options.createArtifactWriter ?? atomicWriter;
   let temp = null;
+  let modelInference = null;
   try {
     const controlPath = requiredAbsoluteFile('STAGE8_SMOKE_CONTROL_MANIFEST', environment);
     const runtimePath = requiredAbsoluteFile('STAGE8_SMOKE_RUNTIME_MANIFEST', environment);
@@ -99,11 +100,19 @@ export async function runStage8OfflineSmokeCli(options = {}) {
       readFile: (candidate) => fs.readFileSync(candidate),
       listDirectory: (candidate) => fs.readdirSync(candidate),
     };
+    const artifactRootModule = loadTypeScriptModuleReadOnly(
+      path.join(root, 'src/game/stage8/artifact-root-preflight.ts'),
+    );
+    const gitFile = path.join(root, '.git');
+    const gitFileContent = fs.existsSync(gitFile) && fs.statSync(gitFile).isFile()
+      ? fs.readFileSync(gitFile, 'utf8')
+      : undefined;
     const artifactRootInput = {
       environment: { STAGE8_ARTIFACT_ROOT: artifactRoot },
-      projectRoots: [root],
-      exists: fs.existsSync,
+      projectRoots: artifactRootModule.deriveStage8ForbiddenProjectRoots({ currentRoot: root, gitFileContent }),
+      exists: fileSystem.exists,
       isDirectory: fileSystem.isDirectory,
+      resolvePath: options.resolveArtifactPath ?? fs.realpathSync.native,
     };
 
     // Load and execute the existing complete preflight through an in-memory
@@ -125,16 +134,14 @@ export async function runStage8OfflineSmokeCli(options = {}) {
       artifactsWritten: 0,
     };
 
-    if (typeof options.createModelInferencePort !== 'function') return {
-      ok: false,
-      status: 'fused',
-      reason: 'formal-smoke-model-inference-port-required',
-      isolationId: `${control.identity.runId}-isolation`,
-      artifactsWritten: 0,
-    };
-    let modelInference;
+    const createModelInferencePort = options.createModelInferencePort ?? (async ({ identity, onnxBytes }) => {
+      const adapterModule = loadTypeScriptModuleReadOnly(
+        path.join(root, 'src/game/stage8/offline-onnx-inference-adapter.ts'),
+      );
+      return adapterModule.createStage8OnnxInferencePort({ identity, onnxBytes });
+    });
     try {
-      modelInference = await options.createModelInferencePort(Object.freeze({
+      modelInference = await createModelInferencePort(Object.freeze({
         identity: structuredClone(preflight.value.modelIdentity),
         modelBytes: Uint8Array.from(Buffer.from(preflight.value.verifiedModelPackageBytes.modelBase64, 'base64')),
         onnxBytes: Uint8Array.from(Buffer.from(preflight.value.verifiedModelPackageBytes.onnxBase64, 'base64')),
@@ -185,6 +192,9 @@ export async function runStage8OfflineSmokeCli(options = {}) {
       artifactsWritten: 0,
     };
   } finally {
+    if (modelInference && typeof modelInference.release === 'function') {
+      try { await modelInference.release(); } catch { /* Release is best-effort after the run has already fused or completed. */ }
+    }
     if (temp) fs.rmSync(temp, { recursive: true, force: true });
   }
 }

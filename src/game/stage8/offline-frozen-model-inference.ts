@@ -1,10 +1,17 @@
 import type { CanonicalStage8V2Action } from './action-registry-v2';
 import { hashStage8OfflineIdentity, sortStage8CanonicalActions, stage8CanonicalActionKey } from './offline-action-identity';
 import type { Stage8OfflineVisibleState } from './offline-round-adapter';
+import {
+  STAGE8_ONNX_EXECUTION_PROVIDER,
+  STAGE8_ONNX_RUNTIME_PACKAGE,
+  STAGE8_ONNX_RUNTIME_VERSION,
+  hashStage8OnnxSessionOptions,
+  hashStage8OnnxTensorContract,
+} from './offline-onnx-tensor-contract';
 
-export const STAGE8_FROZEN_MODEL_INFERENCE_VERSION = 'stage8-frozen-model-inference-v1';
-export const STAGE8_FROZEN_MODEL_PACKAGE_VERSION = 'stage8-model-package-v2';
-export const STAGE8_MODEL_INPUT_SCHEMA_VERSION = 'stage8-visible-canonical-input-v1';
+export const STAGE8_FROZEN_MODEL_INFERENCE_VERSION = 'stage8-frozen-model-inference-v2';
+export const STAGE8_FROZEN_MODEL_PACKAGE_VERSION = 'stage8-model-package-v3';
+export const STAGE8_MODEL_INPUT_SCHEMA_VERSION = 'stage8-visible-canonical-onnx-tensors-v1';
 export const STAGE8_MODEL_POLICY_OUTPUT_VERSION = 'stage8-complete-canonical-policy-logits-v1';
 export const STAGE8_MODEL_VALUE_OUTPUT_VERSION = 'stage8-four-seat-zero-sum-value-v1';
 
@@ -23,6 +30,11 @@ export interface Stage8FrozenModelIdentityPackage {
   inputSchemaVersion: typeof STAGE8_MODEL_INPUT_SCHEMA_VERSION;
   policyOutputVersion: typeof STAGE8_MODEL_POLICY_OUTPUT_VERSION;
   valueOutputVersion: typeof STAGE8_MODEL_VALUE_OUTPUT_VERSION;
+  tensorContractSha256: string;
+  onnxRuntimePackage: typeof STAGE8_ONNX_RUNTIME_PACKAGE;
+  onnxRuntimeVersion: typeof STAGE8_ONNX_RUNTIME_VERSION;
+  onnxExecutionProvider: typeof STAGE8_ONNX_EXECUTION_PROVIDER;
+  onnxSessionOptionsSha256: string;
   inferenceContractSha256: string;
 }
 
@@ -101,6 +113,11 @@ export function hashStage8FrozenModelInferenceContract(): string {
     inputSchemaVersion: STAGE8_MODEL_INPUT_SCHEMA_VERSION,
     policyOutputVersion: STAGE8_MODEL_POLICY_OUTPUT_VERSION,
     valueOutputVersion: STAGE8_MODEL_VALUE_OUTPUT_VERSION,
+    tensorContractSha256: hashStage8OnnxTensorContract(),
+    onnxRuntimePackage: STAGE8_ONNX_RUNTIME_PACKAGE,
+    onnxRuntimeVersion: STAGE8_ONNX_RUNTIME_VERSION,
+    onnxExecutionProvider: STAGE8_ONNX_EXECUTION_PROVIDER,
+    onnxSessionOptionsSha256: hashStage8OnnxSessionOptions(),
     legalActionBinding: 'sorted-complete-canonical-keys',
     hiddenInformation: 'strict-visible-projection-only',
     failureMode: 'fail-closed',
