@@ -4,13 +4,21 @@ import type { Stage8ArtifactRootPreflightInput } from './artifact-root-preflight
 import { hashStage8OfflineIdentity } from './offline-action-identity';
 import { hashStage8CanonicalMctsProviderDefinition } from './offline-canonical-mcts-provider';
 import {
+  STAGE8_FROZEN_MODEL_PACKAGE_VERSION,
+  STAGE8_MODEL_INPUT_SCHEMA_VERSION,
+  STAGE8_MODEL_POLICY_OUTPUT_VERSION,
+  STAGE8_MODEL_VALUE_OUTPUT_VERSION,
+  validateStage8FrozenModelIdentityPackage,
+  type Stage8FrozenModelIdentityPackage,
+} from './offline-frozen-model-inference';
+import {
   STAGE8_OFFLINE_SMOKE_CURRICULUM,
   validateStage8OfflineSmokeControl,
   type Stage8OfflineSmokeControlManifest,
 } from './offline-selfplay-control';
 
-export const STAGE8_FORMAL_SMOKE_RUNTIME_VERSION = 'stage8-formal-smoke-runtime-v1';
-export const STAGE8_MODEL_PACKAGE_MANIFEST_VERSION = 'stage8-model-package-v1';
+export const STAGE8_FORMAL_SMOKE_RUNTIME_VERSION = 'stage8-formal-smoke-runtime-v2';
+export const STAGE8_MODEL_PACKAGE_MANIFEST_VERSION = STAGE8_FROZEN_MODEL_PACKAGE_VERSION;
 
 export interface Stage8SmokeRuntimeFileSystem {
   exists(candidate: string): boolean;
@@ -38,6 +46,10 @@ export interface Stage8ModelPackageManifest {
   featureSha256: string;
   visibleInformationSha256: string;
   versionedModelUri: string;
+  inputSchemaVersion: typeof STAGE8_MODEL_INPUT_SCHEMA_VERSION;
+  policyOutputVersion: typeof STAGE8_MODEL_POLICY_OUTPUT_VERSION;
+  valueOutputVersion: typeof STAGE8_MODEL_VALUE_OUTPUT_VERSION;
+  inferenceContractSha256: string;
 }
 
 export interface Stage8FormalSmokeRuntimeManifest {
@@ -56,6 +68,7 @@ export interface Stage8FormalSmokeRuntimeManifest {
   batchSize: number;
   workers: number;
   behaviorTemperature: number;
+  modelPolicyWeight: number;
   curriculumOverride: typeof STAGE8_OFFLINE_SMOKE_CURRICULUM;
   providerDefinitionSha256: string;
   providerSources: Stage8SmokeSourceFileIdentity[];
@@ -89,6 +102,12 @@ export type Stage8FormalSmokeRuntimePreflight =
       runDirectory: string;
       runtimeIdentitySha256: string;
       modelPackage: Stage8ModelPackageManifest;
+      modelIdentity: Stage8FrozenModelIdentityPackage;
+      verifiedModelPackageBytes: {
+        modelBase64: string;
+        onnxBase64: string;
+        manifestBase64: string;
+      };
     };
   }
   | { ok: false; decision: Stage8FormalSmokeRuntimeDecision };
@@ -183,6 +202,7 @@ export function hashStage8FixedCurriculumSelfplayFingerprint(input: {
   batchSize: number;
   workers: number;
   behaviorTemperature: number;
+  modelPolicyWeight: number;
   curriculumOverride: typeof STAGE8_OFFLINE_SMOKE_CURRICULUM;
   providerDefinitionSha256: string;
   providerSourceBundleSha256: string;
@@ -190,6 +210,7 @@ export function hashStage8FixedCurriculumSelfplayFingerprint(input: {
   modelFileSha256: string;
   onnxBinarySha256: string;
   modelManifestSha256: string;
+  inferenceContractSha256: string;
 }): string {
   return hashStage8OfflineIdentity({ version: STAGE8_FORMAL_SMOKE_RUNTIME_VERSION, ...input });
 }
@@ -235,21 +256,27 @@ export function preflightStage8FormalSmokeRuntime(input: {
   const modelPackage = parseModelPackage(manifestBytes);
   if (!modelPackage || modelPackage.protocolVersion !== STAGE8_MODEL_PACKAGE_MANIFEST_VERSION || !validId(modelPackage.modelId) || !isSha256(modelPackage.modelFileSha256) || !isSha256(modelPackage.onnxBinarySha256) || !validVersionedUri(modelPackage.versionedModelUri)) return fail(runId, 'smoke-model-package-manifest-invalid');
   const identity = input.control.identity;
+  const modelIdentity: Stage8FrozenModelIdentityPackage = {
+    ...modelPackage,
+    modelManifestSha256: identity.modelManifestSha256,
+  };
+  if (!validateStage8FrozenModelIdentityPackage(modelIdentity)) return fail(runId, 'smoke-model-package-inference-contract-invalid');
   if (modelPackage.modelFileSha256 !== identity.modelFileSha256 || modelPackage.onnxBinarySha256 !== identity.onnxBinarySha256 || modelPackage.rulesSha256 !== identity.rulesSha256 || modelPackage.actionSpaceSha256 !== identity.actionSpaceSha256 || modelPackage.legalActionMaskSha256 !== identity.legalActionMaskSha256 || modelPackage.featureSha256 !== identity.featureSha256 || modelPackage.visibleInformationSha256 !== identity.visibleInformationSha256 || modelPackage.versionedModelUri !== identity.versionedModelUri) return fail(runId, 'smoke-model-package-manifest-identity-mismatch');
   const providerSourceError = validateSourceBundle({ files: runtime.providerSources, expectedBundleSha256: runtime.providerSourceBundleSha256, fileSystem: input.fileSystem });
   if (providerSourceError) return fail(runId, providerSourceError);
   const runtimeSourceError = validateSourceBundle({ files: runtime.runtimeSources, expectedBundleSha256: runtime.runtimeSourceBundleSha256, fileSystem: input.fileSystem });
   if (runtimeSourceError) return fail(runId, runtimeSourceError);
   if (runtime.providerSourceBundleSha256 !== identity.mctsProviderSha256 || runtime.runtimeSourceBundleSha256 !== identity.selfplayRuntimeSha256) return fail(runId, 'smoke-runtime-source-control-identity-mismatch');
-  if (!Number.isInteger(runtime.baseSeed) || runtime.baseSeed < 0 || runtime.baseSeed > 0xffffffff || !Number.isInteger(runtime.batchSize) || runtime.batchSize < 1 || runtime.batchSize > 1000 || !Number.isInteger(runtime.workers) || runtime.workers < 1 || runtime.workers > 64 || !Number.isFinite(runtime.behaviorTemperature) || runtime.behaviorTemperature <= 0 || runtime.behaviorTemperature > 100) return fail(runId, 'smoke-runtime-orchestration-config-invalid');
+  if (!Number.isInteger(runtime.baseSeed) || runtime.baseSeed < 0 || runtime.baseSeed > 0xffffffff || !Number.isInteger(runtime.batchSize) || runtime.batchSize < 1 || runtime.batchSize > 1000 || !Number.isInteger(runtime.workers) || runtime.workers < 1 || runtime.workers > 64 || !Number.isFinite(runtime.behaviorTemperature) || runtime.behaviorTemperature <= 0 || runtime.behaviorTemperature > 100 || !Number.isFinite(runtime.modelPolicyWeight) || runtime.modelPolicyWeight <= 0 || runtime.modelPolicyWeight > 1) return fail(runId, 'smoke-runtime-orchestration-config-invalid');
   if (runtime.curriculumOverride !== STAGE8_OFFLINE_SMOKE_CURRICULUM) return fail(runId, 'smoke-runtime-curriculum-invalid');
-  if (runtime.providerDefinitionSha256 !== hashStage8CanonicalMctsProviderDefinition({ behaviorTemperature: runtime.behaviorTemperature })) return fail(runId, 'smoke-provider-definition-identity-mismatch');
+  if (runtime.providerDefinitionSha256 !== hashStage8CanonicalMctsProviderDefinition({ behaviorTemperature: runtime.behaviorTemperature, modelPolicyWeight: runtime.modelPolicyWeight, modelManifestSha256: identity.modelManifestSha256, inferenceContractSha256: modelPackage.inferenceContractSha256 })) return fail(runId, 'smoke-provider-definition-identity-mismatch');
   const expectedFingerprint = hashStage8FixedCurriculumSelfplayFingerprint({
     controlManifestSha256: runtime.controlManifestSha256,
     baseSeed: runtime.baseSeed,
     batchSize: runtime.batchSize,
     workers: runtime.workers,
     behaviorTemperature: runtime.behaviorTemperature,
+    modelPolicyWeight: runtime.modelPolicyWeight,
     curriculumOverride: runtime.curriculumOverride,
     providerDefinitionSha256: runtime.providerDefinitionSha256,
     providerSourceBundleSha256: runtime.providerSourceBundleSha256,
@@ -257,6 +284,7 @@ export function preflightStage8FormalSmokeRuntime(input: {
     modelFileSha256: identity.modelFileSha256,
     onnxBinarySha256: identity.onnxBinarySha256,
     modelManifestSha256: identity.modelManifestSha256,
+    inferenceContractSha256: modelPackage.inferenceContractSha256,
   });
   if (runtime.fixedCurriculumSelfplayFingerprint !== expectedFingerprint) return fail(runId, 'smoke-runtime-fingerprint-mismatch');
   if (!runtime.allowLedgerWrite || !runtime.allowQuarantineWrite || runtime.allowTraining || runtime.allowReplay || runtime.allowCheckpoint || runtime.allowPilot || runtime.allowArena || runtime.allowChampion || runtime.allowProductionRuntime) return fail(runId, 'smoke-runtime-downstream-flow-forbidden');
@@ -268,6 +296,12 @@ export function preflightStage8FormalSmokeRuntime(input: {
       runDirectory: path.win32.normalize(runtime.runDirectory),
       runtimeIdentitySha256: hashStage8OfflineIdentity({ control: input.control.manifestSha256, runtime: runtime.manifestSha256, fingerprint: runtime.fixedCurriculumSelfplayFingerprint }),
       modelPackage,
+      modelIdentity,
+      verifiedModelPackageBytes: Object.freeze({
+        modelBase64: Buffer.from(modelBytes).toString('base64'),
+        onnxBase64: Buffer.from(onnxBytes).toString('base64'),
+        manifestBase64: Buffer.from(manifestBytes).toString('base64'),
+      }),
     },
   };
 }

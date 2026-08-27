@@ -24,7 +24,7 @@ import { advanceStage8OfflineEpisodeContext, createStage8OfflineEpisodeContext, 
 import { validateStage8OfflineSmokeControl, type Stage8OfflineSmokeControlManifest } from './offline-selfplay-control';
 import type { Stage8ArtifactRootPreflightInput } from './artifact-root-preflight';
 
-export const STAGE8_OFFLINE_SELFPLAY_ENGINE_VERSION = 'stage8-offline-selfplay-engine-v1';
+export const STAGE8_OFFLINE_SELFPLAY_ENGINE_VERSION = 'stage8-offline-selfplay-engine-v2';
 
 export interface Stage8OfflineActionCoverageCounter {
   legalOpportunities: number;
@@ -140,7 +140,7 @@ function planGameMatches(plan: Stage8FixedCurriculumPlan, game: Stage8FixedCours
 }
 
 /** Executes one explicit in-memory decision through the true-source trajectory executor. */
-export function executeStage8OfflineSelfplayDecision(input: {
+export async function executeStage8OfflineSelfplayDecision(input: {
   cursor: Stage8OfflineSelfplayCursor;
   plan: Stage8FixedCurriculumPlan;
   game: Stage8FixedCourseGamePlan;
@@ -148,7 +148,7 @@ export function executeStage8OfflineSelfplayDecision(input: {
   artifactRoot: Stage8ArtifactRootPreflightInput;
   rawDistributionProvider: Stage8OfflineRawDistributionProvider;
   providerIdentitySha256: string;
-}): Stage8OfflineSelfplayDecisionResult {
+}): Promise<Stage8OfflineSelfplayDecisionResult> {
   const original = input.cursor;
   const control = validateStage8OfflineSmokeControl({ manifest: input.smokeControl, artifactRoot: input.artifactRoot });
   if (!control.ok) return fail(original, input.game.gameId, control.decision.reason);
@@ -174,7 +174,7 @@ export function executeStage8OfflineSelfplayDecision(input: {
   const visibleState = projectStage8OfflineVisibleState(decisionState, actor);
   const legalActions = deriveStage8OfflineActions({ state: decisionState, actor, candidateKongResources: original.context.candidateKongResources, addedKongChainWindows: original.context.addedKongChainWindows });
   const decisionIdentity = hashStage8OfflineIdentity({ game: input.game, traceStep: original.traceStep + 1, visibleState, episodeContextSha256: original.context.identitySha256, legalActionSetSha256: hashStage8CanonicalActionSet(legalActions) });
-  const selected = selectStage8OfflineBehaviorAction({ visibleState, legalActions, rawDistributionProvider: input.rawDistributionProvider, providerIdentitySha256: input.providerIdentitySha256, decisionIdentity, scenario: input.game.scenario, candidateSeat: input.game.candidateSeat, actor });
+  const selected = await selectStage8OfflineBehaviorAction({ visibleState, legalActions, rawDistributionProvider: input.rawDistributionProvider, providerIdentitySha256: input.providerIdentitySha256, decisionIdentity, scenario: input.game.scenario, candidateSeat: input.game.candidateSeat, actor });
   if (!selected.ok) return fail(original, input.game.gameId, selected.reason);
   const legalActionIds = legalActions.map((action) => action.actionId);
   const trajectory = executeStage8OfflineTrajectory({

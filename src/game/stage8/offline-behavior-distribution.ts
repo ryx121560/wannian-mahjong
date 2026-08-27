@@ -3,7 +3,7 @@ import { hashStage8OfflineIdentity, sortStage8CanonicalActions, stage8CanonicalA
 import type { Stage8FixedCourseScenario } from './offline-curriculum-kong-zhichan-chain';
 import { STAGE8_OFFLINE_SMOKE_EXPLORATION_RATE } from './offline-selfplay-control';
 
-export const STAGE8_OFFLINE_BEHAVIOR_DISTRIBUTION_VERSION = 'stage8-offline-behavior-distribution-v1';
+export const STAGE8_OFFLINE_BEHAVIOR_DISTRIBUTION_VERSION = 'stage8-offline-behavior-distribution-v2';
 
 export function hashStage8OfflineExplorationDefinition(): string {
   return hashStage8OfflineIdentity({
@@ -21,9 +21,24 @@ export interface Stage8OfflineRawDistributionRequest {
   readonly identitySha256: string;
 }
 
+export interface Stage8OfflineRawDistributionEvidence {
+  providerVersion: string;
+  providerIdentitySha256: string;
+  requestSha256: string;
+  distributionSha256: string;
+  details: unknown;
+  detailsSha256: string;
+  evidenceSha256: string;
+}
+
+export interface Stage8OfflineRawDistributionResult {
+  distribution: Readonly<Record<string, number>>;
+  evidence: Stage8OfflineRawDistributionEvidence;
+}
+
 export type Stage8OfflineRawDistributionProvider = (
   request: Stage8OfflineRawDistributionRequest,
-) => Readonly<Record<string, number>>;
+) => Promise<Stage8OfflineRawDistributionResult>;
 
 export interface Stage8OfflineBehaviorSelection {
   legalActions: CanonicalStage8V2Action[];
@@ -37,6 +52,7 @@ export interface Stage8OfflineBehaviorSelection {
   behaviorActionSource: 'mcts' | 'curriculum-exploration';
   exploration: boolean;
   targetLegalActionKeys: string[];
+  rawDistributionEvidence: Stage8OfflineRawDistributionEvidence;
 }
 
 export type Stage8OfflineBehaviorResult =
@@ -73,8 +89,70 @@ function validDistribution(keys: string[], distribution: Readonly<Record<string,
     && Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) <= 1e-12;
 }
 
+export function validateStage8OfflineRawDistributionEvidence(input: {
+  evidence: Stage8OfflineRawDistributionEvidence;
+  request: Stage8OfflineRawDistributionRequest;
+  distribution: Readonly<Record<string, number>>;
+}): boolean {
+  const evidence = input.evidence;
+  if (!evidence || typeof evidence.providerVersion !== 'string' || !evidence.providerVersion) return false;
+  if (evidence.providerIdentitySha256 !== input.request.identitySha256) return false;
+  const requestSha256 = hashStage8OfflineIdentity(input.request);
+  return evidence.requestSha256 === requestSha256
+    && validateStage8OfflineRawDistributionEvidenceEnvelope({
+      evidence,
+      providerIdentitySha256: input.request.identitySha256,
+      distribution: input.distribution,
+    });
+}
+
+export function validateStage8OfflineRawDistributionEvidenceEnvelope(input: {
+  evidence: Stage8OfflineRawDistributionEvidence;
+  providerIdentitySha256: string;
+  distribution: Readonly<Record<string, number>>;
+}): boolean {
+  const evidence = input.evidence;
+  if (!evidence || typeof evidence.providerVersion !== 'string' || !evidence.providerVersion) return false;
+  if (evidence.providerIdentitySha256 !== input.providerIdentitySha256 || !/^[a-f0-9]{64}$/i.test(evidence.requestSha256)) return false;
+  const distributionSha256 = hashStage8OfflineIdentity(input.distribution);
+  const detailsSha256 = hashStage8OfflineIdentity(evidence.details);
+  const payload = {
+    providerVersion: evidence.providerVersion,
+    providerIdentitySha256: evidence.providerIdentitySha256,
+    requestSha256: evidence.requestSha256,
+    distributionSha256,
+    details: evidence.details,
+    detailsSha256,
+  };
+  return evidence.distributionSha256 === distributionSha256
+    && evidence.detailsSha256 === detailsSha256
+    && evidence.evidenceSha256 === hashStage8OfflineIdentity(payload);
+}
+
+export function createStage8OfflineRawDistributionResult(input: {
+  request: Stage8OfflineRawDistributionRequest;
+  providerVersion: string;
+  distribution: Readonly<Record<string, number>>;
+  details: unknown;
+}): Stage8OfflineRawDistributionResult {
+  const requestSha256 = hashStage8OfflineIdentity(input.request);
+  const distribution = Object.freeze({ ...input.distribution });
+  const distributionSha256 = hashStage8OfflineIdentity(distribution);
+  const details = structuredClone(input.details);
+  const detailsSha256 = hashStage8OfflineIdentity(details);
+  const payload = {
+    providerVersion: input.providerVersion,
+    providerIdentitySha256: input.request.identitySha256,
+    requestSha256,
+    distributionSha256,
+    details,
+    detailsSha256,
+  };
+  return { distribution, evidence: { ...payload, evidenceSha256: hashStage8OfflineIdentity(payload) } };
+}
+
 /** Applies the PRD fixed-course 20% targeted mixture to an injected full raw distribution. */
-export function selectStage8OfflineBehaviorAction(input: {
+export async function selectStage8OfflineBehaviorAction(input: {
   visibleState: unknown;
   legalActions: readonly CanonicalStage8V2Action[];
   rawDistributionProvider: Stage8OfflineRawDistributionProvider;
@@ -83,7 +161,7 @@ export function selectStage8OfflineBehaviorAction(input: {
   scenario: Stage8FixedCourseScenario;
   candidateSeat: number;
   actor: number;
-}): Stage8OfflineBehaviorResult {
+}): Promise<Stage8OfflineBehaviorResult> {
   if (!/^[a-f0-9]{64}$/i.test(input.providerIdentitySha256)) return { ok: false, reason: 'behavior-provider-identity-invalid' };
   const legalActions = sortStage8CanonicalActions(input.legalActions);
   if (legalActions.length === 0) return { ok: false, reason: 'behavior-legal-action-set-empty' };
@@ -94,10 +172,11 @@ export function selectStage8OfflineBehaviorAction(input: {
     legalActions: Object.freeze(legalActions.map((action) => Object.freeze(structuredClone(action)))),
     identitySha256: input.providerIdentitySha256,
   });
-  let provided: Readonly<Record<string, number>>;
-  try { provided = input.rawDistributionProvider(request); } catch { return { ok: false, reason: 'behavior-provider-failed' }; }
-  if (!validDistribution(legalActionKeys, provided)) return { ok: false, reason: 'behavior-mcts-distribution-invalid' };
-  const mctsDistribution = Object.fromEntries(legalActionKeys.map((key) => [key, provided[key]]));
+  let provided: Stage8OfflineRawDistributionResult;
+  try { provided = await input.rawDistributionProvider(request); } catch { return { ok: false, reason: 'behavior-provider-failed' }; }
+  if (!provided || !validDistribution(legalActionKeys, provided.distribution)) return { ok: false, reason: 'behavior-mcts-distribution-invalid' };
+  if (!validateStage8OfflineRawDistributionEvidence({ evidence: provided.evidence, request, distribution: provided.distribution })) return { ok: false, reason: 'behavior-provider-evidence-invalid' };
+  const mctsDistribution = Object.fromEntries(legalActionKeys.map((key) => [key, provided.distribution[key]]));
   const targetLegalActionKeys = input.actor === input.candidateSeat
     ? legalActions.filter((action) => actionMatchesScenario(action, input.scenario)).map(stage8CanonicalActionKey)
     : [];
@@ -129,6 +208,7 @@ export function selectStage8OfflineBehaviorAction(input: {
       behaviorActionSource: chooseExploration ? 'curriculum-exploration' : 'mcts',
       exploration: chooseExploration,
       targetLegalActionKeys,
+      rawDistributionEvidence: structuredClone(provided.evidence),
     },
   };
 }

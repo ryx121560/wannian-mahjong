@@ -85,6 +85,7 @@
     "test:stage8-offline-selfplay-smoke": "node scripts/stage8-offline-selfplay-smoke-regression.mjs",
     "test:stage8-fixed-curriculum-smoke": "node scripts/stage8-fixed-curriculum-smoke-regression.mjs",
     "test:stage8-canonical-mcts-provider": "node scripts/stage8-canonical-mcts-provider-regression.mjs",
+    "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",
     "test:stage8-offline-selfplay-preflight": "node scripts/stage8-offline-selfplay-preflight-gate.mjs",

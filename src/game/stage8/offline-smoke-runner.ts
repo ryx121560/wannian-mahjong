@@ -1,7 +1,11 @@
 import type { GameState, Tile } from '../rules';
 import { STAGE8_V2_TILE_KEYS } from './action-registry-v2';
 import type { Stage8ArtifactRootPreflightInput } from './artifact-root-preflight';
-import type { Stage8OfflineRawDistributionProvider } from './offline-behavior-distribution';
+import {
+  validateStage8OfflineRawDistributionEvidenceEnvelope,
+  type Stage8OfflineRawDistributionEvidence,
+  type Stage8OfflineRawDistributionProvider,
+} from './offline-behavior-distribution';
 import type { CanonicalStage8V2Action } from './action-registry-v2';
 import {
   createStage8FixedCurriculumPlan,
@@ -10,6 +14,13 @@ import {
   type Stage8FixedCurriculumPlan,
 } from './offline-curriculum-kong-zhichan-chain';
 import { hashStage8OfflineIdentity, stage8CanonicalActionKey } from './offline-action-identity';
+import {
+  hashStage8FrozenModelInferenceContract,
+  validateStage8FrozenModelIdentityPackage,
+  validateStage8FrozenModelInferenceEvidence,
+  type Stage8FrozenModelIdentityPackage,
+  type Stage8FrozenModelInferenceEvidence,
+} from './offline-frozen-model-inference';
 import {
   createStage8OfflineSelfplayCursor,
   evaluateStage8OfflineSmokeCoverage,
@@ -25,7 +36,7 @@ import {
   type Stage8SmokeRuntimeFileSystem,
 } from './offline-smoke-runtime-preflight';
 
-export const STAGE8_FORMAL_SMOKE_RUNNER_VERSION = 'stage8-formal-smoke-runner-v1';
+export const STAGE8_FORMAL_SMOKE_RUNNER_VERSION = 'stage8-formal-smoke-runner-v2';
 export const STAGE8_FORMAL_SMOKE_MAX_TRANSITIONS_PER_GAME = 600;
 
 export interface Stage8FormalSmokeAssignment {
@@ -63,6 +74,7 @@ export interface Stage8FormalSmokeDecisionLedger {
   legalActionKeys: string[];
   canonicalActions: CanonicalStage8V2Action[];
   mctsDistribution: Record<string, number>;
+  rawDistributionEvidence: Stage8OfflineRawDistributionEvidence;
   behaviorActionDistribution: Record<string, number>;
   selectedActionKey: string;
   selectedAction: CanonicalStage8V2Action;
@@ -79,6 +91,8 @@ export interface Stage8FormalSmokeLedger {
   runId: string;
   controlManifestSha256: string;
   runtimeManifestSha256: string;
+  providerIdentitySha256: string;
+  modelIdentitySha256: string;
   fixedCurriculumSelfplayFingerprint: string;
   planSha256: string;
   baseSeed: number;
@@ -219,7 +233,7 @@ export function hashStage8FormalSmokeSemanticResults(games: readonly Stage8Forma
 }
 
 /** Executes one in-memory fixed-seed game through the published canonical trajectory true source. */
-export function executeStage8FormalSmokeGame(input: {
+export async function executeStage8FormalSmokeGame(input: {
   plan: Stage8FixedCurriculumPlan;
   game: Stage8FixedCourseGamePlan;
   assignment: Stage8FormalSmokeAssignment;
@@ -227,7 +241,7 @@ export function executeStage8FormalSmokeGame(input: {
   artifactRoot: Stage8ArtifactRootPreflightInput;
   rawDistributionProvider: Stage8OfflineRawDistributionProvider;
   providerIdentitySha256: string;
-}): Stage8FormalSmokeGameResult {
+}): Promise<Stage8FormalSmokeGameResult> {
   let cursor = createStage8OfflineSelfplayCursor(createStage8FormalSmokeInitialState(input.game.fixedSeed));
   const canonicalActionCounts: Record<string, number> = {};
   const decisions: Stage8FormalSmokeDecisionLedger[] = [];
@@ -235,7 +249,7 @@ export function executeStage8FormalSmokeGame(input: {
     const integrity = inventoryError(cursor.state);
     if (integrity) return { ok: false, reason: integrity, gameId: input.game.gameId, isolationId: `${input.game.gameId}-isolation` };
     const traceStepBefore = cursor.traceStep;
-    const next = executeStage8OfflineSelfplayDecision({
+    const next = await executeStage8OfflineSelfplayDecision({
       cursor,
       plan: input.plan,
       game: input.game,
@@ -257,6 +271,7 @@ export function executeStage8FormalSmokeGame(input: {
         legalActionKeys: evidence.behavior.legalActionKeys.slice(),
         canonicalActions: structuredClone(evidence.behavior.legalActions),
         mctsDistribution: { ...evidence.behavior.mctsDistribution },
+        rawDistributionEvidence: structuredClone(evidence.behavior.rawDistributionEvidence),
         behaviorActionDistribution: { ...evidence.behavior.behaviorActionDistribution },
         selectedActionKey: evidence.behavior.selectedActionKey,
         selectedAction: structuredClone(evidence.behavior.selectedAction),
@@ -311,9 +326,24 @@ function validDistribution(keys: readonly string[], distribution: Readonly<Recor
     && Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) <= 1e-12;
 }
 
-function validDecision(decision: Stage8FormalSmokeDecisionLedger): boolean {
+function validDecision(
+  decision: Stage8FormalSmokeDecisionLedger,
+  providerIdentitySha256: string,
+  modelIdentity: Stage8FrozenModelIdentityPackage,
+): boolean {
   const sortedKeys = decision.legalActionKeys.slice().sort();
   const canonicalKeys = decision.canonicalActions.map(stage8CanonicalActionKey).sort();
+  const rawEvidencePayloadMatches = Boolean(decision.rawDistributionEvidence)
+    && validateStage8OfflineRawDistributionEvidenceEnvelope({
+      evidence: decision.rawDistributionEvidence,
+      providerIdentitySha256,
+      distribution: decision.mctsDistribution,
+    });
+  const modelInference = decision.rawDistributionEvidence?.details
+    && typeof decision.rawDistributionEvidence.details === 'object'
+    && !Array.isArray(decision.rawDistributionEvidence.details)
+    ? (decision.rawDistributionEvidence.details as { modelInference?: Stage8FrozenModelInferenceEvidence }).modelInference
+    : undefined;
   return Number.isInteger(decision.traceStepBefore)
     && decision.traceStepBefore >= 0
     && /^[a-f0-9]{64}$/i.test(decision.decisionIdentitySha256)
@@ -327,6 +357,15 @@ function validDecision(decision: Stage8FormalSmokeDecisionLedger): boolean {
     && canonicalKeys.every((key, index) => key === sortedKeys[index])
     && decision.legalActionSetSha256 === hashStage8OfflineIdentity(sortedKeys)
     && validDistribution(decision.legalActionKeys, decision.mctsDistribution)
+    && Boolean(rawEvidencePayloadMatches)
+    && Boolean(modelInference && validateStage8FrozenModelInferenceEvidence(modelInference, decision.legalActionKeys))
+    && modelInference?.modelId === modelIdentity.modelId
+    && modelInference?.modelFileSha256 === modelIdentity.modelFileSha256
+    && modelInference?.onnxBinarySha256 === modelIdentity.onnxBinarySha256
+    && modelInference?.modelManifestSha256 === modelIdentity.modelManifestSha256
+    && modelInference?.inferenceContractSha256 === modelIdentity.inferenceContractSha256
+    && modelInference?.visibleStateSha256 === decision.visibleStateSha256
+    && modelInference?.legalActionSetSha256 === decision.legalActionSetSha256
     && validDistribution(decision.legalActionKeys, decision.behaviorActionDistribution)
     && decision.legalActionKeys.includes(decision.selectedActionKey)
     && stage8CanonicalActionKey(decision.selectedAction) === decision.selectedActionKey
@@ -341,10 +380,23 @@ function validDecision(decision: Stage8FormalSmokeDecisionLedger): boolean {
 export function assembleStage8FormalSmokeLedger(input: {
   control: Stage8OfflineSmokeControlManifest;
   runtime: Stage8FormalSmokeRuntimeManifest;
+  modelIdentity: Stage8FrozenModelIdentityPackage;
   plan: Stage8FixedCurriculumPlan;
   games: Stage8FormalSmokeGameLedger[];
 }): { ok: true; ledger: Stage8FormalSmokeLedger } | { ok: false; reason: string } {
   if (input.games.length !== 1000) return { ok: false, reason: 'formal-smoke-ledger-game-count-invalid' };
+  const controlIdentity = input.control.identity;
+  if (!validateStage8FrozenModelIdentityPackage(input.modelIdentity)
+    || input.modelIdentity.modelFileSha256 !== controlIdentity.modelFileSha256
+    || input.modelIdentity.onnxBinarySha256 !== controlIdentity.onnxBinarySha256
+    || input.modelIdentity.modelManifestSha256 !== controlIdentity.modelManifestSha256
+    || input.modelIdentity.rulesSha256 !== controlIdentity.rulesSha256
+    || input.modelIdentity.actionSpaceSha256 !== controlIdentity.actionSpaceSha256
+    || input.modelIdentity.legalActionMaskSha256 !== controlIdentity.legalActionMaskSha256
+    || input.modelIdentity.featureSha256 !== controlIdentity.featureSha256
+    || input.modelIdentity.visibleInformationSha256 !== controlIdentity.visibleInformationSha256
+    || input.modelIdentity.versionedModelUri !== controlIdentity.versionedModelUri
+    || input.modelIdentity.inferenceContractSha256 !== hashStage8FrozenModelInferenceContract()) return { ok: false, reason: 'formal-smoke-ledger-model-identity-mismatch' };
   const games = input.games.slice().sort((left, right) => left.gameIndex - right.gameIndex);
   const assignments = createStage8FormalSmokeAssignments(input.plan, input.runtime.batchSize, input.runtime.workers);
   const seen = new Set<number>();
@@ -356,7 +408,7 @@ export function assembleStage8FormalSmokeLedger(input: {
     if (!planned || !assignment || seen.has(game.gameIndex)) return { ok: false, reason: 'formal-smoke-ledger-game-index-invalid' };
     seen.add(game.gameIndex);
     if (game.gameId !== planned.gameId || game.fixedSeed !== planned.fixedSeed || game.candidateSeat !== planned.candidateSeat || game.scenario !== planned.scenario || game.batchIndex !== assignment.batchIndex || game.workerSlot !== assignment.workerSlot) return { ok: false, reason: 'formal-smoke-ledger-plan-identity-mismatch' };
-    if (!Number.isInteger(game.transitions) || game.transitions < 1 || game.transitions > STAGE8_FORMAL_SMOKE_MAX_TRANSITIONS_PER_GAME || !/^[a-f0-9]{64}$/i.test(game.traceHash) || !/^[a-f0-9]{64}$/i.test(game.terminalStateSha256) || game.terminalDelta.length !== 4 || !game.terminalDelta.every(Number.isFinite) || game.terminalDelta.reduce((sum, value) => sum + value, 0) !== 0 || !game.decisions.length || !game.decisions.every(validDecision) || game.semanticResultSha256 !== hashStage8FormalSmokeGameSemanticResult(game)) return { ok: false, reason: 'formal-smoke-ledger-game-evidence-invalid' };
+    if (!Number.isInteger(game.transitions) || game.transitions < 1 || game.transitions > STAGE8_FORMAL_SMOKE_MAX_TRANSITIONS_PER_GAME || !/^[a-f0-9]{64}$/i.test(game.traceHash) || !/^[a-f0-9]{64}$/i.test(game.terminalStateSha256) || game.terminalDelta.length !== 4 || !game.terminalDelta.every(Number.isFinite) || game.terminalDelta.reduce((sum, value) => sum + value, 0) !== 0 || !game.decisions.length || !game.decisions.every((decision) => validDecision(decision, controlIdentity.mctsProviderSha256, input.modelIdentity)) || game.semanticResultSha256 !== hashStage8FormalSmokeGameSemanticResult(game)) return { ok: false, reason: 'formal-smoke-ledger-game-evidence-invalid' };
     candidateSeatGames[game.candidateSeat] += 1;
     addCoverage(byCandidateSeat[game.candidateSeat], game.coverage);
   }
@@ -369,6 +421,8 @@ export function assembleStage8FormalSmokeLedger(input: {
     runId: input.control.identity.runId,
     controlManifestSha256: input.control.manifestSha256,
     runtimeManifestSha256: input.runtime.manifestSha256,
+    providerIdentitySha256: controlIdentity.mctsProviderSha256,
+    modelIdentitySha256: hashStage8OfflineIdentity(input.modelIdentity),
     fixedCurriculumSelfplayFingerprint: input.runtime.fixedCurriculumSelfplayFingerprint,
     planSha256: input.plan.planSha256,
     baseSeed: input.plan.baseSeed,
@@ -419,7 +473,7 @@ export async function runStage8FormalSmoke(input: {
     for (const assignment of lane) {
       if (failures.length) return;
       const game = plan.games[assignment.gameIndex];
-      const result = executeStage8FormalSmokeGame({ plan, game, assignment, smokeControl: input.control, artifactRoot: input.artifactRoot, rawDistributionProvider: input.rawDistributionProvider, providerIdentitySha256: input.control.identity.mctsProviderSha256 });
+      const result = await executeStage8FormalSmokeGame({ plan, game, assignment, smokeControl: input.control, artifactRoot: input.artifactRoot, rawDistributionProvider: input.rawDistributionProvider, providerIdentitySha256: input.control.identity.mctsProviderSha256 });
       if (!result.ok) { failures.push(result); return; }
       completed.push(result.ledger);
       await Promise.resolve();
@@ -434,7 +488,7 @@ export async function runStage8FormalSmoke(input: {
       return { ok: false, status: 'fused', reason: 'formal-smoke-quarantine-write-failed', isolationId: `${input.control.identity.runId}-isolation`, artifactsWritten: 0 };
     }
   }
-  const assembled = assembleStage8FormalSmokeLedger({ control: input.control, runtime: input.runtime, plan, games: completed });
+  const assembled = assembleStage8FormalSmokeLedger({ control: input.control, runtime: input.runtime, modelIdentity: preflight.value.modelIdentity, plan, games: completed });
   if (!assembled.ok) {
     try {
       input.writer.writeImmutable('smoke-quarantine.json', quarantinePayload(input.control.identity.runId, assembled.reason, completed));

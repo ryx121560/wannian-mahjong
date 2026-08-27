@@ -6,6 +6,7 @@ const scripts = [
   'scripts/stage8-fixed-curriculum-smoke-regression.mjs',
   'scripts/stage8-offline-selfplay-smoke-regression.mjs',
   'scripts/stage8-canonical-mcts-provider-regression.mjs',
+  'scripts/stage8-frozen-model-inference-regression.mjs',
   'scripts/stage8-offline-smoke-runtime-preflight-regression.mjs',
   'scripts/stage8-offline-smoke-runner-regression.mjs',
   'scripts/stage8-sample-replay-model-protocol-regression.mjs',

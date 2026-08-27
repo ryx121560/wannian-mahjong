@@ -2,10 +2,16 @@ import type { MctsActionType, MctsCandidate, MctsDecisionContext } from '../mcts
 import { scoreMctsCandidateValues } from '../mcts/mcts-enhancement-engine';
 import type { CanonicalStage8V2Action } from './action-registry-v2';
 import { hashStage8OfflineIdentity, sortStage8CanonicalActions, stage8CanonicalActionKey } from './offline-action-identity';
-import type { Stage8OfflineRawDistributionProvider, Stage8OfflineRawDistributionRequest } from './offline-behavior-distribution';
+import { createStage8OfflineRawDistributionResult, type Stage8OfflineRawDistributionProvider, type Stage8OfflineRawDistributionRequest } from './offline-behavior-distribution';
+import {
+  executeStage8FrozenModelInference,
+  hashStage8FrozenModelInferenceContract,
+  type Stage8FrozenModelIdentityPackage,
+  type Stage8FrozenModelInferencePort,
+} from './offline-frozen-model-inference';
 import type { Stage8OfflineVisibleState } from './offline-round-adapter';
 
-export const STAGE8_CANONICAL_MCTS_PROVIDER_VERSION = 'stage8-canonical-mcts-provider-v1';
+export const STAGE8_CANONICAL_MCTS_PROVIDER_VERSION = 'stage8-canonical-mcts-provider-v2';
 
 const VISIBLE_KEYS = [
   'actor', 'ownHand', 'publicMelds', 'publicDiscards', 'scores', 'dealer', 'turn',
@@ -15,6 +21,9 @@ const VISIBLE_KEYS = [
 export interface Stage8CanonicalMctsProviderConfig {
   providerIdentitySha256: string;
   behaviorTemperature: number;
+  modelPolicyWeight: number;
+  modelIdentity: Stage8FrozenModelIdentityPackage;
+  modelInference: Stage8FrozenModelInferencePort;
 }
 
 function isSha256(value: unknown): value is string {
@@ -99,21 +108,42 @@ function normalizedSoftmax(values: readonly number[], temperature: number): numb
   return weights.map((value) => value / total);
 }
 
-export function hashStage8CanonicalMctsProviderDefinition(input: { behaviorTemperature: number }): string {
+function standardized(values: readonly number[]): number[] {
+  if (!values.length || values.some((value) => !Number.isFinite(value))) throw new Error('canonical-mcts-standardization-invalid');
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  const deviation = Math.sqrt(variance);
+  return deviation <= 1e-12 ? values.map(() => 0) : values.map((value) => (value - mean) / deviation);
+}
+
+export function hashStage8CanonicalMctsProviderDefinition(input: {
+  behaviorTemperature: number;
+  modelPolicyWeight: number;
+  modelManifestSha256: string;
+  inferenceContractSha256: string;
+}): string {
   return hashStage8OfflineIdentity({
     version: STAGE8_CANONICAL_MCTS_PROVIDER_VERSION,
     behaviorTemperature: input.behaviorTemperature,
+    modelPolicyWeight: input.modelPolicyWeight,
+    modelManifestSha256: input.modelManifestSha256,
+    inferenceContractSha256: input.inferenceContractSha256,
     input: 'strict-stage8-visible-state',
     legalActionMapping: 'complete-canonical-set-to-existing-mcts-score-surface',
-    normalization: 'stable-softmax',
+    modelPolicy: 'complete-canonical-logits',
+    modelValue: 'validated-zero-sum-audit-only-until-leaf-search',
+    fusion: 'zscore-mcts-plus-zscore-policy-then-stable-softmax',
   });
 }
 
-/** Adapts the existing MCTS score surface to a complete canonical raw distribution. */
+/** Combines the existing MCTS score surface with a verified frozen-model policy head. */
 export function createStage8CanonicalMctsProvider(config: Stage8CanonicalMctsProviderConfig): Stage8OfflineRawDistributionProvider {
   if (!isSha256(config.providerIdentitySha256)) throw new Error('canonical-mcts-provider-identity-invalid');
   if (!Number.isFinite(config.behaviorTemperature) || config.behaviorTemperature <= 0 || config.behaviorTemperature > 100) throw new Error('canonical-mcts-temperature-invalid');
-  return (request: Stage8OfflineRawDistributionRequest): Readonly<Record<string, number>> => {
+  if (!Number.isFinite(config.modelPolicyWeight) || config.modelPolicyWeight <= 0 || config.modelPolicyWeight > 1) throw new Error('canonical-mcts-model-policy-weight-invalid');
+  if (config.modelIdentity.inferenceContractSha256 !== hashStage8FrozenModelInferenceContract()) throw new Error('canonical-mcts-inference-contract-mismatch');
+  if (typeof config.modelInference !== 'function') throw new Error('canonical-mcts-model-inference-required');
+  return async (request: Stage8OfflineRawDistributionRequest) => {
     if (request.identitySha256 !== config.providerIdentitySha256) throw new Error('canonical-mcts-request-identity-mismatch');
     if (!isVisibleState(request.visibleState)) throw new Error('canonical-mcts-visible-state-invalid');
     const legalActions = sortStage8CanonicalActions(request.legalActions);
@@ -123,7 +153,36 @@ export function createStage8CanonicalMctsProvider(config: Stage8CanonicalMctsPro
     const scored = scoreMctsCandidateValues(toMctsContext(request.visibleState, legalActions));
     const byId = new Map(scored.map((candidate) => [candidate.id, candidate.value]));
     if (byId.size !== keys.length || keys.some((key) => !byId.has(key))) throw new Error('canonical-mcts-action-score-incomplete');
-    const probabilities = normalizedSoftmax(keys.map((key) => byId.get(key)! as number), config.behaviorTemperature);
-    return Object.freeze(Object.fromEntries(keys.map((key, index) => [key, probabilities[index]])));
+    const inference = await executeStage8FrozenModelInference({
+      model: config.modelIdentity,
+      visibleState: request.visibleState,
+      legalActions,
+      inference: config.modelInference,
+    });
+    const mctsScores = keys.map((key) => byId.get(key)! as number);
+    const modelLogits = keys.map((key) => inference.policyLogits[key]);
+    const standardizedMcts = standardized(mctsScores);
+    const standardizedPolicy = standardized(modelLogits);
+    const combinedScores = keys.map((_, index) => (1 - config.modelPolicyWeight) * standardizedMcts[index]
+      + config.modelPolicyWeight * standardizedPolicy[index]);
+    const probabilities = normalizedSoftmax(combinedScores, config.behaviorTemperature);
+    const distribution = Object.fromEntries(keys.map((key, index) => [key, probabilities[index]]));
+    return createStage8OfflineRawDistributionResult({
+      request,
+      providerVersion: STAGE8_CANONICAL_MCTS_PROVIDER_VERSION,
+      distribution,
+      details: {
+        modelInference: inference,
+        mctsScores: Object.fromEntries(keys.map((key, index) => [key, mctsScores[index]])),
+        combinedScores: Object.fromEntries(keys.map((key, index) => [key, combinedScores[index]])),
+        fusion: {
+          mctsWeight: 1 - config.modelPolicyWeight,
+          modelPolicyWeight: config.modelPolicyWeight,
+          behaviorTemperature: config.behaviorTemperature,
+          formula: 'zscore-mcts-plus-zscore-policy-then-stable-softmax',
+          valueUsage: 'validated-zero-sum-audit-only-until-leaf-search',
+        },
+      },
+    });
   };
 }

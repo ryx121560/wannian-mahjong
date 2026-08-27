@@ -92,7 +92,7 @@ export async function runStage8OfflineSmokeCli(options = {}) {
     const artifactRoot = requiredAbsoluteDirectory('STAGE8_ARTIFACT_ROOT', environment);
     const control = readJson(controlPath);
     const runtime = readJson(runtimePath);
-    const fileSystem = {
+    const fileSystem = options.runtimeFileSystem ?? {
       exists: fs.existsSync,
       isDirectory: (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isDirectory(),
       isFile: (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
@@ -125,6 +125,38 @@ export async function runStage8OfflineSmokeCli(options = {}) {
       artifactsWritten: 0,
     };
 
+    if (typeof options.createModelInferencePort !== 'function') return {
+      ok: false,
+      status: 'fused',
+      reason: 'formal-smoke-model-inference-port-required',
+      isolationId: `${control.identity.runId}-isolation`,
+      artifactsWritten: 0,
+    };
+    let modelInference;
+    try {
+      modelInference = await options.createModelInferencePort(Object.freeze({
+        identity: structuredClone(preflight.value.modelIdentity),
+        modelBytes: Uint8Array.from(Buffer.from(preflight.value.verifiedModelPackageBytes.modelBase64, 'base64')),
+        onnxBytes: Uint8Array.from(Buffer.from(preflight.value.verifiedModelPackageBytes.onnxBase64, 'base64')),
+        manifestBytes: Uint8Array.from(Buffer.from(preflight.value.verifiedModelPackageBytes.manifestBase64, 'base64')),
+      }));
+    } catch {
+      return {
+        ok: false,
+        status: 'fused',
+        reason: 'formal-smoke-model-inference-port-initialization-failed',
+        isolationId: `${control.identity.runId}-isolation`,
+        artifactsWritten: 0,
+      };
+    }
+    if (typeof modelInference !== 'function') return {
+      ok: false,
+      status: 'fused',
+      reason: 'formal-smoke-model-inference-port-invalid',
+      isolationId: `${control.identity.runId}-isolation`,
+      artifactsWritten: 0,
+    };
+
     temp = createTemporaryDirectory();
     compileRuntimeTree(path.join(root, 'src/game'), path.join(temp, 'game'));
     const runner = require(path.join(temp, 'game/stage8/offline-smoke-runner.js'));
@@ -132,6 +164,9 @@ export async function runStage8OfflineSmokeCli(options = {}) {
     const provider = providerModule.createStage8CanonicalMctsProvider({
       providerIdentitySha256: control.identity.mctsProviderSha256,
       behaviorTemperature: runtime.behaviorTemperature,
+      modelPolicyWeight: runtime.modelPolicyWeight,
+      modelIdentity: preflight.value.modelIdentity,
+      modelInference,
     });
     return await runner.runStage8FormalSmoke({
       control,

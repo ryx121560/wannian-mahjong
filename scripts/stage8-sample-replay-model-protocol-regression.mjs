@@ -42,6 +42,9 @@ try {
   const rehashManifest = (changes) => { const payload = { ...manifestPayload, ...changes }; return { ...payload, manifestSha256: control.hashStage8TrainingManifestPayload(payload) }; };
   const rehashSmoke = (changes) => { const payload = { ...smokePayload, ...changes }; return { ...payload, manifestSha256: smoke.hashStage8OfflineSmokeControlManifestPayload(payload) }; };
   const valid = validate(sample); assert.equal(valid.ok, true, valid.ok ? '' : valid.decision.reason); assert.equal(validate(sample).value.sampleSha256, valid.value.sampleSha256, 'stable sample identity');
+  assert.equal(sample.model.modelFileSha256, smokeControl.identity.modelFileSha256, 'sample and Smoke bind the same frozen model identity');
+  assert.equal(sample.model.onnxBinarySha256, smokeControl.identity.onnxBinarySha256, 'sample and Smoke bind the same ONNX identity');
+  assert.equal(sample.model.modelManifestSha256, smokeControl.identity.modelManifestSha256, 'sample and Smoke bind the same manifest identity');
   assert.equal(validate({ ...sample, manifest: rehashManifest({ allowSmoke: true }) }).decision.reason, 'sample-training-control-training-downstream-flow-forbidden');
   assert.equal(validate({ ...sample, manifest: rehashManifest({ authorization: { approvalId: 'approval-sample-protocol', granted: false } }) }).decision.reason, 'sample-training-control-training-authorization-required');
   assert.equal(validate({ ...sample, smokeControl: rehashSmoke({ authorization: { ...smokePayload.authorization, granted: false } }) }).decision.reason, 'sample-smoke-explicit-authorization-required');
@@ -53,11 +56,13 @@ try {
   assert.equal(validate({ ...sample, action: { ...action, behaviorActionProbability: 0.6 } }).decision.reason, 'sample-selected-action-invalid');
   assert.equal(validate({ ...sample, action: { ...action, selectedCanonicalAction: canonicalActions[0] } }).decision.reason, 'sample-selected-action-invalid');
   assert.equal(validate({ ...sample, model: { ...sample.model, onnxBinarySha256: '' } }).decision.reason, 'sample-model-package-identity-invalid');
+  assert.equal(validate({ ...sample, model: { ...sample.model, modelFileSha256: crypto.createHash('sha256').update('other-model').digest('hex') } }).decision.reason, 'sample-model-manifest-incompatible');
   assert.equal(validate({ ...sample, model: { ...sample.model, modelManifestSha256: crypto.createHash('sha256').update('other-manifest').digest('hex') } }).decision.reason, 'sample-smoke-model-package-incompatible');
+  assert.equal(validate({ ...sample, model: { ...sample.model, versionedExternalUri: 'https://models.example.test/stage8/v2/model.onnx' } }).decision.reason, 'sample-smoke-model-package-incompatible');
   assert.equal(validate({ ...sample, visibleState: { ...visibleState, opponentHand: ['wan9'] } }).decision.reason, 'sample-visible-state-schema-invalid');
   assert.equal(validate({ ...sample, replay: { ...sample.replay, episodeReward: { terminal: true, terminalDelta: [1,0,0,0] } } }).decision.reason, 'sample-terminal-reward-invalid');
   assert.equal(validate({ ...sample, replay: { ...sample.replay, executionDomainSha256: crypto.createHash('sha256').update('other').digest('hex') } }).decision.reason, 'sample-replay-identity-invalid');
-  console.log(JSON.stringify({ passed: true, controls: ['smoke-control-delegation','complete-canonical-action-set','dual-distribution','selected-probability','visible-schema','model-onnx-manifest-identity','terminal-reward','replay-envelope','pure-fuse'], selfplayStarted: false, artifactsWritten: false }, null, 2));
+  console.log(JSON.stringify({ passed: true, controls: ['smoke-control-delegation','complete-canonical-action-set','dual-distribution','selected-probability','visible-schema','frozen-model-onnx-manifest-uri-identity','terminal-reward','replay-envelope','pure-fuse'], selfplayStarted: false, artifactsWritten: false }, null, 2));
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }
