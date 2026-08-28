@@ -26,11 +26,36 @@ export interface Stage8CanonicalMctsProviderConfig {
   modelInference: Stage8FrozenModelInferencePort;
 }
 
+export interface Stage8CanonicalMctsCandidateSignal {
+  baseScore: number;
+  shantenAfter?: number;
+  route?: string;
+  breaksRoute?: boolean;
+  defenseRisk?: number;
+  dealInRisk?: number;
+  scoreImpact?: number;
+  waitCount?: number;
+  waitRemaining?: number;
+  coreSequenceBreak?: boolean;
+  breaksPair?: boolean;
+  dragonComboBreak?: boolean;
+  isolatedDiscardPriority?: number;
+  mixedRouteType?: 'mixed-strong' | string | null;
+  mixedRouteReason?: string | null;
+  isStrongRuleChoice?: boolean;
+}
+
+export interface Stage8CanonicalMctsScoreSurface {
+  legalActions: CanonicalStage8V2Action[];
+  legalActionKeys: string[];
+  scores: Record<string, number>;
+}
+
 function isSha256(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
 }
 
-function isVisibleState(value: unknown): value is Stage8OfflineVisibleState {
+export function isStage8CanonicalMctsVisibleState(value: unknown): value is Stage8OfflineVisibleState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const state = value as Record<string, unknown>;
   if (Object.keys(state).some((key) => !VISIBLE_KEYS.includes(key as typeof VISIBLE_KEYS[number]))) return false;
@@ -63,7 +88,11 @@ function publicSeenCount(state: Stage8OfflineVisibleState, tile: string | undefi
   return discards + melds;
 }
 
-function toMctsCandidate(action: CanonicalStage8V2Action, state: Stage8OfflineVisibleState): MctsCandidate {
+function toMctsCandidate(
+  action: CanonicalStage8V2Action,
+  state: Stage8OfflineVisibleState,
+  signal?: Stage8CanonicalMctsCandidateSignal,
+): MctsCandidate {
   const mapped = mctsAction(action);
   const kong = mapped === 'kong';
   return {
@@ -71,14 +100,34 @@ function toMctsCandidate(action: CanonicalStage8V2Action, state: Stage8OfflineVi
     action: mapped,
     ...(action.tile ? { tile: action.tile, tileLabel: action.tile } : {}),
     legal: true,
-    baseScore: 0,
-    scoreImpact: action.actionType === 'directChisel' || action.actionType.startsWith('forcedRun') ? 4 : kong ? 2 : 0,
+    baseScore: signal?.baseScore ?? 0,
+    scoreImpact: signal?.scoreImpact ?? (action.actionType === 'directChisel' || action.actionType.startsWith('forcedRun') ? 4 : kong ? 2 : 0),
     kongRisk: kong ? (action.context.robKongWindow ? 0.35 : 0.1) : 0,
     publicSeenCount: publicSeenCount(state, action.tile),
+    ...(signal ? {
+      shantenAfter: signal.shantenAfter,
+      route: signal.route,
+      breaksRoute: signal.breaksRoute,
+      defenseRisk: signal.defenseRisk,
+      dealInRisk: signal.dealInRisk,
+      waitCount: signal.waitCount,
+      waitRemaining: signal.waitRemaining,
+      coreSequenceBreak: signal.coreSequenceBreak,
+      breaksPair: signal.breaksPair,
+      dragonComboBreak: signal.dragonComboBreak,
+      isolatedDiscardPriority: signal.isolatedDiscardPriority,
+      mixedRouteType: signal.mixedRouteType,
+      mixedRouteReason: signal.mixedRouteReason,
+      isStrongRuleChoice: signal.isStrongRuleChoice,
+    } : {}),
   };
 }
 
-function toMctsContext(state: Stage8OfflineVisibleState, actions: readonly CanonicalStage8V2Action[]): MctsDecisionContext {
+function toMctsContext(
+  state: Stage8OfflineVisibleState,
+  actions: readonly CanonicalStage8V2Action[],
+  signals: Readonly<Record<string, Stage8CanonicalMctsCandidateSignal>> = {},
+): MctsDecisionContext {
   return {
     turn: state.turn,
     player: state.actor,
@@ -95,17 +144,39 @@ function toMctsContext(state: Stage8OfflineVisibleState, actions: readonly Canon
     }))),
     handSummary: state.ownHand.slice(),
     strongRuleAction: null,
-    candidates: actions.map((action) => toMctsCandidate(action, state)),
+    candidates: actions.map((action) => toMctsCandidate(action, state, signals[stage8CanonicalActionKey(action)])),
   };
 }
 
-function normalizedSoftmax(values: readonly number[], temperature: number): number[] {
+export function normalizeStage8CanonicalMctsScores(values: readonly number[], temperature: number): number[] {
+  if (!Number.isFinite(temperature) || temperature <= 0 || temperature > 100) throw new Error('canonical-mcts-temperature-invalid');
   if (!values.length || values.some((value) => !Number.isFinite(value))) throw new Error('canonical-mcts-score-invalid');
   const maximum = Math.max(...values);
   const weights = values.map((value) => Math.exp((value - maximum) / temperature));
   const total = weights.reduce((sum, value) => sum + value, 0);
   if (!Number.isFinite(total) || total <= 0) throw new Error('canonical-mcts-normalization-invalid');
   return weights.map((value) => value / total);
+}
+
+/** Returns the complete deterministic Stage7 search-enhanced score surface without model fusion. */
+export function scoreStage8CanonicalMctsSurface(input: {
+  visibleState: Stage8OfflineVisibleState;
+  legalActions: readonly CanonicalStage8V2Action[];
+  candidateSignals?: Readonly<Record<string, Stage8CanonicalMctsCandidateSignal>>;
+}): Stage8CanonicalMctsScoreSurface {
+  if (!isStage8CanonicalMctsVisibleState(input.visibleState)) throw new Error('canonical-mcts-visible-state-invalid');
+  const legalActions = sortStage8CanonicalActions(input.legalActions);
+  if (!legalActions.length) throw new Error('canonical-mcts-legal-actions-empty');
+  const legalActionKeys = legalActions.map(stage8CanonicalActionKey);
+  if (new Set(legalActionKeys).size !== legalActionKeys.length) throw new Error('canonical-mcts-action-identity-duplicate');
+  const signalKeys = Object.keys(input.candidateSignals || {}).sort();
+  if (signalKeys.some((key) => !legalActionKeys.includes(key))) throw new Error('canonical-mcts-signal-action-unknown');
+  const scored = scoreMctsCandidateValues(toMctsContext(input.visibleState, legalActions, input.candidateSignals));
+  const byId = new Map(scored.map((candidate) => [candidate.id, candidate.value]));
+  if (byId.size !== legalActionKeys.length || legalActionKeys.some((key) => !byId.has(key))) throw new Error('canonical-mcts-action-score-incomplete');
+  const scores = Object.fromEntries(legalActionKeys.map((key) => [key, byId.get(key)!]));
+  if (Object.values(scores).some((value) => !Number.isFinite(value))) throw new Error('canonical-mcts-score-invalid');
+  return { legalActions, legalActionKeys, scores };
 }
 
 function standardized(values: readonly number[]): number[] {
@@ -145,27 +216,23 @@ export function createStage8CanonicalMctsProvider(config: Stage8CanonicalMctsPro
   if (typeof config.modelInference !== 'function') throw new Error('canonical-mcts-model-inference-required');
   return async (request: Stage8OfflineRawDistributionRequest) => {
     if (request.identitySha256 !== config.providerIdentitySha256) throw new Error('canonical-mcts-request-identity-mismatch');
-    if (!isVisibleState(request.visibleState)) throw new Error('canonical-mcts-visible-state-invalid');
-    const legalActions = sortStage8CanonicalActions(request.legalActions);
-    if (!legalActions.length) throw new Error('canonical-mcts-legal-actions-empty');
-    const keys = legalActions.map(stage8CanonicalActionKey);
-    if (new Set(keys).size !== keys.length) throw new Error('canonical-mcts-action-identity-duplicate');
-    const scored = scoreMctsCandidateValues(toMctsContext(request.visibleState, legalActions));
-    const byId = new Map(scored.map((candidate) => [candidate.id, candidate.value]));
-    if (byId.size !== keys.length || keys.some((key) => !byId.has(key))) throw new Error('canonical-mcts-action-score-incomplete');
+    if (!isStage8CanonicalMctsVisibleState(request.visibleState)) throw new Error('canonical-mcts-visible-state-invalid');
+    const surface = scoreStage8CanonicalMctsSurface({ visibleState: request.visibleState, legalActions: request.legalActions });
+    const legalActions = surface.legalActions;
+    const keys = surface.legalActionKeys;
     const inference = await executeStage8FrozenModelInference({
       model: config.modelIdentity,
       visibleState: request.visibleState,
       legalActions,
       inference: config.modelInference,
     });
-    const mctsScores = keys.map((key) => byId.get(key)! as number);
+    const mctsScores = keys.map((key) => surface.scores[key]);
     const modelLogits = keys.map((key) => inference.policyLogits[key]);
     const standardizedMcts = standardized(mctsScores);
     const standardizedPolicy = standardized(modelLogits);
     const combinedScores = keys.map((_, index) => (1 - config.modelPolicyWeight) * standardizedMcts[index]
       + config.modelPolicyWeight * standardizedPolicy[index]);
-    const probabilities = normalizedSoftmax(combinedScores, config.behaviorTemperature);
+    const probabilities = normalizeStage8CanonicalMctsScores(combinedScores, config.behaviorTemperature);
     const distribution = Object.fromEntries(keys.map((key, index) => [key, probabilities[index]]));
     return createStage8OfflineRawDistributionResult({
       request,
