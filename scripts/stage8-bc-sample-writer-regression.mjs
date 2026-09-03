@@ -132,8 +132,13 @@ try {
   }
 
   const firstFs = memoryFileSystem();
-  const first = writer.writeStage8BcSampleShard({ manifest: artifactControl, artifactRoot: rootInput(firstFs), batchDirectory, shardId: 'shard-000001', samples, fileSystem: firstFs });
+  let isolatedValidatorCalls = 0;
+  const first = writer.writeStage8BcSampleShard({
+    manifest: artifactControl, artifactRoot: rootInput(firstFs), batchDirectory, shardId: 'shard-000001', samples, fileSystem: firstFs,
+    sampleValidator: (sample) => { isolatedValidatorCalls += 1; return sampleTools.validateStage8BcSampleEnvelope(sample); },
+  });
   assert.equal(first.ok, true, first.ok ? '' : first.decision.reason);
+  assert.equal(isolatedValidatorCalls, 2, 'an injected cold-cache validator must check every sample before writing');
   assert.equal(first.value.sampleCount, 2);
   assert.equal(first.value.episodeCount, 1);
   assert.equal(firstFs.writes, 1, 'one partial file is the only write before atomic rename');
@@ -149,6 +154,15 @@ try {
   assert.equal(second.ok, true, second.ok ? '' : second.decision.reason);
   assert.equal(second.value.artifactFileSha256, first.value.artifactFileSha256, 'same samples must produce deterministic compressed bytes');
   assert.equal(second.value.payloadSha256, first.value.payloadSha256);
+
+  const rejectedByValidatorFs = memoryFileSystem();
+  const rejectedByValidator = writer.writeStage8BcSampleShard({
+    manifest: artifactControl, artifactRoot: rootInput(rejectedByValidatorFs), batchDirectory, shardId: 'shard-000001', samples,
+    fileSystem: rejectedByValidatorFs,
+    sampleValidator: () => ({ ok: false, decision: { status: 'fused', reason: 'injected-teacher-cache-drift', isolationId: 'injected-isolation' } }),
+  });
+  assert.equal(rejectedByValidator.decision.reason, 'bc-artifact-injected-teacher-cache-drift');
+  assert.equal(rejectedByValidatorFs.writes, 0, 'teacher evidence drift must fail before a partial file exists');
 
   const invalidReplayPayload = { ...samples[0].replay, episodeReward: { terminal: false, episodeId, terminalRewardReferenceSha256: sha('wrong-terminal') } };
   delete invalidReplayPayload.replaySha256;

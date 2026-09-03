@@ -87,6 +87,8 @@ export type Stage8BcArtifactWriteResult = Stage8BcArtifactControlResult<{
   artifactsWritten: 1;
 }>;
 
+export type Stage8BcSampleEnvelopeValidator = typeof validateStage8BcSampleEnvelope;
+
 function bytesSha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -142,6 +144,7 @@ function prepareRecords(input: {
   manifest: Stage8BcArtifactControlManifest;
   shardId: string;
   samples: readonly Stage8BcSampleEnvelope[];
+  sampleValidator: Stage8BcSampleEnvelopeValidator;
 }): Stage8BcArtifactControlResult<{
   batchId: string;
   records: Stage8BcArtifactShardRecord[];
@@ -160,7 +163,7 @@ function prepareRecords(input: {
   const sampleIds = new Set<string>();
   const episodes = new Map<string, Stage8BcSampleEnvelope[]>();
   for (const sample of samples) {
-    const validation = validateStage8BcSampleEnvelope(sample);
+    const validation = input.sampleValidator(sample);
     if (!validation.ok) return fail(runId, `bc-artifact-${validation.decision.reason}`);
     if (sampleIds.has(sample.sampleId)) return fail(runId, 'bc-artifact-sample-id-duplicate');
     sampleIds.add(sample.sampleId);
@@ -254,6 +257,7 @@ export function writeStage8BcSampleShard(input: {
   shardId: string;
   samples: readonly Stage8BcSampleEnvelope[];
   fileSystem: Stage8BcAtomicArtifactFileSystem;
+  sampleValidator?: Stage8BcSampleEnvelopeValidator;
 }): Stage8BcArtifactWriteResult {
   const runId = input.manifest?.identity?.runId ?? 'invalid-bc-artifact-run';
   const preflight = preflightStage8BcArtifactWrite({
@@ -264,7 +268,12 @@ export function writeStage8BcSampleShard(input: {
   });
   if (!preflight.ok) return preflight;
   if (input.manifest.identity.writerDefinitionSha256 !== hashStage8BcArtifactWriterDefinition()) return fail(runId, 'bc-artifact-writer-definition-mismatch');
-  const prepared = prepareRecords({ manifest: input.manifest, shardId: input.shardId, samples: input.samples });
+  const prepared = prepareRecords({
+    manifest: input.manifest,
+    shardId: input.shardId,
+    samples: input.samples,
+    sampleValidator: input.sampleValidator ?? validateStage8BcSampleEnvelope,
+  });
   if (!prepared.ok) return prepared;
   const manifestBase: Stage8BcArtifactShardManifestBase = {
     runId,
