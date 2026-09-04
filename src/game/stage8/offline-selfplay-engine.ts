@@ -172,7 +172,7 @@ export async function executeStage8OfflineSelfplayDecision(input: {
   }
   const actor = decisionState.currentPlayer;
   const visibleState = projectStage8OfflineVisibleState(decisionState, actor);
-  const legalActions = deriveStage8OfflineActions({ state: decisionState, actor, candidateKongResources: original.context.candidateKongResources, addedKongChainWindows: original.context.addedKongChainWindows });
+  const legalActions = deriveStage8OfflineActions({ state: decisionState, actor, candidateKongResources: original.context.candidateKongResources, addedKongChainWindows: original.context.addedKongChainWindows, episodeContext: original.context });
   const decisionIdentity = hashStage8OfflineIdentity({ game: input.game, traceStep: original.traceStep + 1, visibleState, episodeContextSha256: original.context.identitySha256, legalActionSetSha256: hashStage8CanonicalActionSet(legalActions) });
   const selected = await selectStage8OfflineBehaviorAction({ visibleState, legalActions, rawDistributionProvider: input.rawDistributionProvider, providerIdentitySha256: input.providerIdentitySha256, decisionIdentity, scenario: input.game.scenario, candidateSeat: input.game.candidateSeat, actor });
   if (!selected.ok) return fail(original, input.game.gameId, selected.reason);

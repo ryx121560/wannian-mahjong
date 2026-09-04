@@ -84,6 +84,9 @@ const pageActions = v2.deriveStage8V2PageSemanticActions({ ...responseProtocol, 
 const roundActions = v2.deriveStage8V2RoundEngineActions({ ...responseProtocol, state: responseState, playerId: 1 });
 assert.ok(ruleActions.some((action) => action.actionType === 'pong'), 'rule adapter must expose legal pong');
 assert.ok(ruleActions.some((action) => action.actionType === 'pass'), 'rule adapter must expose pass');
+assert.equal(ruleActions.some((action) => action.actionType === 'declineKong'), false, 'discard response must use pass/pong/win/kong choices without a separate declineKong');
+assert.equal(pageActions.some((action) => action.actionType === 'declineKong'), false, 'page discard response must not synthesize declineKong');
+assert.equal(roundActions.some((action) => action.actionType === 'declineKong'), false, 'round-engine discard response must not synthesize declineKong');
 assert.deepEqual(v2.compareStage8V2CanonicalActions(ruleActions, pageActions), { equal: true, leftOnly: [], rightOnly: [] }, 'browser facade actions must match rule actions');
 assert.deepEqual(v2.compareStage8V2CanonicalActions(ruleActions, roundActions), { equal: true, leftOnly: [], rightOnly: [] }, 'round-engine actions must match rule actions');
 
@@ -97,6 +100,7 @@ const forcedRuleActions = v2.deriveStage8V2RuleActions({ ...responseProtocol, st
 const forcedPageActions = v2.deriveStage8V2PageSemanticActions({ ...responseProtocol, state: concealedForcedState, playerId: 0, browserRuleEngine });
 const forcedRoundActions = v2.deriveStage8V2RoundEngineActions({ ...responseProtocol, state: concealedForcedState, playerId: 0 });
 assert.ok(forcedRuleActions.some((action) => action.actionType === 'forcedRunConcealed'), 'non-complete four-tile concealed kong must expose forcedRunConcealed');
+assert.ok(forcedRuleActions.some((action) => action.actionType === 'declineKong' && action.context.declarationWindow === 'self-draw-discard'), 'self-draw kong choice must expose one explicit declineKong');
 const forcedNormalAction = forcedRuleActions.find((action) => action.actionType === 'normalConcealedKong');
 const forcedAlternativeAction = forcedRuleActions.find((action) => action.actionType === 'forcedRunConcealed');
 assert.ok(forcedNormalAction, 'normal concealed kong must remain available beside the optional forced-run declaration');
@@ -196,7 +200,14 @@ const directState = {
   scores: [100, 100, 100, 100], wallTiles: ['zhong'], passRecords: [], kongResources: [],
 };
 const directRuleActions = v2.deriveStage8V2RuleActions({ ...responseProtocol, state: directState, playerId: 1 });
+const directPageActions = v2.deriveStage8V2PageSemanticActions({ ...responseProtocol, state: directState, playerId: 1, browserRuleEngine });
+const directRoundActions = v2.deriveStage8V2RoundEngineActions({ ...responseProtocol, state: directState, playerId: 1 });
 assert.ok(directRuleActions.some((action) => action.actionType === 'directChisel'), 'rule entry must expose directChisel from a real discard-response fixture');
+assert.equal(directRuleActions.some((action) => action.actionType === 'declineKong'), false, 'rule response adapter must not synthesize declineKong beside directChisel');
+assert.equal(directPageActions.some((action) => action.actionType === 'declineKong'), false, 'page response adapter must not synthesize declineKong beside directChisel');
+assert.equal(directRoundActions.some((action) => action.actionType === 'declineKong'), false, 'round response adapter must not synthesize declineKong beside directChisel');
+assert.deepEqual(v2.compareStage8V2CanonicalActions(directRuleActions, directPageActions), { equal: true, leftOnly: [], rightOnly: [] });
+assert.deepEqual(v2.compareStage8V2CanonicalActions(directRuleActions, directRoundActions), { equal: true, leftOnly: [], rightOnly: [] });
 
 const immediateState = {
   ...directState,

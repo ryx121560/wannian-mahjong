@@ -102,7 +102,7 @@ function pageActions(state: GameState, playerId: number, legal: LegalAction[], c
     }
   }
   const hasKongChoice = actions.some((action) => !['pass', 'discard', 'pong', 'win', 'declineKong'].includes(action.actionType));
-  if (hasKongChoice) {
+  if (hasKongChoice && window !== 'discard-response') {
     const declineWindow = actions.some((action) => action.actionType === 'chainKong')
       ? 'chain-kong'
       : actions.some((action) => action.actionType === 'postPongCandidateConcealedKong')

@@ -9,12 +9,20 @@ import {
 import type { CanonicalStage8V2Action } from './action-registry-v2';
 import { hashStage8OfflineIdentity } from './offline-action-identity';
 
-export const STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION = 'stage8-offline-episode-context-v1';
+export const STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION = 'stage8-offline-episode-context-v2';
+
+export interface Stage8OfflinePendingKongDecline {
+  actor: number;
+  declarationWindow: 'self-draw-discard' | 'post-pong-discard' | 'chain-kong';
+  preStateSha256: string;
+  legalActionSetSha256: string;
+}
 
 export interface Stage8OfflineEpisodeContext {
   version: typeof STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION;
   candidateKongResources: CandidateConcealedKongResource[];
   addedKongChainWindows: AddedKongChainWindowInput[];
+  pendingKongDecline: Stage8OfflinePendingKongDecline | null;
   identitySha256: string;
 }
 
@@ -30,7 +38,7 @@ function cloneWindow(window: AddedKongChainWindowInput): AddedKongChainWindowInp
   };
 }
 function withoutIdentity(context: Omit<Stage8OfflineEpisodeContext, 'identitySha256'>): unknown {
-  return { version: context.version, candidateKongResources: context.candidateKongResources, addedKongChainWindows: context.addedKongChainWindows };
+  return { version: context.version, candidateKongResources: context.candidateKongResources, addedKongChainWindows: context.addedKongChainWindows, pendingKongDecline: context.pendingKongDecline };
 }
 function seal(context: Omit<Stage8OfflineEpisodeContext, 'identitySha256'>): Stage8OfflineEpisodeContext {
   return { ...context, identitySha256: hashStage8OfflineIdentity(withoutIdentity(context)) };
@@ -52,14 +60,22 @@ export function createStage8OfflineEpisodeContext(input?: {
     version: STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION,
     candidateKongResources: (input?.candidateKongResources || []).map(cloneCandidate),
     addedKongChainWindows: (input?.addedKongChainWindows || []).map(cloneWindow),
+    pendingKongDecline: null,
   });
 }
 
 export function validateStage8OfflineEpisodeContext(context: Stage8OfflineEpisodeContext): boolean {
+  const marker = context.pendingKongDecline;
   return context.version === STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION
     && context.identitySha256 === hashStage8OfflineIdentity(withoutIdentity(context))
     && context.candidateKongResources.every((resource) => resource.owner >= 0 && resource.owner < 4)
-    && context.addedKongChainWindows.every((window) => prepareAddedKongChainWindow(window).canDeclare);
+    && context.addedKongChainWindows.every((window) => prepareAddedKongChainWindow(window).canDeclare)
+    && (marker === null || (
+      Number.isInteger(marker.actor) && marker.actor >= 0 && marker.actor < 4
+      && ['self-draw-discard', 'post-pong-discard', 'chain-kong'].includes(marker.declarationWindow)
+      && /^[a-f0-9]{64}$/.test(marker.preStateSha256)
+      && /^[a-f0-9]{64}$/.test(marker.legalActionSetSha256)
+    ));
 }
 
 /** Advances only auxiliary declarations after a successful true-source transition. */
@@ -69,14 +85,42 @@ export function advanceStage8OfflineEpisodeContext(input: {
   action: CanonicalStage8V2Action | null;
   after: GameState;
   event: RoundPublicEvent;
+  canonicalLegalActionSetSha256?: string;
 }): Stage8OfflineEpisodeContext {
   if (!validateStage8OfflineEpisodeContext(input.context)) throw new Error('stage8-offline-episode-context-invalid');
   let candidates = input.context.candidateKongResources.map(cloneCandidate);
   let windows = input.context.addedKongChainWindows.map(cloneWindow);
+  let pendingKongDecline = input.context.pendingKongDecline ? { ...input.context.pendingKongDecline } : null;
   const ended = input.after.phase === 'ended' || input.event.type === 'wallExhausted';
   if (ended) {
     candidates = candidates.map((resource) => transitionCandidateConcealedKongResource(resource, { type: 'roundEnd' }));
     windows = [];
+    pendingKongDecline = null;
+  } else if (input.action?.actionType === 'declineKong') {
+    if (pendingKongDecline) throw new Error('stage8-offline-kong-decline-already-pending');
+    if (input.before.phase !== 'discarding' || input.before.currentPlayer !== input.action.context.actor
+      || input.action.context.declarationWindow === 'discard-response'
+      || input.event.type !== 'specialKong' || input.event.outcome !== 'kongDeclined'
+      || input.event.actor !== input.action.context.actor || input.event.committed !== false
+      || hashStage8OfflineIdentity(input.before) !== hashStage8OfflineIdentity(input.after)
+      || !input.canonicalLegalActionSetSha256 || !/^[a-f0-9]{64}$/.test(input.canonicalLegalActionSetSha256)) {
+      throw new Error('stage8-offline-kong-decline-transition-invalid');
+    }
+    pendingKongDecline = {
+      actor: input.action.context.actor,
+      declarationWindow: input.action.context.declarationWindow,
+      preStateSha256: hashStage8OfflineIdentity(input.before),
+      legalActionSetSha256: input.canonicalLegalActionSetSha256,
+    };
+  } else if (pendingKongDecline) {
+    if (input.action?.actionType !== 'discard' || input.action.context.actor !== pendingKongDecline.actor
+      || input.event.type !== 'discard' || input.event.actor !== pendingKongDecline.actor
+      || hashStage8OfflineIdentity(input.before) !== pendingKongDecline.preStateSha256) {
+      throw new Error('stage8-offline-kong-decline-followup-invalid');
+    }
+    pendingKongDecline = null;
+    candidates = candidates.map((resource) => transitionCandidateConcealedKongResource(resource, { type: 'discard', player: input.event.actor!, tile: input.event.tile! }));
+    windows = windows.filter((window) => window.owner !== input.event.actor);
   } else if (input.event.type === 'pong' && input.event.actor != null && input.event.tile) {
     const actor = input.event.actor;
     const pongMeld = meldsOf(input.after, actor).find((meld) => meld.type === 'peng' && meld.tiles.every((tile) => tile === input.event.tile));
@@ -115,5 +159,5 @@ export function advanceStage8OfflineEpisodeContext(input: {
       if (prepareAddedKongChainWindow(window).canDeclare && !windows.some((existing) => sameWindow(existing, window))) windows.push(window);
     }
   }
-  return seal({ version: STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION, candidateKongResources: candidates, addedKongChainWindows: windows });
+  return seal({ version: STAGE8_OFFLINE_EPISODE_CONTEXT_VERSION, candidateKongResources: candidates, addedKongChainWindows: windows, pendingKongDecline });
 }

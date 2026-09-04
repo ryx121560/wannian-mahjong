@@ -10,7 +10,10 @@ function compileTree(source, output) { for (const entry of fs.readdirSync(source
 function state(players, wallTiles = ['bai']) { return { phase: 'discarding', currentPlayer: 0, players, melds: players.map((player) => player.melds || []), discards: [[], [], [], []], turn: 0, dealer: 0, scores: [0,0,0,0], wallTiles, passRecords: [], kongResources: [] }; }
 try {
   compileTree(path.join(root, 'src/game'), path.join(temp, 'game'));
-  const rules = require(path.join(temp, 'game/rules/index.js')); const offline = require(path.join(temp, 'game/stage8/offline-round-adapter.js')); const executor = require(path.join(temp, 'game/stage8/offline-trajectory-executor.js'));
+  const bcProbeSource = fs.readFileSync(path.join(root, 'src/game/stage8/offline-bc-sample-probe-runner.ts'), 'utf8');
+  assert.match(bcProbeSource, /deriveStage8OfflineActions\(\{[\s\S]*?episodeContext:\s*context[\s\S]*?\}\);/, 'BC probe legal-action derivation must carry the current episode context');
+  assert.match(bcProbeSource, /executeStage8OfflineCanonicalAction\(\{[\s\S]*?episodeContext:\s*context[\s\S]*?\}\);/, 'BC probe canonical preview must carry the current episode context');
+  const rules = require(path.join(temp, 'game/rules/index.js')); const offline = require(path.join(temp, 'game/stage8/offline-round-adapter.js')); const executor = require(path.join(temp, 'game/stage8/offline-trajectory-executor.js')); const identityTools = require(path.join(temp, 'game/stage8/offline-action-identity.js'));
   const step = (value, actor, type, options = {}) => { const legal = offline.deriveStage8OfflineActions({ state: value, actor, ...options }); const action = legal.find((item) => item.actionType === type); assert.ok(action, `missing ${type}: ${legal.map((item) => item.actionType).join(',')}`); return { action, visibleStateHash: executor.hashStage8OfflineVisibleState(offline.projectStage8OfflineVisibleState(value, actor)), legalActionIds: legal.map((item) => item.actionId), legalActionSetHash: executor.hashStage8OfflineLegalActionSet(legal.map((item) => item.actionId)) }; };
   const pong1 = { type: 'peng', tiles: ['wan1','wan1','wan1'], fromPlayer: 2 }; const pong2 = { type: 'peng', tiles: ['wan2','wan2','wan2'], fromPlayer: 3 };
   const resource1 = rules.createKongResource({ owner: 0, tile: 'wan1', pongMeld: pong1, source: 'pong' }); const resource2 = rules.createKongResource({ owner: 0, tile: 'wan2', pongMeld: pong2, source: 'pong' });
@@ -33,5 +36,41 @@ try {
   const executeOne = (value, type, options = {}) => { const legal = offline.deriveStage8OfflineActions({ state: value, actor: 0, ...options }); const action = legal.find((item) => item.actionType === type); assert.ok(action, `canonical ${type} must be offered`); const result = executor.executeStage8OfflineTrajectory({ initialState: value, steps: [{ action, visibleStateHash: executor.hashStage8OfflineVisibleState(offline.projectStage8OfflineVisibleState(value, 0)), legalActionIds: legal.map((item) => item.actionId), legalActionSetHash: executor.hashStage8OfflineLegalActionSet(legal.map((item) => item.actionId)) }], ...options }); assert.equal(result.ok, true, result.ok ? '' : result.reason); return result; };
   const forcedHand = ['fa','fa','wan1','wan1','wan1','wan1','wan4','wan5','wan6','tiao5','tiao6','tong5','tong6','dong']; const forced = state([{ hand: forcedHand, melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }], ['tiao4']); const forcedRun = executeOne(forced, 'forcedRunConcealed'); assert.equal(forcedRun.records[0].publicEvent.committed, true); assert.equal(forcedRun.state.pendingKong, undefined, 'forced concealed is not robbable by rules source'); const forcedReplay = executeOne(forced, 'forcedRunConcealed'); assert.equal(forcedReplay.traceHash, forcedRun.traceHash, 'forced concealed canonical trace replays exactly');
   const eastPong = { type: 'peng', tiles: ['dong','dong','dong'], fromPlayer: 1 }; const candidateResource = rules.createCandidateConcealedKongResource({ owner: 0, pongMeld: eastPong, candidateKongTile: 'wan1' }); const candidateHand = ['wan1','wan1','wan1','wan1','wan2','wan2','wan2','wan5','wan5','wan5','bai','bai']; const candidate = state([{ hand: candidateHand, melds: [eastPong] }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }], ['bai']); const candidateOptions = { candidateKongResources: [candidateResource] }; const candidateRun = executeOne(candidate, 'postPongCandidateConcealedKong', candidateOptions); assert.equal(candidateRun.records[0].publicEvent.committed, true); assert.equal(candidateRun.state.pendingKong, undefined, 'post-pong candidate concealed kong is not robbable by rules source'); const candidateReplay = executeOne(candidate, 'postPongCandidateConcealedKong', candidateOptions); assert.equal(candidateReplay.traceHash, candidateRun.traceHash, 'post-pong candidate canonical trace replays exactly');
-  console.log(JSON.stringify({ passed: true, coverage: ['explicit-canonical-action','visible-state-hash','legal-action-set-hash','strictly-monotonic-trace-step','action-after-ended-fused','forcedRunConcealed-canonical-direct-commit','forcedRunConcealed-replay-hash','postPongCandidateConcealedKong-canonical-direct-commit','postPongCandidateConcealedKong-replay-hash','doublePongForcedRun-pending-all-pass','doublePongForcedRun-pass-then-rob-kong-win','chainKong-pending-all-pass','chainKong-pass-then-rob-kong-win','chainKong-replay-hash','special-kong-pending-response','all-pass-commit','replay-hash','forged-identity-fused'], selfplayStarted: false, artifactsWritten: false }, null, 2));
+  const declineStep = step(forced, 0, 'declineKong');
+  const declineRun = executor.executeStage8OfflineTrajectory({ initialState: forced, steps: [declineStep] });
+  assert.equal(declineRun.ok, true, declineRun.ok ? '' : declineRun.reason);
+  assert.equal(JSON.stringify(declineRun.state), JSON.stringify(forced), 'declineKong has zero GameState side effects');
+  assert.equal(declineRun.records[0].publicEvent.outcome, 'kongDeclined');
+  assert.equal(declineRun.records[0].publicEvent.committed, false);
+  assert.notEqual(declineRun.records[0].preContextSha256, declineRun.records[0].postContextSha256, 'declineKong advances only the audited episode context');
+  assert.equal(declineRun.context.pendingKongDecline.actor, 0);
+  assert.equal(declineRun.context.pendingKongDecline.declarationWindow, 'self-draw-discard');
+  const postDeclineLegal = offline.deriveStage8OfflineActions({ state: declineRun.state, actor: 0, episodeContext: declineRun.context });
+  assert.ok(postDeclineLegal.length > 0 && postDeclineLegal.every((action) => action.actionType === 'discard'), 'declined kong window must expose only true-source discards');
+  const discardAction = postDeclineLegal[0];
+  const discardStep = { action: discardAction, visibleStateHash: executor.hashStage8OfflineVisibleState(offline.projectStage8OfflineVisibleState(declineRun.state, 0)), legalActionIds: postDeclineLegal.map((item) => item.actionId), legalActionSetHash: executor.hashStage8OfflineLegalActionSet(postDeclineLegal.map((item) => item.actionId)) };
+  const declineThenDiscard = executor.executeStage8OfflineTrajectory({ initialState: forced, steps: [declineStep, discardStep] });
+  assert.equal(declineThenDiscard.ok, true, declineThenDiscard.ok ? '' : declineThenDiscard.reason);
+  assert.equal(declineThenDiscard.records.map((record) => record.actionType).join(','), 'declineKong,discard');
+  assert.equal(declineThenDiscard.context.pendingKongDecline, null, 'successful true-source discard clears the one-shot decline marker');
+  assert.equal(declineThenDiscard.state.discards[0].length, 1);
+  const declineReplay = executor.executeStage8OfflineTrajectory({ initialState: forced, steps: [declineStep, discardStep] });
+  assert.equal(declineReplay.ok, true);
+  assert.equal(declineReplay.traceHash, declineThenDiscard.traceHash, 'decline and true-source discard replay exactly');
+  const repeatedDecline = executor.executeStage8OfflineTrajectory({ initialState: declineRun.state, episodeContext: declineRun.context, steps: [declineStep] });
+  assert.equal(repeatedDecline.ok, false, 'the same decline marker cannot be selected twice');
+  assert.equal(JSON.stringify(repeatedDecline.state), JSON.stringify(declineRun.state), 'repeated decline has zero state side effects');
+  const reseal = (context, marker) => { const payload = { version: context.version, candidateKongResources: context.candidateKongResources, addedKongChainWindows: context.addedKongChainWindows, pendingKongDecline: marker }; return { ...payload, identitySha256: identityTools.hashStage8OfflineIdentity(payload) }; };
+  for (const marker of [
+    { ...declineRun.context.pendingKongDecline, actor: 1 },
+    { ...declineRun.context.pendingKongDecline, declarationWindow: 'discard-response' },
+    { ...declineRun.context.pendingKongDecline, preStateSha256: 'tampered-state' },
+    { ...declineRun.context.pendingKongDecline, legalActionSetSha256: 'tampered-legal-set' },
+  ]) {
+    const badContext = reseal(declineRun.context, marker);
+    const rejected = executor.executeStage8OfflineTrajectory({ initialState: declineRun.state, episodeContext: badContext, steps: [discardStep] });
+    assert.equal(rejected.ok, false, 'tampered decline marker must fail closed');
+    assert.equal(JSON.stringify(rejected.state), JSON.stringify(declineRun.state), 'tampered decline marker has zero state side effects');
+  }
+  console.log(JSON.stringify({ passed: true, coverage: ['explicit-canonical-action','visible-state-hash','legal-action-set-hash','strictly-monotonic-trace-step','action-after-ended-fused','declineKong-context-only-transition','declineKong-discard-only-followup','declineKong-replay-hash','declineKong-repeat-fused','declineKong-identity-tamper-fused','bc-probe-context-propagation','forcedRunConcealed-canonical-direct-commit','forcedRunConcealed-replay-hash','postPongCandidateConcealedKong-canonical-direct-commit','postPongCandidateConcealedKong-replay-hash','doublePongForcedRun-pending-all-pass','doublePongForcedRun-pass-then-rob-kong-win','chainKong-pending-all-pass','chainKong-pass-then-rob-kong-win','chainKong-replay-hash','special-kong-pending-response','all-pass-commit','replay-hash','forged-identity-fused'], selfplayStarted: false, artifactsWritten: false }, null, 2));
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }

@@ -345,6 +345,7 @@ export function executeStage8BcSampleProbeGame(input: {
     const legalActions = deriveStage8OfflineActions({
       state, actor, candidateKongResources: context.candidateKongResources,
       addedKongChainWindows: context.addedKongChainWindows,
+      episodeContext: context,
     });
     if (!legalActions.length) return gameFail(gameId, 'bc-probe-legal-action-set-empty');
     const legalActionSetSha256 = hashStage8CanonicalActionSet(legalActions);
@@ -363,6 +364,7 @@ export function executeStage8BcSampleProbeGame(input: {
       action: selectedAction,
       candidateKongResources: context.candidateKongResources,
       addedKongChainWindows: context.addedKongChainWindows,
+      episodeContext: context,
     });
     if (!preview.ok) return gameFail(gameId, `bc-probe-canonical-preview-${preview.reason}`);
     const trajectory = executeStage8OfflineTrajectory({

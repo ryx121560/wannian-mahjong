@@ -6,6 +6,8 @@ import type { CanonicalStage8V2Action } from './action-registry-v2';
 import type { AddedKongChainWindowInput, CandidateConcealedKongResource } from '../rules/special-kong';
 import type { SpecialKongDeclarationAction } from '../rules/special-kong';
 import type { Meld } from '../rules';
+import { hashStage8CanonicalActionSet, hashStage8OfflineIdentity } from './offline-action-identity';
+import { validateStage8OfflineEpisodeContext, type Stage8OfflineEpisodeContext } from './offline-episode-context';
 
 export interface Stage8OfflineVisibleState {
   actor: number;
@@ -42,14 +44,29 @@ export function deriveStage8OfflineActions(input: {
   actor: number;
   candidateKongResources?: CandidateConcealedKongResource[];
   addedKongChainWindows?: AddedKongChainWindowInput[];
+  episodeContext?: Stage8OfflineEpisodeContext;
 }): CanonicalStage8V2Action[] {
-  return deriveStage8V2RoundEngineActions({
+  const actions = deriveStage8V2RoundEngineActions({
     actionSpaceVersion: STAGE8_ACTION_SPACE_V2_VERSION,
     state: input.state,
     playerId: input.actor,
     candidateKongResources: input.candidateKongResources,
     addedKongChainWindows: input.addedKongChainWindows,
   });
+  const marker = input.episodeContext?.pendingKongDecline;
+  if (!marker) return actions;
+  if (!validateStage8OfflineEpisodeContext(input.episodeContext!)
+    || input.state.phase !== 'discarding'
+    || input.state.currentPlayer !== input.actor
+    || marker.actor !== input.actor
+    || hashStage8OfflineIdentity(input.state) !== marker.preStateSha256
+    || hashStage8CanonicalActionSet(actions) !== marker.legalActionSetSha256
+    || !actions.some((action) => action.actionType === 'declineKong'
+      && action.context.actor === marker.actor
+      && action.context.declarationWindow === marker.declarationWindow)) {
+    return [];
+  }
+  return actions.filter((action) => action.actionType === 'discard');
 }
 
 function removeTiles(hand: Tile[], tile: Tile, count: number): Tile[] | null { const next = hand.slice(); for (let index = 0; index < count; index += 1) { const found = next.indexOf(tile); if (found < 0) return null; next.splice(found, 1); } return next; }
@@ -96,8 +113,9 @@ export function executeStage8OfflineCanonicalAction(input: {
   action: CanonicalStage8V2Action;
   candidateKongResources?: CandidateConcealedKongResource[];
   addedKongChainWindows?: AddedKongChainWindowInput[];
+  episodeContext?: Stage8OfflineEpisodeContext;
 }): RoundTransitionResult {
-  const legal = deriveStage8OfflineActions({ state: input.state, actor: input.action.context.actor, candidateKongResources: input.candidateKongResources, addedKongChainWindows: input.addedKongChainWindows });
+  const legal = deriveStage8OfflineActions({ state: input.state, actor: input.action.context.actor, candidateKongResources: input.candidateKongResources, addedKongChainWindows: input.addedKongChainWindows, episodeContext: input.episodeContext });
   if (!legal.some((candidate) => sameCanonicalAction(candidate, input.action))) {
     return { ok: false, state: input.state, reason: 'stage8-offline-canonical-action-illegal' };
   }
@@ -116,6 +134,12 @@ export function executeStage8OfflineCanonicalAction(input: {
   else if (input.action.actionType === 'directChisel') transition = { type: 'directChisel', actor };
   else if (input.action.actionType === 'forcedRunImmediate') transition = { type: 'forcedRunImmediate', actor };
   else if (input.action.actionType === 'forcedRunDeferred' && input.action.tile) transition = { type: 'forcedRunDeferred', actor, tile: input.action.tile };
+  else if (input.action.actionType === 'declineKong'
+    && input.state.phase === 'discarding'
+    && input.state.currentPlayer === actor
+    && input.action.context.declarationWindow !== 'discard-response') {
+    return { ok: true, state: input.state, event: { type: 'specialKong', actor, outcome: 'kongDeclined', committed: false }, settlement: null };
+  }
   else {
     const declaration = prepareStage8OfflineSpecialKongDeclaration(input);
     const identity = specialIdentity(input.action);

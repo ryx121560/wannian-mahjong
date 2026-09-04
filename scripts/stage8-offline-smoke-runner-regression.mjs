@@ -36,6 +36,7 @@ try {
   const controlTools = require(path.join(temp, 'game/stage8/offline-selfplay-control.js'));
   const curriculum = require(path.join(temp, 'game/stage8/offline-curriculum-kong-zhichan-chain.js'));
   const behavior = require(path.join(temp, 'game/stage8/offline-behavior-distribution.js'));
+  const selfplayEngine = require(path.join(temp, 'game/stage8/offline-selfplay-engine.js'));
   const identityTools = require(path.join(temp, 'game/stage8/offline-action-identity.js'));
   const inferenceTools = require(path.join(temp, 'game/stage8/offline-frozen-model-inference.js'));
   const tensorTools = require(path.join(temp, 'game/stage8/offline-onnx-tensor-contract.js'));
@@ -93,7 +94,7 @@ try {
   const provider = async (request) => {
     const actions = identityTools.sortStage8CanonicalActions(request.legalActions);
     const priority = [
-      'win', 'directChisel', 'forcedRunImmediate', 'forcedRunDeferred', 'chainKong',
+      'win', 'declineKong', 'directChisel', 'forcedRunImmediate', 'forcedRunDeferred', 'chainKong',
       'normalConcealedKong', 'addedKong', 'forcedRunConcealed',
       'postPongCandidateConcealedKong', 'doublePongForcedRun', 'pong', 'pass', 'discard',
     ];
@@ -142,6 +143,35 @@ try {
     }
     return games;
   }
+
+  const declineGame = plan.games.find((game) => game.candidateSeat !== 0);
+  assert.ok(declineGame, 'runner regression requires a non-actor candidate seat');
+  const declineState = {
+    phase: 'discarding', currentPlayer: 0, newDrawnTile: 'dong',
+    players: [
+      { hand: ['fa','fa','wan1','wan1','wan1','wan1','wan4','wan5','wan6','tiao5','tiao6','tong5','tong6','dong'], melds: [] },
+      { hand: ['wan9'], melds: [] }, { hand: ['tong9'], melds: [] }, { hand: ['tiao9'], melds: [] },
+    ],
+    melds: [[],[],[],[]], discards: [[],[],[],[]], turn: 0, dealer: 0,
+    scores: [0,0,0,0], wallTiles: ['tiao4'], passRecords: [], kongResources: [],
+  };
+  const declineCursor = selfplayEngine.createStage8OfflineSelfplayCursor(declineState);
+  const declineFirst = await selfplayEngine.executeStage8OfflineSelfplayDecision({
+    cursor: declineCursor, plan, game: declineGame, smokeControl: control,
+    artifactRoot: rootInput, rawDistributionProvider: provider, providerIdentitySha256: providerIdentity,
+  });
+  assert.equal(declineFirst.ok, true, declineFirst.ok ? '' : declineFirst.reason);
+  assert.equal(declineFirst.evidence.behavior.selectedAction.actionType, 'declineKong');
+  assert.equal(declineFirst.evidence.records[0].publicEvent.outcome, 'kongDeclined');
+  assert.ok(declineFirst.cursor.context.pendingKongDecline, 'runner dependency chain must retain the one-shot decline context');
+  const declineSecond = await selfplayEngine.executeStage8OfflineSelfplayDecision({
+    cursor: declineFirst.cursor, plan, game: declineGame, smokeControl: control,
+    artifactRoot: rootInput, rawDistributionProvider: provider, providerIdentitySha256: providerIdentity,
+  });
+  assert.equal(declineSecond.ok, true, declineSecond.ok ? '' : declineSecond.reason);
+  assert.equal(declineSecond.evidence.behavior.legalActions.every((action) => action.actionType === 'discard'), true);
+  assert.equal(declineSecond.evidence.behavior.selectedAction.actionType, 'discard');
+  assert.equal(declineSecond.cursor.context.pendingKongDecline, null);
 
   const gamesByWorkers = new Map();
   for (const workers of [1, 2, 4]) gamesByWorkers.set(workers, await executeProofGame(workers));
@@ -241,7 +271,7 @@ try {
     workerSemanticHash: semanticHashes[0].batchSemanticHash,
     immutableBatchLedgersValidated: batches.length,
     capacityLimits: limits,
-    controls: ['course-wall-recipe-bound', 'canonical-trajectory', 'terminal-zero-sum', '600-transition-fuse', 'global-index-seed', 'worker-semantic-equivalence', 'rules-derived-coverage', 'explicit-model-source-identities', 'immutable-batch-hash', 'previous-batch-chain', 'atomic-wx-rename', 'partial-final-rejected', 'pre-run-capacity', 'pre-commit-capacity', 'missing-input-zero-write'],
+    controls: ['course-wall-recipe-bound', 'canonical-trajectory', 'decline-kong-then-true-source-discard', 'terminal-zero-sum', '600-transition-fuse', 'global-index-seed', 'worker-semantic-equivalence', 'rules-derived-coverage', 'explicit-model-source-identities', 'immutable-batch-hash', 'previous-batch-chain', 'atomic-wx-rename', 'partial-final-rejected', 'pre-run-capacity', 'pre-commit-capacity', 'missing-input-zero-write'],
     trainingStarted: false,
     artifactsWritten: false,
   }, null, 2));

@@ -42,6 +42,25 @@ try {
     return behavior.createStage8OfflineRawDistributionResult({ request, providerVersion: 'stage8-test-uniform-v1', distribution: Object.fromEntries(keys.map((key) => [key, 1 / keys.length])), details: { kind: 'uniform' } });
   };
   const cursor = engine.createStage8OfflineSelfplayCursor(state); const game = plan.games[0];
+  const declineGame = plan.games.find((entry) => entry.candidateSeat !== 0);
+  assert.ok(declineGame, 'fixture requires a non-actor candidate seat so targeted exploration does not override declineKong');
+  const declineProvider = async (request) => {
+    const selected = request.legalActions.find((action) => action.actionType === 'declineKong') || request.legalActions.find((action) => action.actionType === 'discard');
+    assert.ok(selected, 'decline flow must offer declineKong first and a true-source discard second');
+    const selectedKey = identityTools.stage8CanonicalActionKey(selected);
+    const keys = request.legalActions.map(identityTools.stage8CanonicalActionKey).sort();
+    return behavior.createStage8OfflineRawDistributionResult({ request, providerVersion: 'stage8-test-decline-v1', distribution: Object.fromEntries(keys.map((key) => [key, key === selectedKey ? 1 : 0])), details: { kind: 'decline-then-discard' } });
+  };
+  const declineFirst = await engine.executeStage8OfflineSelfplayDecision({ cursor, plan, game: declineGame, smokeControl, artifactRoot, rawDistributionProvider: declineProvider, providerIdentitySha256: fixed });
+  assert.equal(declineFirst.ok, true, declineFirst.ok ? '' : declineFirst.reason);
+  assert.equal(declineFirst.evidence.behavior.selectedAction.actionType, 'declineKong');
+  assert.equal(JSON.stringify(declineFirst.cursor.state), original, 'selfplay decline changes only episode context');
+  assert.ok(declineFirst.cursor.context.pendingKongDecline);
+  const declineSecond = await engine.executeStage8OfflineSelfplayDecision({ cursor: declineFirst.cursor, plan, game: declineGame, smokeControl, artifactRoot, rawDistributionProvider: declineProvider, providerIdentitySha256: fixed });
+  assert.equal(declineSecond.ok, true, declineSecond.ok ? '' : declineSecond.reason);
+  assert.equal(declineSecond.evidence.behavior.legalActions.every((action) => action.actionType === 'discard'), true);
+  assert.equal(declineSecond.evidence.behavior.selectedAction.actionType, 'discard');
+  assert.equal(declineSecond.cursor.context.pendingKongDecline, null);
   const first = await engine.executeStage8OfflineSelfplayDecision({ cursor, plan, game, smokeControl, artifactRoot, rawDistributionProvider: uniformProvider, providerIdentitySha256: fixed });
   assert.equal(first.ok, true, first.ok ? '' : first.reason); assert.equal(first.status === 'advanced' || first.status === 'ended', true); assert.ok(first.evidence); assert.equal(providerCalls, 1); assert.equal(JSON.stringify(state), original, 'engine input state remains immutable');
   const forcedKeys = first.evidence.behavior.legalActions.filter((action) => ['forcedRunImmediate','forcedRunDeferred','forcedRunConcealed','doublePongForcedRun'].includes(action.actionType)).map(identityTools.stage8CanonicalActionKey);
