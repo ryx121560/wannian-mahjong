@@ -20,12 +20,42 @@ import {
 } from './offline-onnx-tensor-contract';
 import {
   STAGE8_OFFLINE_SMOKE_CURRICULUM,
+  STAGE8_OFFLINE_SMOKE_MAX_RUN_BYTES,
+  STAGE8_OFFLINE_SMOKE_MAX_VOLUME_USED_RATIO,
   validateStage8OfflineSmokeControl,
   type Stage8OfflineSmokeControlManifest,
 } from './offline-selfplay-control';
 
 export const STAGE8_FORMAL_SMOKE_RUNTIME_VERSION = 'stage8-formal-smoke-runtime-v2';
 export const STAGE8_MODEL_PACKAGE_MANIFEST_VERSION = STAGE8_FROZEN_MODEL_PACKAGE_VERSION;
+export const STAGE8_FORMAL_SMOKE_CAPACITY_LIMITS = Object.freeze({
+  maxRunBytes: STAGE8_OFFLINE_SMOKE_MAX_RUN_BYTES,
+  maxVolumeUsedRatio: STAGE8_OFFLINE_SMOKE_MAX_VOLUME_USED_RATIO,
+});
+
+export interface Stage8FormalSmokeCapacitySnapshot {
+  totalBytes: number;
+  freeBytes: number;
+  runBytes: number;
+}
+
+export function validateStage8FormalSmokeCapacity(input: {
+  snapshot: Stage8FormalSmokeCapacitySnapshot;
+  pendingBytes: number;
+  maxRunBytes: number;
+  maxVolumeUsedRatio: number;
+}): string | null {
+  const { totalBytes, freeBytes, runBytes } = input.snapshot;
+  if (![totalBytes, freeBytes, runBytes, input.pendingBytes, input.maxRunBytes].every(Number.isSafeInteger)
+    || totalBytes <= 0 || freeBytes < 0 || freeBytes > totalBytes || runBytes < 0 || input.pendingBytes < 0
+    || input.maxRunBytes <= 0 || !Number.isFinite(input.maxVolumeUsedRatio)
+    || input.maxVolumeUsedRatio <= 0 || input.maxVolumeUsedRatio >= 1) return 'formal-smoke-capacity-evidence-invalid';
+  if (runBytes + input.pendingBytes > input.maxRunBytes) return 'formal-smoke-run-capacity-limit-exceeded';
+  if (input.pendingBytes > freeBytes) return 'formal-smoke-volume-free-space-insufficient';
+  const projectedUsedRatio = (totalBytes - freeBytes + input.pendingBytes) / totalBytes;
+  if (projectedUsedRatio >= input.maxVolumeUsedRatio) return 'formal-smoke-volume-used-ratio-fused';
+  return null;
+}
 
 export interface Stage8SmokeRuntimeFileSystem {
   exists(candidate: string): boolean;

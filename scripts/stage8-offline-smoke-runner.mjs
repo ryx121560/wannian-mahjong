@@ -63,9 +63,21 @@ function compileTree(source, output) {
   }
 }
 
-function atomicWriter(runDirectory) {
+export function createStage8FormalSmokeAtomicWriter(runDirectory) {
+  const allowedName = /^smoke-(?:batch-[0-9]{4}|ledger|quarantine)\.json$/;
   return {
+    inspectCapacity() {
+      const stats = fs.statfsSync(runDirectory);
+      const totalBytes = Number(stats.bsize) * Number(stats.blocks);
+      const freeBytes = Number(stats.bsize) * Number(stats.bavail);
+      const runBytes = fs.readdirSync(runDirectory, { withFileTypes: true }).reduce((sum, entry) => {
+        if (!entry.isFile()) throw new Error('formal-smoke-run-directory-entry-invalid');
+        return sum + fs.statSync(path.join(runDirectory, entry.name)).size;
+      }, 0);
+      return { totalBytes, freeBytes, runBytes };
+    },
     writeImmutable(relativeName, content) {
+      if (!allowedName.test(relativeName)) throw new Error('formal-smoke-artifact-name-invalid');
       const target = path.join(runDirectory, relativeName);
       const temporary = `${target}.tmp-${process.pid}`;
       try {
@@ -84,7 +96,7 @@ export async function runStage8OfflineSmokeCli(options = {}) {
   const createTemporaryDirectory = options.createTemporaryDirectory
     ?? (() => fs.mkdtempSync(path.join(os.tmpdir(), 'stage8-formal-smoke-runtime-')));
   const compileRuntimeTree = options.compileRuntimeTree ?? compileTree;
-  const createArtifactWriter = options.createArtifactWriter ?? atomicWriter;
+  const createArtifactWriter = options.createArtifactWriter ?? createStage8FormalSmokeAtomicWriter;
   let temp = null;
   let modelInference = null;
   try {
@@ -164,6 +176,27 @@ export async function runStage8OfflineSmokeCli(options = {}) {
       artifactsWritten: 0,
     };
 
+    const writer = createArtifactWriter(runtime.runDirectory);
+    if (!writer || typeof writer.inspectCapacity !== 'function' || typeof writer.writeImmutable !== 'function') return {
+      ok: false,
+      status: 'fused',
+      reason: 'formal-smoke-writer-contract-invalid',
+      isolationId: `${control.identity.runId}-isolation`,
+      artifactsWritten: 0,
+    };
+    const capacityReason = preflightModule.validateStage8FormalSmokeCapacity({
+      snapshot: writer.inspectCapacity(),
+      pendingBytes: 0,
+      ...preflightModule.STAGE8_FORMAL_SMOKE_CAPACITY_LIMITS,
+    });
+    if (capacityReason) return {
+      ok: false,
+      status: 'fused',
+      reason: capacityReason,
+      isolationId: `${control.identity.runId}-isolation`,
+      artifactsWritten: 0,
+    };
+
     temp = createTemporaryDirectory();
     compileRuntimeTree(path.join(root, 'src/game'), path.join(temp, 'game'));
     const runner = require(path.join(temp, 'game/stage8/offline-smoke-runner.js'));
@@ -181,7 +214,7 @@ export async function runStage8OfflineSmokeCli(options = {}) {
       artifactRoot: artifactRootInput,
       fileSystem,
       rawDistributionProvider: provider,
-      writer: createArtifactWriter(runtime.runDirectory),
+      writer,
     });
   } catch (error) {
     return {

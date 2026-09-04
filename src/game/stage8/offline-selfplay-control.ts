@@ -7,6 +7,8 @@ export const STAGE8_OFFLINE_SMOKE_PLAN_GAME_COUNT = 1000;
 export const STAGE8_OFFLINE_SMOKE_GAMES_PER_CANDIDATE_SEAT = 250;
 export const STAGE8_OFFLINE_SMOKE_EXPLORATION_RATE = 0.2;
 export const STAGE8_OFFLINE_SMOKE_CURRICULUM = 'kong-zhichan-chain';
+export const STAGE8_OFFLINE_SMOKE_MAX_RUN_BYTES = 64 * 1024 * 1024 * 1024;
+export const STAGE8_OFFLINE_SMOKE_MAX_VOLUME_USED_RATIO = 0.8;
 
 export type Stage8OfflineSmokeAuthorizationScope =
   | 'fixed-course-smoke-preflight'
