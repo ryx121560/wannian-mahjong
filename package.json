@@ -101,6 +101,7 @@
     "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",
+    "test:stage8-formal-smoke-readiness": "node scripts/stage8-formal-smoke-readiness-regression.mjs",
     "test:stage8-onnx-inference-adapter": "node scripts/stage8-onnx-inference-adapter-regression.mjs",
     "test:stage8-offline-selfplay-preflight": "node scripts/stage8-offline-selfplay-preflight-gate.mjs",
     "stage8:smoke:run": "node scripts/stage8-offline-smoke-runner.mjs",
