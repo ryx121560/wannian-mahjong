@@ -10,6 +10,8 @@ if (!python || !path.win32.isAbsolute(python)) {
 
 const commands = [
   ['node-corpus', process.execPath, ['scripts/stage8-bc-corpus-regression.mjs']],
+  ['corpus-runner', process.execPath, ['scripts/stage8-bc-corpus-runner-regression.mjs']],
+  ['corpus-cli', process.execPath, ['scripts/stage8-bc-corpus-cli-regression.mjs']],
   ['python-corpus', python, ['scripts/stage8-bc-corpus-verify.py', '--self-test']],
   ['artifact-control', process.execPath, ['scripts/stage8-bc-artifact-control-regression.mjs']],
   ['sample-writer', process.execPath, ['scripts/stage8-bc-sample-writer-regression.mjs']],
@@ -31,5 +33,5 @@ for (const [label, command, args] of commands) {
 }
 console.log(JSON.stringify({
   passed: true, pilotGamesExecuted: 0, trainingStarted: false, artifactsWritten: false,
-  scope: 'formal-corpus-admission-and-split-protocol-only',
+  scope: 'formal-corpus-pilot-runner-with-lightweight-fixtures-and-one-existing-real-chain',
 }));

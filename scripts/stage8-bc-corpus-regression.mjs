@@ -108,6 +108,9 @@ try {
   };
   const corpus = { ...corpusPayload, manifestSha256: corpusTools.hashStage8BcCorpusManifestPayload(corpusPayload) };
   assert.equal(corpusTools.validateStage8BcCorpusManifest(corpus).ok, true);
+  const builtCorpus = corpusTools.buildStage8BcCorpusManifest({ corpusId: corpus.corpusId, control, shards });
+  assert.equal(builtCorpus.ok, true, builtCorpus.ok ? '' : builtCorpus.decision.reason);
+  assert.equal(builtCorpus.value.manifestSha256, corpus.manifestSha256);
   const rehashCorpus = (changes) => {
     const payload = { ...corpusPayload, ...changes };
     return { ...payload, manifestSha256: corpusTools.hashStage8BcCorpusManifestPayload(payload) };

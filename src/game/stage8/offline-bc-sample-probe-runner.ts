@@ -34,6 +34,10 @@ import {
 } from './offline-bc-sample-protocol';
 import { hashStage8BcTerminalReward } from './offline-bc-sample-writer';
 import {
+  validateStage8BcControlManifest,
+  type Stage8BcControlManifest,
+} from './offline-bc-control';
+import {
   deriveStage8BcSampleProbeSeed,
   STAGE8_BC_SAMPLE_PROBE_GAME_COUNT,
   STAGE8_BC_SAMPLE_PROBE_MAX_TRANSITIONS,
@@ -142,6 +146,18 @@ interface DecisionDraft {
 
 export type Stage8BcSampleProbeTeacherEvaluator = (input: Parameters<typeof evaluateStage8BcTeacher>[0]) => Stage8BcTeacherResult;
 
+export interface Stage8BcTeacherGameExecutionInput {
+  runId: string;
+  bcControl: Stage8BcControlManifest;
+  gameIndex: number;
+  gameCount: number;
+  fixedSeed: number;
+  candidateSeat: 0 | 1 | 2 | 3;
+  sampleOffset: number;
+  maxSuccessfulTransitions: number;
+  teacherEvaluator?: Stage8BcSampleProbeTeacherEvaluator;
+}
+
 function fail(runId: string, reason: string): Stage8BcSampleProbeRunResult {
   return {
     ok: false,
@@ -240,14 +256,15 @@ function transitionLedger(input: {
 }
 
 function buildSamples(input: {
-  control: Stage8BcSampleProbeControlManifest;
+  runId: string;
+  bcControl: Stage8BcControlManifest;
   gameIndex: number;
   fixedSeed: number;
   terminalDelta: [number, number, number, number];
   decisions: DecisionDraft[];
   sampleOffset: number;
 }): Stage8BcSampleEnvelope[] {
-  const runId = input.control.identity.runId;
+  const runId = input.runId;
   const episodeId = `${runId}-episode-${String(input.gameIndex + 1).padStart(6, '0')}`;
   const batchId = `${runId}-batch-${String(input.gameIndex + 1).padStart(6, '0')}`;
   const terminalReference = hashStage8BcTerminalReward({ episodeId, terminalDelta: input.terminalDelta });
@@ -275,7 +292,7 @@ function buildSamples(input: {
       protocolVersion: STAGE8_BC_SAMPLE_PROTOCOL_VERSION,
       sampleId: `${runId}-sample-${String(input.sampleOffset + index + 1).padStart(6, '0')}`,
       batchId,
-      control: input.control.artifactControl.bcControl,
+      control: input.bcControl,
       visibleState: decision.visibleState,
       canonicalActions: decision.canonicalActions,
       completeLegalActionSetSha256: decision.teacherEvidence.legalActionSetSha256,
@@ -298,20 +315,23 @@ function validateTraceChain(transitions: readonly Stage8BcSampleProbeTransitionL
     }));
 }
 
-/** Executes one full in-memory game with the frozen BC teacher selecting every real seat decision. */
-export function executeStage8BcSampleProbeGame(input: {
-  control: Stage8BcSampleProbeControlManifest;
-  gameIndex: number;
-  sampleOffset: number;
-  teacherEvaluator?: Stage8BcSampleProbeTeacherEvaluator;
-}): Stage8BcSampleProbeGameResult {
-  const control = validateStage8BcSampleProbeControl(input.control);
-  const runId = input.control?.identity?.runId ?? 'invalid-bc-probe-run';
-  if (!control.ok) return gameFail(runId, control.decision.reason);
-  if (!Number.isInteger(input.gameIndex) || input.gameIndex < 0 || input.gameIndex >= STAGE8_BC_SAMPLE_PROBE_GAME_COUNT) {
-    return gameFail(runId, 'bc-probe-game-index-invalid');
+/** Executes one full in-memory game using only the rules/canonical/teacher true-source chain. */
+export function executeStage8BcTeacherGame(
+  input: Stage8BcTeacherGameExecutionInput,
+): Stage8BcSampleProbeGameResult {
+  const runId = input?.runId ?? 'invalid-bc-run';
+  const bcControl = validateStage8BcControlManifest(input.bcControl);
+  if (!bcControl.ok) return gameFail(runId, bcControl.decision.reason);
+  if (!/^[a-z][a-z0-9-]{2,127}$/i.test(runId) || input.bcControl.identity.runId !== runId
+    || !Number.isInteger(input.gameIndex) || input.gameIndex < 0 || input.gameIndex >= input.gameCount
+    || !Number.isInteger(input.gameCount) || input.gameCount < 1
+    || !Number.isInteger(input.fixedSeed) || input.fixedSeed < 0 || input.fixedSeed > 0xffffffff
+    || !Number.isInteger(input.candidateSeat) || input.candidateSeat < 0 || input.candidateSeat > 3
+    || !Number.isInteger(input.sampleOffset) || input.sampleOffset < 0
+    || !Number.isInteger(input.maxSuccessfulTransitions) || input.maxSuccessfulTransitions < 1) {
+    return gameFail(runId, 'bc-game-execution-input-invalid');
   }
-  const fixedSeed = deriveStage8BcSampleProbeSeed(input.control.plan.baseSeed, input.gameIndex);
+  const fixedSeed = input.fixedSeed;
   const gameId = `${runId}-game-${String(input.gameIndex + 1).padStart(6, '0')}`;
   let state = createStage8BcSampleProbeInitialState(fixedSeed);
   let context = createStage8OfflineEpisodeContext();
@@ -321,7 +341,7 @@ export function executeStage8BcSampleProbeGame(input: {
   while (state.phase !== 'ended') {
     const integrity = stateIntegrity(state);
     if (integrity) return gameFail(gameId, integrity);
-    if (transitions.length >= STAGE8_BC_SAMPLE_PROBE_MAX_TRANSITIONS) {
+    if (transitions.length >= input.maxSuccessfulTransitions) {
       return gameFail(gameId, 'bc-probe-transition-limit-exceeded');
     }
     if (state.phase === 'drawing') {
@@ -350,7 +370,7 @@ export function executeStage8BcSampleProbeGame(input: {
     if (!legalActions.length) return gameFail(gameId, 'bc-probe-legal-action-set-empty');
     const legalActionSetSha256 = hashStage8CanonicalActionSet(legalActions);
     const teacher = (input.teacherEvaluator ?? evaluateStage8BcTeacher)({
-      control: input.control.artifactControl.bcControl,
+      control: input.bcControl,
       visibleState,
       legalActions,
       completeLegalActionSetSha256: legalActionSetSha256,
@@ -416,7 +436,7 @@ export function executeStage8BcSampleProbeGame(input: {
   const terminalTransition = transitions.at(-1)!;
   const terminalDelta = state.scores.slice() as [number, number, number, number];
   const samples = buildSamples({
-    control: input.control, gameIndex: input.gameIndex, fixedSeed, terminalDelta,
+    runId, bcControl: input.bcControl, gameIndex: input.gameIndex, fixedSeed, terminalDelta,
     decisions, sampleOffset: input.sampleOffset,
   });
   const endType: Stage8BcSampleProbeGameLedger['endType'] = terminalTransition.actionType === 'systemDraw'
@@ -426,7 +446,7 @@ export function executeStage8BcSampleProbeGame(input: {
     gameIndex: input.gameIndex,
     gameId,
     fixedSeed,
-    candidateSeat: input.gameIndex as 0 | 1 | 2 | 3,
+    candidateSeat: input.candidateSeat,
     workerSlot: 0 as const,
     decisionCount: decisions.length,
     transitionCount: transitions.length,
@@ -441,6 +461,35 @@ export function executeStage8BcSampleProbeGame(input: {
     samples,
   };
   return { ok: true, ledger: { ...base, semanticSha256: hashStage8OfflineIdentity(base) } };
+}
+
+/** Backward-compatible four-game probe wrapper. */
+export function executeStage8BcSampleProbeGame(input: {
+  control: Stage8BcSampleProbeControlManifest;
+  gameIndex: number;
+  sampleOffset: number;
+  teacherEvaluator?: Stage8BcSampleProbeTeacherEvaluator;
+}): Stage8BcSampleProbeGameResult {
+  const control = validateStage8BcSampleProbeControl(input.control);
+  const runId = input.control?.identity?.runId ?? 'invalid-bc-probe-run';
+  if (!control.ok) return gameFail(runId, control.decision.reason);
+  let fixedSeed: number;
+  try {
+    fixedSeed = deriveStage8BcSampleProbeSeed(input.control.plan.baseSeed, input.gameIndex);
+  } catch {
+    return gameFail(runId, 'bc-probe-game-index-invalid');
+  }
+  return executeStage8BcTeacherGame({
+    runId,
+    bcControl: input.control.artifactControl.bcControl,
+    gameIndex: input.gameIndex,
+    gameCount: STAGE8_BC_SAMPLE_PROBE_GAME_COUNT,
+    fixedSeed,
+    candidateSeat: input.gameIndex as 0 | 1 | 2 | 3,
+    sampleOffset: input.sampleOffset,
+    maxSuccessfulTransitions: STAGE8_BC_SAMPLE_PROBE_MAX_TRANSITIONS,
+    teacherEvaluator: input.teacherEvaluator,
+  });
 }
 
 /** Runs and replays all four games in memory. It never creates a directory or file. */

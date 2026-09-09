@@ -160,6 +160,78 @@ function splitPayload(input: Stage8BcCorpusSplitManifest): Omit<Stage8BcCorpusSp
   return payload;
 }
 
+function createSplitManifest(
+  split: Stage8BcCorpusSplit,
+  shards: readonly Stage8BcCorpusShardDescriptor[],
+): Stage8BcCorpusSplitManifest {
+  const payload = {
+    gameIndexes: shards.map((shard) => shard.gameIndex),
+    shardIds: shards.map((shard) => shard.shardId),
+    episodeIds: shards.map((shard) => shard.episodeId),
+    payloadSetSha256: hashStage8OfflineIdentity(shards.map((shard) => shard.payloadSha256).sort()),
+  };
+  return { ...payload, splitSha256: hashStage8OfflineIdentity({ split, ...payload }) };
+}
+
+/** Builds the only accepted formal corpus manifest from committed shard descriptors. */
+export function buildStage8BcCorpusManifest(input: {
+  corpusId: string;
+  control: Stage8BcCorpusControlManifest;
+  shards: readonly Stage8BcCorpusShardDescriptor[];
+}): Stage8BcCorpusControlResult<Stage8BcCorpusManifest> {
+  const runId = input.control?.identity?.runId;
+  const control = validateStage8BcCorpusControlManifest(input.control);
+  if (!control.ok) return fail(runId, control.decision.reason);
+  if (!validId(input.corpusId) || !Array.isArray(input.shards) || input.shards.length !== 64) {
+    return fail(runId, 'bc-corpus-build-input-invalid');
+  }
+  const shards = input.shards.slice().sort((left, right) => left.gameIndex - right.gameIndex)
+    .map((shard) => structuredClone(shard));
+  const train = shards.filter((shard) => shard.split === 'train');
+  const validation = shards.filter((shard) => shard.split === 'validation');
+  const finalTest = shards.filter((shard) => shard.split === 'final-test');
+  const splits = {
+    train: createSplitManifest('train', train),
+    validation: createSplitManifest('validation', validation),
+    finalTest: createSplitManifest('final-test', finalTest),
+  };
+  const payload: Omit<Stage8BcCorpusManifest, 'manifestSha256'> = {
+    protocolVersion: STAGE8_BC_CORPUS_MANIFEST_VERSION,
+    corpusId: input.corpusId,
+    runId,
+    control: structuredClone(input.control),
+    sourceRunPolicy: 'single-run-only',
+    sourceRunIds: [runId],
+    shards,
+    splits,
+    totals: {
+      shardCount: 64,
+      episodeCount: 64,
+      sampleCount: shards.reduce((sum, shard) => sum + shard.sampleCount, 0),
+      datasetPayloadSetSha256: hashStage8OfflineIdentity(shards.map((shard) => shard.payloadSha256).sort()),
+      trainingDatasetPayloadSetSha256: splits.train.payloadSetSha256,
+    },
+    actionCoverage: sumCoverage(shards),
+    anomalies: {
+      illegalActions: 0,
+      hiddenInformationLeaks: 0,
+      nonFiniteValues: 0,
+      nonZeroSumSettlements: 0,
+      replayMismatches: 0,
+      duplicateSamples: 0,
+      duplicateEpisodes: 0,
+      splitLeaks: 0,
+      incompatibleIdentities: 0,
+    },
+  };
+  const manifest: Stage8BcCorpusManifest = {
+    ...payload,
+    manifestSha256: hashStage8BcCorpusManifestPayload(payload),
+  };
+  const validationResult = validateStage8BcCorpusManifest(manifest);
+  return validationResult.ok ? { ok: true, value: manifest } : validationResult;
+}
+
 export function hashStage8BcCorpusManifestDefinition(): string {
   return hashStage8OfflineIdentity({
     version: STAGE8_BC_CORPUS_MANIFEST_VERSION,
