@@ -98,6 +98,8 @@
     "test:stage8-bc-sample-probe-runner": "node scripts/stage8-bc-sample-probe-runner-regression.mjs",
     "test:stage8-bc-sample-probe-cli": "node scripts/stage8-bc-sample-probe-cli-regression.mjs",
     "test:stage8-bc-sample-probe-preflight": "node scripts/stage8-bc-sample-probe-preflight-gate.mjs",
+    "test:stage8-bc-corpus": "node scripts/stage8-bc-corpus-regression.mjs",
+    "test:stage8-bc-corpus-preflight": "node scripts/stage8-bc-corpus-preflight-gate.mjs",
     "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",
