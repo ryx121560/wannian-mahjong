@@ -104,6 +104,16 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function inspectGitCheckout(checkoutRoot) {
+  const run = (args) => spawnSync('git', ['-c', `safe.directory=${checkoutRoot.replace(/\\/g, '/')}`, ...args], {
+    cwd: checkoutRoot, encoding: 'utf8', windowsHide: true,
+  });
+  const head = run(['rev-parse', 'HEAD']);
+  const status = run(['status', '--porcelain=v1', '--untracked-files=all']);
+  if (head.status !== 0 || status.status !== 0) throw new Error('bc-corpus-git-inspection-failed');
+  return { sourceCommit: head.stdout.trim().toLowerCase(), clean: status.stdout.trim() === '' };
+}
+
 function defaultCapacity(rootPath, runPath, identitySha256, request) {
   const volume = fs.statfsSync(rootPath);
   return {
@@ -169,6 +179,22 @@ export async function runStage8BcCorpusCli(options = {}) {
       || artifactControl.bcControl.manifestSha256 !== corpusControl.identity.bcControlManifestSha256
       || artifactControl.identity.runId !== runId || artifactControl.bcControl.identity.runId !== runId) {
       return fused('bc-corpus-cli-control-cross-binding-invalid', runId, counters);
+    }
+    const runIdentityValidation = options.runIdentityVerifier
+      ? options.runIdentityVerifier({ artifactControl, corpusControl, root })
+      : (() => {
+        const checkout = (options.inspectCheckout ?? inspectGitCheckout)(root);
+        if (!checkout.clean) return { ok: false, reason: 'bc-run-checkout-not-clean' };
+        const identityTools = loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/offline-bc-run-identity.ts'));
+        return identityTools.validateStage8BcRunIdentityMaterials({
+          sourceCommit: checkout.sourceCommit,
+          readFile: (relativePath) => fs.readFileSync(path.join(root, ...relativePath.split('/'))),
+          artifactControl,
+          corpusControl,
+        });
+      })();
+    if (!runIdentityValidation.ok) {
+      return fused(runIdentityValidation.reason || 'bc-corpus-cli-run-identity-invalid', runId, counters);
     }
     stagingDirectory = `${finalRunDirectory}.partial`;
     if (fs.existsSync(stagingDirectory) || fs.existsSync(`${stagingDirectory}.quarantine`)) {
@@ -274,6 +300,21 @@ export async function runStage8BcCorpusCli(options = {}) {
     });
     return { ...transaction, counters };
   } catch (error) {
+    if (stagingDirectory && fs.existsSync(stagingDirectory)) {
+      try {
+        const quarantine = `${stagingDirectory}.quarantine`;
+        if (!fs.existsSync(quarantine)) {
+          fs.writeFileSync(path.join(stagingDirectory, 'QUARANTINED.json'), `${JSON.stringify({
+            status: 'quarantined', reason: error instanceof Error ? error.message : String(error),
+            completedShardCount: counters.shardCommits, automaticRetries: 0, seedOverrides: 0,
+          })}\n`, { encoding: 'utf8', flag: 'wx' });
+          fs.renameSync(stagingDirectory, quarantine);
+          stagingDirectory = null;
+        }
+      } catch {
+        return fused('bc-corpus-cli-unexpected-failure-quarantine-failed', runId, counters);
+      }
+    }
     return fused(error instanceof Error ? error.message : String(error), runId, counters);
   } finally {
     if (temporaryDirectory) fs.rmSync(temporaryDirectory, { recursive: true, force: true });

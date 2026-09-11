@@ -69,10 +69,12 @@ const runnerModule = {
       : { ok: false, status: 'fused', reason: committed.reason, artifactsWritten: 0 };
   },
 };
+const verifiedRunIdentity = () => ({ ok: true, value: { source: {} } });
 
 const greenFixture = setup();
 try {
   const green = await runStage8BcCorpusCli({ environment: greenFixture.environment, capacityPreflight,
+    runIdentityVerifier: verifiedRunIdentity,
     compileRuntimeTree: () => {}, runnerModule, writerModule, teacherEvaluator: () => assert.fail('fixture runner does not invoke teacher'),
     sampleValidator: () => ({ ok: true }), verifyPython: () => ({ status: 0, stdout: JSON.stringify({
       ok: true, corpusManifestSha256: sha('manifest'), shardCount: 64, sampleCount: 64,
@@ -103,6 +105,19 @@ try {
   assert.equal(fs.readdirSync(deniedFixture.artifactRoot).length, 0);
 } finally { fs.rmSync(deniedFixture.temporary, { recursive: true, force: true }); }
 
+const driftFixture = setup();
+try {
+  let temporaryWrites = 0;
+  const result = await runStage8BcCorpusCli({ environment: driftFixture.environment,
+    runIdentityVerifier: () => ({ ok: false, reason: 'bc-run-source-or-control-identity-mismatch' }),
+    createTemporaryDirectory: () => { temporaryWrites += 1; throw new Error('must-not-write'); } });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'bc-run-source-or-control-identity-mismatch');
+  assert.equal(temporaryWrites, 0);
+  assert.equal(result.counters.stagingDirectories, 0);
+  assert.equal(fs.readdirSync(driftFixture.artifactRoot).length, 0);
+} finally { fs.rmSync(driftFixture.temporary, { recursive: true, force: true }); }
+
 const quarantineFixture = setup();
 try {
   const rejectingRunner = { executeStage8BcCorpusTransaction: ({ port }) => {
@@ -113,6 +128,7 @@ try {
     return { ok: false, status: 'fused', reason: 'fixture-mid-run-failure', artifactsWritten: 0 };
   } };
   const result = await runStage8BcCorpusCli({ environment: quarantineFixture.environment, capacityPreflight,
+    runIdentityVerifier: verifiedRunIdentity,
     compileRuntimeTree: () => {}, runnerModule: rejectingRunner, writerModule, teacherEvaluator: () => ({}), sampleValidator: () => ({ ok: true }) });
   assert.equal(result.ok, false);
   assert.equal(fs.existsSync(quarantineFixture.environment.STAGE8_BC_CORPUS_RUN_DIRECTORY), false);
@@ -122,4 +138,4 @@ try {
 } finally { fs.rmSync(quarantineFixture.temporary, { recursive: true, force: true }); }
 
 console.log(JSON.stringify({ passed: true, formalPilotGamesExecuted: 0, temporaryFixturesOnly: true,
-  controls: ['full-readonly-preflight-before-temp','atomic-final-rename','structured-quarantine','no-automatic-retry'] }));
+  controls: ['full-readonly-preflight-before-temp','run-identity-drift-zero-write','atomic-final-rename','structured-quarantine','no-automatic-retry'] }));
