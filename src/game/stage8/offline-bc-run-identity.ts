@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION,
   STAGE8_BC_ARTIFACT_CONTROL_VERSION,
   STAGE8_BC_ARTIFACT_SCOPE,
   STAGE8_BC_MAX_SAMPLES_PER_SHARD,
@@ -17,6 +18,7 @@ import {
 } from './offline-bc-control';
 import {
   STAGE8_BC_CORPUS_BASE_SEED,
+  STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION,
   STAGE8_BC_CORPUS_CONTROL_VERSION,
   STAGE8_BC_CORPUS_GAME_COUNT,
   STAGE8_BC_CORPUS_MAX_RUN_BYTES,
@@ -40,10 +42,18 @@ import { hashStage8BcArtifactWriterDefinition } from './offline-bc-sample-writer
 import { hashStage8BcTeacherDefinition } from './offline-bc-teacher';
 import { hashStage8OfflineIdentity } from './offline-action-identity';
 import { hashStage8OnnxTensorContract } from './offline-onnx-tensor-contract';
+import {
+  STAGE8_BC_PREDECESSOR_RUN_ID,
+  STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY,
+  validateStage8BcOperationalInterruptionEvidence,
+  type Stage8BcOperationalInterruptionExpectedIdentity,
+  type Stage8BcOperationalInterruptionEvidence,
+} from './offline-bc-operational-interruption';
 
-export const STAGE8_BC_RUN_IDENTITY_VERSION = 'stage8-bc-run-identity-v1';
-export const STAGE8_BC_RUN_AUTHORIZATION_VERSION = 'stage8-bc-run-authorization-v1';
-export const STAGE8_BC_FORMAL_RUN_ID = 'formal-bc-corpus-pilot-20260910';
+export const STAGE8_BC_RUN_IDENTITY_VERSION = 'stage8-bc-run-identity-v2';
+export const STAGE8_BC_RUN_AUTHORIZATION_VERSION = 'stage8-bc-run-authorization-v2';
+export const STAGE8_BC_FORMAL_RUN_ID = 'formal-bc-corpus-pilot-20260913';
+export const STAGE8_BC_LEGACY_FORMAL_RUN_ID = STAGE8_BC_PREDECESSOR_RUN_ID;
 export const STAGE8_BC_RUN_IDENTITY_EMIT_SCOPE = 'bc-formal-run-identity-material-emit';
 
 export const STAGE8_BC_RUN_SOURCE_FILES = Object.freeze([
@@ -51,6 +61,7 @@ export const STAGE8_BC_RUN_SOURCE_FILES = Object.freeze([
   'public/game/rule_engine.js',
   'scripts/stage8-bc-corpus-runner.mjs',
   'scripts/stage8-bc-corpus-verify.py',
+  'scripts/stage8-bc-operational-interruption-evidence.mjs',
   'src/game/mcts/mcts-enhancement-engine.ts',
   'src/game/rules/added-kong.ts',
   'src/game/rules/concealed-kong.ts',
@@ -95,6 +106,7 @@ export const STAGE8_BC_RUN_SOURCE_FILES = Object.freeze([
   'src/game/stage8/offline-bc-corpus-manifest.ts',
   'src/game/stage8/offline-bc-corpus-runner.ts',
   'src/game/stage8/offline-bc-model-lifecycle-protocol.ts',
+  'src/game/stage8/offline-bc-operational-interruption.ts',
   'src/game/stage8/offline-bc-sample-probe-control.ts',
   'src/game/stage8/offline-bc-sample-probe-runner.ts',
   'src/game/stage8/offline-bc-sample-protocol.ts',
@@ -131,6 +143,10 @@ export interface Stage8BcRunAuthorizationInput {
   protocolVersion: typeof STAGE8_BC_RUN_AUTHORIZATION_VERSION;
   runId: typeof STAGE8_BC_FORMAL_RUN_ID;
   sourceCommit: string;
+  predecessor: {
+    runId: typeof STAGE8_BC_PREDECESSOR_RUN_ID;
+    evidenceSha256: string;
+  };
   approvals: {
     bc: Approval;
     artifact: Approval;
@@ -193,15 +209,18 @@ export function hashStage8BcRunAuthorizationInput(
 
 export function validateStage8BcRunAuthorizationInput(
   input: Stage8BcRunAuthorizationInput,
-): Stage8BcRunIdentityResult<{ sourceCommit: string }> {
-  if (!exactKeys(input, ['protocolVersion','runId','sourceCommit','approvals','authorizationSha256'])
+): Stage8BcRunIdentityResult<{ sourceCommit: string; predecessorEvidenceSha256: string }> {
+  if (!exactKeys(input, ['protocolVersion','runId','sourceCommit','predecessor','approvals','authorizationSha256'])
+    || !exactKeys(input?.predecessor, ['runId','evidenceSha256'])
     || !exactKeys(input?.approvals, ['bc','artifact','corpus','emit'])
     || !Object.values(input?.approvals ?? {}).every((approval) => exactKeys(approval, ['approvalId','granted','scope']))) {
     return { ok: false, reason: 'bc-run-authorization-schema-invalid' };
   }
   if (input.protocolVersion !== STAGE8_BC_RUN_AUTHORIZATION_VERSION
     || input.runId !== STAGE8_BC_FORMAL_RUN_ID
-    || !/^[a-f0-9]{40}$/i.test(input.sourceCommit)) {
+    || !/^[a-f0-9]{40}$/i.test(input.sourceCommit)
+    || input.predecessor.runId !== STAGE8_BC_PREDECESSOR_RUN_ID
+    || !/^[a-f0-9]{64}$/i.test(input.predecessor.evidenceSha256)) {
     return { ok: false, reason: 'bc-run-authorization-identity-invalid' };
   }
   const expectedScopes = {
@@ -219,7 +238,13 @@ export function validateStage8BcRunAuthorizationInput(
   if (input.authorizationSha256 !== hashStage8BcRunAuthorizationInput(authorizationPayload(input))) {
     return { ok: false, reason: 'bc-run-authorization-hash-mismatch' };
   }
-  return { ok: true, value: { sourceCommit: input.sourceCommit.toLowerCase() } };
+  return {
+    ok: true,
+    value: {
+      sourceCommit: input.sourceCommit.toLowerCase(),
+      predecessorEvidenceSha256: input.predecessor.evidenceSha256.toLowerCase(),
+    },
+  };
 }
 
 function bundle(files: readonly { path: string; sha256: string }[], prefix: string): string {
@@ -266,10 +291,21 @@ export function collectStage8BcRunSourceIdentity(input: {
 
 export function createStage8BcRunIdentityMaterials(input: {
   authorization: Stage8BcRunAuthorizationInput;
+  predecessorEvidence: Stage8BcOperationalInterruptionEvidence;
+  expectedPredecessorIdentity?: Stage8BcOperationalInterruptionExpectedIdentity;
   readFile(relativePath: string): Uint8Array;
 }): Stage8BcRunIdentityResult<Stage8BcRunIdentityMaterials> {
   const authorization = validateStage8BcRunAuthorizationInput(input.authorization);
   if (!authorization.ok) return authorization;
+  const expectedPredecessorIdentity = input.expectedPredecessorIdentity ?? STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY;
+  const predecessor = validateStage8BcOperationalInterruptionEvidence(
+    input.predecessorEvidence,
+    expectedPredecessorIdentity,
+  );
+  if (!predecessor.ok) return predecessor;
+  if (predecessor.value.evidenceSha256 !== authorization.value.predecessorEvidenceSha256) {
+    return { ok: false, reason: 'bc-run-authorization-predecessor-evidence-mismatch' };
+  }
   const source = collectStage8BcRunSourceIdentity({ sourceCommit: authorization.value.sourceCommit, readFile: input.readFile });
   if (!source.ok) return source;
   const identity = source.value;
@@ -301,9 +337,12 @@ export function createStage8BcRunIdentityMaterials(input: {
   };
   const bcControl: Stage8BcControlManifest = { ...bcPayload, manifestSha256: hashStage8BcControlManifestPayload(bcPayload) };
   const artifactPayload: Omit<Stage8BcArtifactControlManifest, 'manifestSha256'> = {
-    protocolVersion: STAGE8_BC_ARTIFACT_CONTROL_VERSION,
+    protocolVersion: STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION,
     identity: {
       runId: STAGE8_BC_FORMAL_RUN_ID,
+      predecessorRunId: STAGE8_BC_PREDECESSOR_RUN_ID,
+      predecessorEvidenceSha256: predecessor.value.evidenceSha256,
+      runAuthorizationSha256: input.authorization.authorizationSha256,
       sourceBundleSha256: identity.sourceBundleSha256,
       bcControlManifestSha256: bcControl.manifestSha256,
       sampleSchemaSha256: hashStage8BcSampleProtocolDefinition(),
@@ -337,9 +376,12 @@ export function createStage8BcRunIdentityMaterials(input: {
     manifestSha256: hashStage8BcArtifactControlManifestPayload(artifactPayload),
   };
   const corpusPayload: Omit<Stage8BcCorpusControlManifest, 'manifestSha256'> = {
-    protocolVersion: STAGE8_BC_CORPUS_CONTROL_VERSION,
+    protocolVersion: STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION,
     identity: {
       runId: STAGE8_BC_FORMAL_RUN_ID,
+      predecessorRunId: STAGE8_BC_PREDECESSOR_RUN_ID,
+      predecessorEvidenceSha256: predecessor.value.evidenceSha256,
+      runAuthorizationSha256: input.authorization.authorizationSha256,
       sourceBundleSha256: identity.sourceBundleSha256,
       artifactControlManifestSha256: artifactControl.manifestSha256,
       bcControlManifestSha256: bcControl.manifestSha256,
@@ -404,6 +446,9 @@ export function createStage8BcRunIdentityMaterials(input: {
   const verified = validateStage8BcRunIdentityMaterials({
     sourceCommit: identity.sourceCommit,
     readFile: input.readFile,
+    authorization: input.authorization,
+    predecessorEvidence: input.predecessorEvidence,
+    expectedPredecessorIdentity,
     artifactControl,
     corpusControl,
   });
@@ -413,9 +458,23 @@ export function createStage8BcRunIdentityMaterials(input: {
 export function validateStage8BcRunIdentityMaterials(input: {
   sourceCommit: string;
   readFile(relativePath: string): Uint8Array;
+  authorization: Stage8BcRunAuthorizationInput;
+  predecessorEvidence: Stage8BcOperationalInterruptionEvidence;
+  expectedPredecessorIdentity?: Stage8BcOperationalInterruptionExpectedIdentity;
   artifactControl: Stage8BcArtifactControlManifest;
   corpusControl: Stage8BcCorpusControlManifest;
 }): Stage8BcRunIdentityResult<{ source: Stage8BcRunSourceIdentity }> {
+  const authorization = validateStage8BcRunAuthorizationInput(input.authorization);
+  if (!authorization.ok) return authorization;
+  const predecessor = validateStage8BcOperationalInterruptionEvidence(
+    input.predecessorEvidence,
+    input.expectedPredecessorIdentity ?? STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY,
+  );
+  if (!predecessor.ok) return predecessor;
+  if (input.sourceCommit.toLowerCase() !== authorization.value.sourceCommit
+    || authorization.value.predecessorEvidenceSha256 !== predecessor.value.evidenceSha256) {
+    return { ok: false, reason: 'bc-run-authorization-or-predecessor-identity-mismatch' };
+  }
   const bc = validateStage8BcControlManifest(input.artifactControl?.bcControl);
   if (!bc.ok) return { ok: false, reason: bc.decision.reason };
   const artifact = validateStage8BcArtifactControlManifest(input.artifactControl);
@@ -460,6 +519,12 @@ export function validateStage8BcRunIdentityMaterials(input: {
     corpusIdentity.capacityPreflightSha256 === expected.capacityPreflightSha256,
     input.artifactControl.manifestSha256 === corpusIdentity.artifactControlManifestSha256,
     bcControl.manifestSha256 === corpusIdentity.bcControlManifestSha256,
+    input.artifactControl.identity.predecessorRunId === STAGE8_BC_PREDECESSOR_RUN_ID,
+    corpusIdentity.predecessorRunId === STAGE8_BC_PREDECESSOR_RUN_ID,
+    input.artifactControl.identity.predecessorEvidenceSha256 === predecessor.value.evidenceSha256,
+    corpusIdentity.predecessorEvidenceSha256 === predecessor.value.evidenceSha256,
+    input.artifactControl.identity.runAuthorizationSha256 === input.authorization.authorizationSha256,
+    corpusIdentity.runAuthorizationSha256 === input.authorization.authorizationSha256,
   ];
   if (input.corpusControl.identity.runId !== STAGE8_BC_FORMAL_RUN_ID
     || input.artifactControl.identity.runId !== STAGE8_BC_FORMAL_RUN_ID

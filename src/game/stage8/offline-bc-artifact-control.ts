@@ -13,12 +13,16 @@ import { hashStage8BcSampleProtocolDefinition } from './offline-bc-sample-protoc
 import { hashStage8OnnxTensorContract } from './offline-onnx-tensor-contract';
 
 export const STAGE8_BC_ARTIFACT_CONTROL_VERSION = 'stage8-bc-artifact-control-v1';
+export const STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION = 'stage8-bc-artifact-control-v2';
 export const STAGE8_BC_ARTIFACT_SCOPE = 'bc-sample-artifact-write';
 export const STAGE8_BC_MAX_SAMPLES_PER_SHARD = 4096;
 export const STAGE8_BC_MAX_UNCOMPRESSED_SHARD_BYTES = 64 * 1024 * 1024;
 
 export interface Stage8BcArtifactControlIdentity {
   runId: string;
+  predecessorRunId?: string;
+  predecessorEvidenceSha256?: string;
+  runAuthorizationSha256?: string;
   sourceBundleSha256: string;
   bcControlManifestSha256: string;
   sampleSchemaSha256: string;
@@ -33,7 +37,8 @@ export interface Stage8BcArtifactControlIdentity {
 }
 
 export interface Stage8BcArtifactControlManifest {
-  protocolVersion: typeof STAGE8_BC_ARTIFACT_CONTROL_VERSION;
+  protocolVersion: typeof STAGE8_BC_ARTIFACT_CONTROL_VERSION
+    | typeof STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION;
   identity: Stage8BcArtifactControlIdentity;
   bcControl: Stage8BcControlManifest;
   authorization: {
@@ -99,7 +104,7 @@ function isStrictChild(candidate: string, root: string): boolean {
 }
 
 function identityHashes(identity: Stage8BcArtifactControlIdentity): string[] {
-  return [
+  const values = [
     identity.sourceBundleSha256,
     identity.bcControlManifestSha256,
     identity.sampleSchemaSha256,
@@ -112,6 +117,9 @@ function identityHashes(identity: Stage8BcArtifactControlIdentity): string[] {
     identity.onnxExportDefinitionSha256,
     identity.parityDefinitionSha256,
   ];
+  if (identity.predecessorEvidenceSha256 !== undefined) values.push(identity.predecessorEvidenceSha256);
+  if (identity.runAuthorizationSha256 !== undefined) values.push(identity.runAuthorizationSha256);
+  return values;
 }
 
 export function hashStage8BcArtifactControlManifestPayload(
@@ -130,14 +138,21 @@ export function validateStage8BcArtifactControlManifest(
     'allowPythonRuntime','allowTraining','allowModelCreation','allowCheckpointWrite','allowOnnxExport','allowSmoke',
     'allowRuntime','manifestSha256',
   ])) return fail(runId, 'bc-artifact-control-schema-invalid');
-  if (!exactKeys(manifest.identity, [
+  const predecessorBound = manifest.protocolVersion === STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION;
+  const identityKeys = [
     'runId','sourceBundleSha256','bcControlManifestSha256','sampleSchemaSha256','tensorContractSha256',
     'writerDefinitionSha256','pythonDatasetDefinitionSha256','modelDefinitionSha256','trainingDefinitionSha256',
     'checkpointDefinitionSha256','onnxExportDefinitionSha256','parityDefinitionSha256',
-  ])) return fail(runId, 'bc-artifact-control-identity-schema-invalid');
+  ];
+  if (predecessorBound) identityKeys.push('predecessorRunId','predecessorEvidenceSha256','runAuthorizationSha256');
+  if (!exactKeys(manifest.identity, identityKeys)) return fail(runId, 'bc-artifact-control-identity-schema-invalid');
   if (!exactKeys(manifest.authorization, ['approvalId','granted','scope'])
     || !exactKeys(manifest.limits, ['maxSamplesPerShard','maxUncompressedShardBytes'])) return fail(runId, 'bc-artifact-control-nested-schema-invalid');
-  if (manifest.protocolVersion !== STAGE8_BC_ARTIFACT_CONTROL_VERSION || !validId(runId)) return fail(runId, 'bc-artifact-control-identity-invalid');
+  if (![STAGE8_BC_ARTIFACT_CONTROL_VERSION, STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION]
+    .includes(manifest.protocolVersion) || !validId(runId)) return fail(runId, 'bc-artifact-control-identity-invalid');
+  if (predecessorBound && !validId(manifest.identity.predecessorRunId)) {
+    return fail(runId, 'bc-artifact-control-predecessor-identity-invalid');
+  }
   if (!manifest.authorization.granted || !validId(manifest.authorization.approvalId)
     || manifest.authorization.scope !== STAGE8_BC_ARTIFACT_SCOPE) return fail(runId, 'bc-artifact-control-authorization-required');
   const bcControl = validateStage8BcControlManifest(manifest.bcControl);

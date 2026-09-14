@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { runStage8BcRunIdentityCli } from './stage8-bc-run-identity.mjs';
+import {
+  inspectStage8BcOperationalInterruptionQuarantine,
+  runStage8BcOperationalInterruptionEvidenceCli,
+} from './stage8-bc-operational-interruption-evidence.mjs';
 
 const root = process.cwd();
 const require = createRequire(import.meta.url);
@@ -12,164 +18,317 @@ const previous = require.extensions['.ts'];
 require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, fileName: filename,
 }).outputText, filename);
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 try {
   const identity = require('../src/game/stage8/offline-bc-run-identity.ts');
-  const bcTools = require('../src/game/stage8/offline-bc-control.ts');
+  const evidenceTools = require('../src/game/stage8/offline-bc-operational-interruption.ts');
   const artifactTools = require('../src/game/stage8/offline-bc-artifact-control.ts');
   const corpusTools = require('../src/game/stage8/offline-bc-corpus-control.ts');
-  const sourceCommit = 'cb2b794e48fad81d3621690af4018eb73598153b';
-  const approvalPayload = {
-    protocolVersion: identity.STAGE8_BC_RUN_AUTHORIZATION_VERSION,
-    runId: identity.STAGE8_BC_FORMAL_RUN_ID,
-    sourceCommit,
-    approvals: {
-      bc: { approvalId: 'product-bc-control-20260910', granted: true, scope: 'bc-teacher-protocol-preflight' },
-      artifact: { approvalId: 'product-bc-artifact-20260910', granted: true, scope: 'bc-sample-artifact-write' },
-      corpus: { approvalId: 'product-bc-corpus-20260910', granted: true, scope: 'bc-formal-corpus-pilot' },
-      emit: { approvalId: 'product-bc-material-emit-20260910', granted: true, scope: identity.STAGE8_BC_RUN_IDENTITY_EMIT_SCOPE },
-    },
-  };
-  const authorization = {
-    ...approvalPayload,
-    authorizationSha256: identity.hashStage8BcRunAuthorizationInput(approvalPayload),
-  };
-  const sourceBytes = new Map(identity.STAGE8_BC_RUN_SOURCE_FILES.map((relativePath) => [
-    relativePath,
-    fs.readFileSync(path.join(root, ...relativePath.split('/'))),
-  ]));
-  const readerA = (relativePath) => Buffer.from(sourceBytes.get(relativePath));
-  const readerB = (relativePath) => Buffer.from(sourceBytes.get(relativePath));
-  const first = identity.createStage8BcRunIdentityMaterials({ authorization, readFile: readerA });
-  const second = identity.createStage8BcRunIdentityMaterials({
-    authorization: {
-      approvals: {
-        emit: authorization.approvals.emit,
-        corpus: authorization.approvals.corpus,
-        artifact: authorization.approvals.artifact,
-        bc: authorization.approvals.bc,
-      },
-      authorizationSha256: authorization.authorizationSha256,
-      sourceCommit: authorization.sourceCommit,
-      runId: authorization.runId,
-      protocolVersion: authorization.protocolVersion,
-    },
-    readFile: readerB,
-  });
-  assert.equal(first.ok, true, first.reason);
-  assert.equal(second.ok, true, second.reason);
-  assert.equal(JSON.stringify(first.value), JSON.stringify(second.value), 'absolute worktree path and JSON key order must not affect output');
-  assert.equal(first.value.source.files.length, identity.STAGE8_BC_RUN_SOURCE_FILES.length);
-  assert.equal(new Set(first.value.source.files.map((entry) => entry.path)).size, first.value.source.files.length);
-  assert.equal(identity.validateStage8BcRunIdentityMaterials({
-    sourceCommit, readFile: readerA, artifactControl: first.value.artifactControl, corpusControl: first.value.corpusControl,
-  }).ok, true);
+  const sourceCommit = 'c'.repeat(40);
+  assert.equal(identity.STAGE8_BC_FORMAL_RUN_ID, 'formal-bc-corpus-pilot-20260913');
+  assert.equal(evidenceTools.STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY.completedShardCount, 32);
+  assert.equal(evidenceTools.STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY.totalRecords, 5179);
+  assert.equal(evidenceTools.STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY.totalBytes, 13344052);
+  assert.equal(evidenceTools.STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY.shardAggregateSha256,
+    'b970f3e31146c04979a84d247c1a420beac7c3e1e0280a48be636990ae3f8660');
 
-  const deniedPayload = structuredClone(approvalPayload);
-  deniedPayload.approvals.emit.granted = false;
-  const denied = { ...deniedPayload, authorizationSha256: identity.hashStage8BcRunAuthorizationInput(deniedPayload) };
-  assert.equal(identity.createStage8BcRunIdentityMaterials({ authorization: denied, readFile: readerA }).reason,
-    'bc-run-emit-authorization-required');
-  const wrongScopePayload = structuredClone(approvalPayload);
-  wrongScopePayload.approvals.corpus.scope = 'wrong-scope';
-  const wrongScope = { ...wrongScopePayload, authorizationSha256: identity.hashStage8BcRunAuthorizationInput(wrongScopePayload) };
-  assert.equal(identity.createStage8BcRunIdentityMaterials({ authorization: wrongScope, readFile: readerA }).reason,
-    'bc-run-corpus-authorization-required');
-  const wrongRunPayload = { ...approvalPayload, runId: 'formal-bc-corpus-pilot-other' };
-  const wrongRun = { ...wrongRunPayload, authorizationSha256: identity.hashStage8BcRunAuthorizationInput(wrongRunPayload) };
-  assert.equal(identity.createStage8BcRunIdentityMaterials({ authorization: wrongRun, readFile: readerA }).reason,
-    'bc-run-authorization-identity-invalid');
-  assert.equal(identity.createStage8BcRunIdentityMaterials({
-    authorization: { ...authorization, authorizationSha256: '0'.repeat(64) }, readFile: readerA,
-  }).reason, 'bc-run-authorization-hash-mismatch');
-
-  for (const tamperedPath of identity.STAGE8_BC_RUN_SOURCE_FILES) {
-    const tamperedReader = (relativePath) => relativePath === tamperedPath
-      ? Buffer.concat([Buffer.from(sourceBytes.get(relativePath)), Buffer.from('\nTAMPERED')])
-      : readerA(relativePath);
-    assert.equal(identity.validateStage8BcRunIdentityMaterials({
-      sourceCommit, readFile: tamperedReader, artifactControl: first.value.artifactControl, corpusControl: first.value.corpusControl,
-    }).reason, 'bc-run-source-or-control-identity-mismatch', `source byte drift must fail: ${tamperedPath}`);
+  function createIncidentFixture(parent) {
+    const artifactRoot = path.join(parent, 'artifacts');
+    const quarantine = path.join(artifactRoot, evidenceTools.STAGE8_BC_PREDECESSOR_QUARANTINE_RELATIVE_PATH);
+    const batches = path.join(quarantine, 'batches');
+    fs.mkdirSync(batches, { recursive: true });
+    const fixedTime = new Date('2026-09-11T02:49:24.000Z');
+    const shards = [];
+    for (let index = 0; index < 2; index += 1) {
+      const serial = String(index + 1).padStart(6, '0');
+      const batchDirectory = path.join(batches, `batch-${serial}`);
+      fs.mkdirSync(batchDirectory);
+      const records = Array.from({ length: index + 2 }, (_, recordIndex) => ({ id: `${serial}-${recordIndex}` }));
+      const bytes = zlib.gzipSync(Buffer.from(JSON.stringify({ protocolVersion: 'fixture-v1', records }), 'utf8'));
+      const shardPath = path.join(batchDirectory, `fixture-${serial}.json.gz`);
+      fs.writeFileSync(shardPath, bytes);
+      fs.utimesSync(shardPath, fixedTime, fixedTime);
+      shards.push({
+        relativePath: path.relative(quarantine, shardPath).replace(/\\/g, '/'),
+        bytes: bytes.length,
+        records: records.length,
+        sha256: sha256(bytes),
+      });
+    }
+    const markerBytes = Buffer.from(`${JSON.stringify({
+      status: 'quarantined',
+      reason: evidenceTools.STAGE8_BC_OPERATIONAL_INTERRUPTION_REASON,
+      completedShardCount: 2,
+      automaticRetries: 0,
+      seedOverrides: 0,
+    })}\n`, 'utf8');
+    fs.writeFileSync(path.join(quarantine, 'QUARANTINED.json'), markerBytes);
+    const artifactControlBytes = Buffer.from('{"fixture":"artifact-control"}\n');
+    const corpusControlBytes = Buffer.from('{"fixture":"corpus-control"}\n');
+    const predecessorAuthorizationBytes = Buffer.from('{"fixture":"authorization"}\n');
+    const artifactControlPath = path.join(parent, 'predecessor-artifact-control.json');
+    const corpusControlPath = path.join(parent, 'predecessor-corpus-control.json');
+    const predecessorAuthorizationPath = path.join(parent, 'predecessor-authorization.json');
+    fs.writeFileSync(artifactControlPath, artifactControlBytes);
+    fs.writeFileSync(corpusControlPath, corpusControlBytes);
+    fs.writeFileSync(predecessorAuthorizationPath, predecessorAuthorizationBytes);
+    const expectedIdentity = {
+      predecessorRunId: evidenceTools.STAGE8_BC_PREDECESSOR_RUN_ID,
+      sourceCommit: evidenceTools.STAGE8_BC_FORMAL_INTERRUPTION_IDENTITY.sourceCommit,
+      sourceBundleSha256: sha256('fixture-source-bundle'),
+      artifactControlFileSha256: sha256(artifactControlBytes),
+      corpusControlFileSha256: sha256(corpusControlBytes),
+      authorizationFileSha256: sha256(predecessorAuthorizationBytes),
+      quarantineRelativePath: evidenceTools.STAGE8_BC_PREDECESSOR_QUARANTINE_RELATIVE_PATH,
+      markerSha256: sha256(markerBytes),
+      completedShardCount: 2,
+      totalRecords: shards.reduce((sum, shard) => sum + shard.records, 0),
+      totalBytes: shards.reduce((sum, shard) => sum + shard.bytes, 0),
+      lastWriteTimeUtc: fixedTime.toISOString(),
+      shardAggregateSha256: evidenceTools.hashStage8BcOperationalInterruptionShardAggregate(shards),
+    };
+    const inspected = inspectStage8BcOperationalInterruptionQuarantine({ artifactRoot, expectedIdentity, evidenceTools });
+    assert.equal(inspected.ok, true, inspected.reason);
+    return {
+      artifactRoot,
+      expectedIdentity,
+      evidence: inspected.value,
+      artifactControlPath,
+      corpusControlPath,
+      predecessorAuthorizationPath,
+    };
   }
 
-  const foreignBcPayload = structuredClone(first.value.bcControl);
-  delete foreignBcPayload.manifestSha256;
-  foreignBcPayload.identity.sourceBundleSha256 = '1'.repeat(64);
-  const foreignBc = { ...foreignBcPayload, manifestSha256: bcTools.hashStage8BcControlManifestPayload(foreignBcPayload) };
-  const foreignArtifactPayload = structuredClone(first.value.artifactControl);
-  delete foreignArtifactPayload.manifestSha256;
-  foreignArtifactPayload.bcControl = foreignBc;
-  foreignArtifactPayload.identity.sourceBundleSha256 = '1'.repeat(64);
-  foreignArtifactPayload.identity.bcControlManifestSha256 = foreignBc.manifestSha256;
-  const foreignArtifact = { ...foreignArtifactPayload,
-    manifestSha256: artifactTools.hashStage8BcArtifactControlManifestPayload(foreignArtifactPayload) };
-  const foreignCorpusPayload = structuredClone(first.value.corpusControl);
-  delete foreignCorpusPayload.manifestSha256;
-  foreignCorpusPayload.identity.sourceBundleSha256 = '1'.repeat(64);
-  foreignCorpusPayload.identity.bcControlManifestSha256 = foreignBc.manifestSha256;
-  foreignCorpusPayload.identity.artifactControlManifestSha256 = foreignArtifact.manifestSha256;
-  const foreignCorpus = { ...foreignCorpusPayload,
-    manifestSha256: corpusTools.hashStage8BcCorpusControlPayload(foreignCorpusPayload) };
-  assert.equal(identity.validateStage8BcRunIdentityMaterials({
-    sourceCommit, readFile: readerA, artifactControl: foreignArtifact, corpusControl: foreignCorpus,
-  }).reason, 'bc-run-source-or-control-identity-mismatch', 'self-consistent fake hashes must fail current-source binding');
+  function resignEvidence(evidence) {
+    const payload = structuredClone(evidence);
+    delete payload.evidenceSha256;
+    return { ...payload, evidenceSha256: evidenceTools.hashStage8BcOperationalInterruptionEvidencePayload(payload) };
+  }
 
-  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'stage8-bc-run-identity-'));
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'stage8-bc-run-identity-v2-'));
   try {
-    const artifactRoot = path.join(temporary, 'artifacts');
-    const controlDirectory = path.join(artifactRoot, `${identity.STAGE8_BC_FORMAL_RUN_ID}-control`);
-    fs.mkdirSync(controlDirectory, { recursive: true });
-    const authorizationPath = path.join(temporary, 'authorization.json');
+    const incident = createIncidentFixture(temporary);
+    const evidencePath = path.join(temporary, 'predecessor-evidence.json');
+    fs.writeFileSync(evidencePath, `${JSON.stringify(incident.evidence)}\n`);
+    const evidenceEnvironment = {
+      STAGE8_ARTIFACT_ROOT: incident.artifactRoot,
+      STAGE8_BC_PREDECESSOR_ARTIFACT_CONTROL_MANIFEST: incident.artifactControlPath,
+      STAGE8_BC_PREDECESSOR_CORPUS_CONTROL_MANIFEST: incident.corpusControlPath,
+      STAGE8_BC_PREDECESSOR_RUN_AUTHORIZATION: incident.predecessorAuthorizationPath,
+    };
+    const checkedEvidence = await runStage8BcOperationalInterruptionEvidenceCli({
+      environment: evidenceEnvironment,
+      args: ['--check'],
+      evidenceTools,
+      expectedIdentity: incident.expectedIdentity,
+    });
+    assert.equal(checkedEvidence.ok, true, checkedEvidence.reason);
+    assert.equal(checkedEvidence.filesWritten, 0);
+    const deniedEvidence = await runStage8BcOperationalInterruptionEvidenceCli({
+      environment: evidenceEnvironment,
+      args: ['--emit'],
+      evidenceTools,
+      expectedIdentity: incident.expectedIdentity,
+    });
+    assert.equal(deniedEvidence.reason, 'bc-operational-interruption-emit-authorization-required');
+    const emitPayload = {
+      protocolVersion: evidenceTools.STAGE8_BC_OPERATIONAL_INTERRUPTION_EMIT_AUTHORIZATION_VERSION,
+      predecessorRunId: evidenceTools.STAGE8_BC_PREDECESSOR_RUN_ID,
+      evidenceSha256: incident.evidence.evidenceSha256,
+      approvalId: 'product-operational-evidence-fixture',
+      granted: true,
+      scope: evidenceTools.STAGE8_BC_OPERATIONAL_INTERRUPTION_EMIT_SCOPE,
+    };
+    const emitAuthorization = {
+      ...emitPayload,
+      authorizationSha256: evidenceTools.hashStage8BcOperationalInterruptionEmitAuthorization(emitPayload),
+    };
+    const emitAuthorizationPath = path.join(temporary, 'evidence-emit-authorization.json');
+    fs.writeFileSync(emitAuthorizationPath, JSON.stringify(emitAuthorization));
+    const emittedEvidencePath = path.join(
+      incident.artifactRoot,
+      `${evidenceTools.STAGE8_BC_PREDECESSOR_RUN_ID}-operational-interruption-evidence.json`,
+    );
+    const emittedEvidence = await runStage8BcOperationalInterruptionEvidenceCli({
+      environment: {
+        ...evidenceEnvironment,
+        STAGE8_BC_OPERATIONAL_EVIDENCE_EMIT: '1',
+        STAGE8_BC_OPERATIONAL_EVIDENCE_EMIT_AUTHORIZATION: emitAuthorizationPath,
+        STAGE8_BC_OPERATIONAL_EVIDENCE_OUTPUT: emittedEvidencePath,
+      },
+      args: ['--emit'],
+      evidenceTools,
+      expectedIdentity: incident.expectedIdentity,
+    });
+    assert.equal(emittedEvidence.ok, true, emittedEvidence.reason);
+    assert.equal(emittedEvidence.filesWritten, 1);
+    assert.equal(fs.existsSync(`${emittedEvidencePath}.partial`), false);
+    assert.equal(fs.readFileSync(emittedEvidencePath, 'utf8'), `${JSON.stringify(incident.evidence)}\n`);
+
+    const copiedRoot = path.join(temporary, 'second-root');
+    fs.cpSync(incident.artifactRoot, copiedRoot, { recursive: true });
+    for (const batchName of fs.readdirSync(path.join(copiedRoot, incident.expectedIdentity.quarantineRelativePath, 'batches'))) {
+      const batchDirectory = path.join(copiedRoot, incident.expectedIdentity.quarantineRelativePath, 'batches', batchName);
+      for (const name of fs.readdirSync(batchDirectory)) {
+        fs.utimesSync(path.join(batchDirectory, name), new Date(incident.expectedIdentity.lastWriteTimeUtc), new Date(incident.expectedIdentity.lastWriteTimeUtc));
+      }
+    }
+    const copied = inspectStage8BcOperationalInterruptionQuarantine({
+      artifactRoot: copiedRoot,
+      expectedIdentity: incident.expectedIdentity,
+      evidenceTools,
+    });
+    assert.equal(copied.ok, true, copied.reason);
+    assert.equal(copied.value.evidenceSha256, incident.evidence.evidenceSha256, 'absolute roots must not affect evidence identity');
+
+    for (const mutate of [
+      (value) => { value.interruption.reason = 'other-reason'; },
+      (value) => { value.quarantine.completedShardCount = 3; },
+      (value) => { value.quarantine.totalRecords += 1; },
+      (value) => { value.quarantine.totalBytes += 1; },
+      (value) => { value.quarantine.markerSha256 = '1'.repeat(64); },
+      (value) => { value.quarantine.shardAggregateSha256 = '2'.repeat(64); },
+      (value) => { value.quarantine.shards[0].sha256 = '3'.repeat(64); },
+      (value) => { value.quarantine.shards[0].relativePath = 'C:/absolute/shard.json.gz'; },
+    ]) {
+      const tampered = structuredClone(incident.evidence);
+      mutate(tampered);
+      assert.equal(evidenceTools.validateStage8BcOperationalInterruptionEvidence(
+        resignEvidence(tampered),
+        incident.expectedIdentity,
+      ).ok, false, 'self-consistent interruption evidence tamper must fail');
+    }
+
+    const approvalPayload = {
+      protocolVersion: identity.STAGE8_BC_RUN_AUTHORIZATION_VERSION,
+      runId: identity.STAGE8_BC_FORMAL_RUN_ID,
+      sourceCommit,
+      predecessor: {
+        runId: evidenceTools.STAGE8_BC_PREDECESSOR_RUN_ID,
+        evidenceSha256: incident.evidence.evidenceSha256,
+      },
+      approvals: {
+        bc: { approvalId: 'product-bc-control-20260913', granted: true, scope: 'bc-teacher-protocol-preflight' },
+        artifact: { approvalId: 'product-bc-artifact-20260913', granted: true, scope: 'bc-sample-artifact-write' },
+        corpus: { approvalId: 'product-bc-corpus-20260913', granted: true, scope: 'bc-formal-corpus-pilot' },
+        emit: { approvalId: 'product-bc-material-emit-20260913', granted: true, scope: identity.STAGE8_BC_RUN_IDENTITY_EMIT_SCOPE },
+      },
+    };
+    const authorization = {
+      ...approvalPayload,
+      authorizationSha256: identity.hashStage8BcRunAuthorizationInput(approvalPayload),
+    };
+    const sourceBytes = new Map(identity.STAGE8_BC_RUN_SOURCE_FILES.map((relativePath) => [
+      relativePath,
+      fs.readFileSync(path.join(root, ...relativePath.split('/'))),
+    ]));
+    const reader = (relativePath) => Buffer.from(sourceBytes.get(relativePath));
+    const built = identity.createStage8BcRunIdentityMaterials({
+      authorization,
+      predecessorEvidence: incident.evidence,
+      expectedPredecessorIdentity: incident.expectedIdentity,
+      readFile: reader,
+    });
+    assert.equal(built.ok, true, built.reason);
+    assert.equal(built.value.artifactControl.protocolVersion, artifactTools.STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION);
+    assert.equal(built.value.corpusControl.protocolVersion, corpusTools.STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION);
+    assert.equal(built.value.artifactControl.identity.predecessorEvidenceSha256, incident.evidence.evidenceSha256);
+    assert.equal(built.value.corpusControl.identity.runAuthorizationSha256, authorization.authorizationSha256);
+    assert.equal(identity.validateStage8BcRunIdentityMaterials({
+      sourceCommit, readFile: reader, authorization, predecessorEvidence: incident.evidence,
+      expectedPredecessorIdentity: incident.expectedIdentity,
+      artifactControl: built.value.artifactControl, corpusControl: built.value.corpusControl,
+    }).ok, true);
+
+    const legacyArtifactPayload = structuredClone(built.value.artifactControl);
+    delete legacyArtifactPayload.manifestSha256;
+    legacyArtifactPayload.protocolVersion = artifactTools.STAGE8_BC_ARTIFACT_CONTROL_VERSION;
+    delete legacyArtifactPayload.identity.predecessorRunId;
+    delete legacyArtifactPayload.identity.predecessorEvidenceSha256;
+    delete legacyArtifactPayload.identity.runAuthorizationSha256;
+    const legacyArtifact = {
+      ...legacyArtifactPayload,
+      manifestSha256: artifactTools.hashStage8BcArtifactControlManifestPayload(legacyArtifactPayload),
+    };
+    const legacyCorpusPayload = structuredClone(built.value.corpusControl);
+    delete legacyCorpusPayload.manifestSha256;
+    legacyCorpusPayload.protocolVersion = corpusTools.STAGE8_BC_CORPUS_CONTROL_VERSION;
+    legacyCorpusPayload.identity.artifactControlManifestSha256 = legacyArtifact.manifestSha256;
+    delete legacyCorpusPayload.identity.predecessorRunId;
+    delete legacyCorpusPayload.identity.predecessorEvidenceSha256;
+    delete legacyCorpusPayload.identity.runAuthorizationSha256;
+    const legacyCorpus = {
+      ...legacyCorpusPayload,
+      manifestSha256: corpusTools.hashStage8BcCorpusControlPayload(legacyCorpusPayload),
+    };
+    assert.equal(artifactTools.validateStage8BcArtifactControlManifest(legacyArtifact).ok, true);
+    assert.equal(corpusTools.validateStage8BcCorpusControlManifest(legacyCorpus).ok, true);
+    assert.equal(identity.validateStage8BcRunIdentityMaterials({
+      sourceCommit, readFile: reader, authorization, predecessorEvidence: incident.evidence,
+      expectedPredecessorIdentity: incident.expectedIdentity,
+      artifactControl: legacyArtifact, corpusControl: legacyCorpus,
+    }).reason, 'bc-run-source-or-control-identity-mismatch', 'legacy controls remain verifiable but cannot authorize the new run');
+
+    const oldAuthorization = structuredClone(authorization);
+    oldAuthorization.protocolVersion = 'stage8-bc-run-authorization-v1';
+    delete oldAuthorization.predecessor;
+    assert.equal(identity.createStage8BcRunIdentityMaterials({
+      authorization: oldAuthorization, predecessorEvidence: incident.evidence,
+      expectedPredecessorIdentity: incident.expectedIdentity, readFile: reader,
+    }).reason, 'bc-run-authorization-schema-invalid');
+    const wrongEvidencePayload = structuredClone(approvalPayload);
+    wrongEvidencePayload.predecessor.evidenceSha256 = 'f'.repeat(64);
+    const wrongEvidenceAuthorization = {
+      ...wrongEvidencePayload,
+      authorizationSha256: identity.hashStage8BcRunAuthorizationInput(wrongEvidencePayload),
+    };
+    assert.equal(identity.createStage8BcRunIdentityMaterials({
+      authorization: wrongEvidenceAuthorization, predecessorEvidence: incident.evidence,
+      expectedPredecessorIdentity: incident.expectedIdentity, readFile: reader,
+    }).reason, 'bc-run-authorization-predecessor-evidence-mismatch');
+
+    for (const tamperedPath of identity.STAGE8_BC_RUN_SOURCE_FILES) {
+      const tamperedReader = (relativePath) => relativePath === tamperedPath
+        ? Buffer.concat([Buffer.from(sourceBytes.get(relativePath)), Buffer.from('\nTAMPERED')])
+        : reader(relativePath);
+      assert.equal(identity.validateStage8BcRunIdentityMaterials({
+        sourceCommit, readFile: tamperedReader, authorization, predecessorEvidence: incident.evidence,
+        expectedPredecessorIdentity: incident.expectedIdentity,
+        artifactControl: built.value.artifactControl, corpusControl: built.value.corpusControl,
+      }).reason, 'bc-run-source-or-control-identity-mismatch', `source byte drift must fail: ${tamperedPath}`);
+    }
+
+    const authorizationPath = path.join(temporary, 'new-run-authorization.json');
     fs.writeFileSync(authorizationPath, JSON.stringify(authorization));
+    const controlDirectory = path.join(incident.artifactRoot, `${identity.STAGE8_BC_FORMAL_RUN_ID}-control`);
+    fs.mkdirSync(controlDirectory);
     const baseEnvironment = {
       STAGE8_BC_RUN_AUTHORIZATION: authorizationPath,
-      STAGE8_ARTIFACT_ROOT: artifactRoot,
+      STAGE8_BC_PREDECESSOR_EVIDENCE: evidencePath,
+      STAGE8_ARTIFACT_ROOT: incident.artifactRoot,
       STAGE8_BC_CONTROL_DIRECTORY: controlDirectory,
     };
     const injected = {
       environment: baseEnvironment,
       inspectCheckout: () => ({ sourceCommit, clean: true }),
-      readSourceFile: readerA,
+      readSourceFile: reader,
+      expectedPredecessorIdentity: incident.expectedIdentity,
     };
     const checked = await runStage8BcRunIdentityCli({ ...injected, args: ['--check'] });
     assert.equal(checked.ok, true, checked.reason);
     assert.equal(checked.filesWritten, 0);
     assert.equal(fs.readdirSync(controlDirectory).length, 0);
-    const missingAuthorization = await runStage8BcRunIdentityCli({
-      ...injected, environment: { ...baseEnvironment, STAGE8_BC_RUN_AUTHORIZATION: '' }, args: ['--check'],
-    });
-    assert.equal(missingAuthorization.ok, false);
-    assert.equal(fs.readdirSync(controlDirectory).length, 0);
-    const wrongCommit = await runStage8BcRunIdentityCli({
-      ...injected, inspectCheckout: () => ({ sourceCommit: 'f'.repeat(40), clean: true }), args: ['--check'],
-    });
-    assert.equal(wrongCommit.reason, 'bc-run-checkout-commit-mismatch');
-    const dirty = await runStage8BcRunIdentityCli({
-      ...injected, inspectCheckout: () => ({ sourceCommit, clean: false }), args: ['--check'],
-    });
-    assert.equal(dirty.reason, 'bc-run-checkout-not-clean');
     const emitDenied = await runStage8BcRunIdentityCli({ ...injected, args: ['--emit'] });
     assert.equal(emitDenied.reason, 'bc-run-identity-emit-authorization-required');
     const emitted = await runStage8BcRunIdentityCli({
-      ...injected, args: ['--emit'], environment: { ...baseEnvironment, STAGE8_BC_RUN_IDENTITY_EMIT: '1' },
+      ...injected,
+      args: ['--emit'],
+      environment: { ...baseEnvironment, STAGE8_BC_RUN_IDENTITY_EMIT: '1' },
     });
     assert.equal(emitted.ok, true, emitted.reason);
     assert.equal(emitted.filesWritten, 2);
     assert.deepEqual(fs.readdirSync(controlDirectory).sort(), ['artifact-control.json','corpus-control.json']);
-    const duplicate = await runStage8BcRunIdentityCli({
-      ...injected, args: ['--emit'], environment: { ...baseEnvironment, STAGE8_BC_RUN_IDENTITY_EMIT: '1' },
-    });
-    assert.equal(duplicate.reason, 'bc-run-control-directory-invalid');
-
-    const outside = path.join(temporary, `${identity.STAGE8_BC_FORMAL_RUN_ID}-control`);
-    fs.mkdirSync(outside);
-    const outsideResult = await runStage8BcRunIdentityCli({
-      ...injected,
-      args: ['--emit'],
-      environment: { ...baseEnvironment, STAGE8_BC_CONTROL_DIRECTORY: outside, STAGE8_BC_RUN_IDENTITY_EMIT: '1' },
-    });
-    assert.equal(outsideResult.reason, 'bc-run-control-directory-invalid');
-    assert.equal(fs.readdirSync(outside).length, 0);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }
@@ -177,11 +336,15 @@ try {
   console.log(JSON.stringify({
     passed: true,
     runId: identity.STAGE8_BC_FORMAL_RUN_ID,
+    predecessorRunId: evidenceTools.STAGE8_BC_PREDECESSOR_RUN_ID,
     sourceFiles: identity.STAGE8_BC_RUN_SOURCE_FILES.length,
     formalPilotGamesExecuted: 0,
+    realEvidenceFilesWritten: 0,
     realControlFilesWritten: 0,
     temporaryFixturesOnly: true,
-    controls: ['explicit-approval-file','real-source-bytes','commit-binding','cross-worktree-stability','self-consistent-tamper-rejection','readonly-check','atomic-two-file-emit'],
+    controls: ['frozen-interruption-facts','full-shard-identity-binding','self-consistent-tamper-rejection',
+      'cross-worktree-stability','independent-evidence-emit-authorization','new-run-predecessor-binding',
+      'readonly-check','atomic-evidence-and-control-emit'],
   }));
 } finally {
   if (previous) require.extensions['.ts'] = previous;

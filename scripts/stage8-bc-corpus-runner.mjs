@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { verifyStage8BcOperationalInterruptionQuarantine } from './stage8-bc-operational-interruption-evidence.mjs';
 
 const root = process.cwd();
 const require = createRequire(import.meta.url);
@@ -143,11 +144,15 @@ export async function runStage8BcCorpusCli(options = {}) {
   try {
     const corpusControlPath = requiredFile('STAGE8_BC_CORPUS_CONTROL_MANIFEST', environment);
     const artifactControlPath = requiredFile('STAGE8_BC_ARTIFACT_CONTROL_MANIFEST', environment);
+    const authorizationPath = requiredFile('STAGE8_BC_RUN_AUTHORIZATION', environment);
+    const predecessorEvidencePath = requiredFile('STAGE8_BC_PREDECESSOR_EVIDENCE', environment);
     const pythonPath = requiredFile('STAGE8_PYTHON', environment);
     const artifactRoot = requiredDirectory('STAGE8_ARTIFACT_ROOT', environment);
     const finalRunDirectory = environment.STAGE8_BC_CORPUS_RUN_DIRECTORY;
     const corpusControl = JSON.parse(fs.readFileSync(corpusControlPath, 'utf8'));
     const artifactControl = JSON.parse(fs.readFileSync(artifactControlPath, 'utf8'));
+    const authorization = JSON.parse(fs.readFileSync(authorizationPath, 'utf8'));
+    const predecessorEvidence = JSON.parse(fs.readFileSync(predecessorEvidencePath, 'utf8'));
     runId = corpusControl?.identity?.runId ?? runId;
     const controlTools = loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/offline-bc-corpus-control.ts'));
     const artifactTools = loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/offline-bc-artifact-control.ts'));
@@ -181,7 +186,7 @@ export async function runStage8BcCorpusCli(options = {}) {
       return fused('bc-corpus-cli-control-cross-binding-invalid', runId, counters);
     }
     const runIdentityValidation = options.runIdentityVerifier
-      ? options.runIdentityVerifier({ artifactControl, corpusControl, root })
+      ? options.runIdentityVerifier({ authorization, predecessorEvidence, artifactControl, corpusControl, root })
       : (() => {
         const checkout = (options.inspectCheckout ?? inspectGitCheckout)(root);
         if (!checkout.clean) return { ok: false, reason: 'bc-run-checkout-not-clean' };
@@ -189,12 +194,21 @@ export async function runStage8BcCorpusCli(options = {}) {
         return identityTools.validateStage8BcRunIdentityMaterials({
           sourceCommit: checkout.sourceCommit,
           readFile: (relativePath) => fs.readFileSync(path.join(root, ...relativePath.split('/'))),
+          authorization,
+          predecessorEvidence,
           artifactControl,
           corpusControl,
         });
       })();
     if (!runIdentityValidation.ok) {
       return fused(runIdentityValidation.reason || 'bc-corpus-cli-run-identity-invalid', runId, counters);
+    }
+    const predecessorValidation = (options.predecessorVerifier ?? verifyStage8BcOperationalInterruptionQuarantine)({
+      artifactRoot,
+      evidence: predecessorEvidence,
+    });
+    if (!predecessorValidation.ok) {
+      return fused(predecessorValidation.reason || 'bc-corpus-cli-predecessor-evidence-invalid', runId, counters);
     }
     stagingDirectory = `${finalRunDirectory}.partial`;
     if (fs.existsSync(stagingDirectory) || fs.existsSync(`${stagingDirectory}.quarantine`)) {

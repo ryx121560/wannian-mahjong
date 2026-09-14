@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { verifyStage8BcOperationalInterruptionQuarantine } from './stage8-bc-operational-interruption-evidence.mjs';
 
 const root = process.cwd();
 const require = createRequire(import.meta.url);
@@ -71,30 +72,16 @@ export async function runStage8BcRunIdentityCli(options = {}) {
   const created = [];
   try {
     const authorizationPath = requiredFile('STAGE8_BC_RUN_AUTHORIZATION', environment);
+    const predecessorEvidencePath = requiredFile('STAGE8_BC_PREDECESSOR_EVIDENCE', environment);
+    const artifactRoot = requiredDirectory('STAGE8_ARTIFACT_ROOT', environment);
     const authorization = (options.readAuthorization ?? parseJsonFile)(authorizationPath);
+    const predecessorEvidence = (options.readPredecessorEvidence ?? parseJsonFile)(predecessorEvidencePath);
     const checkout = (options.inspectCheckout ?? inspectGitCheckout)(root);
     if (!checkout.clean) return fused('bc-run-checkout-not-clean');
     if (authorization?.sourceCommit?.toLowerCase() !== checkout.sourceCommit) return fused('bc-run-checkout-commit-mismatch');
     const identityTools = options.identityTools ?? loadTypeScriptModuleReadOnly(
       path.join(root, 'src/game/stage8/offline-bc-run-identity.ts'),
     );
-    const readSourceFile = options.readSourceFile ?? ((relativePath) => fs.readFileSync(path.join(root, ...relativePath.split('/'))));
-    const built = identityTools.createStage8BcRunIdentityMaterials({ authorization, readFile: readSourceFile });
-    if (!built.ok) return fused(built.reason);
-    const summary = {
-      protocolVersion: built.value.source.protocolVersion,
-      runId: built.value.corpusControl.identity.runId,
-      sourceCommit: built.value.source.sourceCommit,
-      sourceBundleSha256: built.value.source.sourceBundleSha256,
-      sourceFiles: built.value.source.files,
-      bcControlManifestSha256: built.value.bcControl.manifestSha256,
-      artifactControlManifestSha256: built.value.artifactControl.manifestSha256,
-      corpusControlManifestSha256: built.value.corpusControl.manifestSha256,
-    };
-    if (mode === 'check') return { ok: true, status: 'checked', filesWritten: 0, summary };
-    if (environment.STAGE8_BC_RUN_IDENTITY_EMIT !== '1') return fused('bc-run-identity-emit-authorization-required');
-    const artifactRoot = requiredDirectory('STAGE8_ARTIFACT_ROOT', environment);
-    const controlDirectory = requiredDirectory('STAGE8_BC_CONTROL_DIRECTORY', environment);
     const rootTools = options.rootTools ?? loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/artifact-root-preflight.ts'));
     const gitFile = path.join(root, '.git');
     const rootValidation = rootTools.preflightStage8ArtifactRoot({
@@ -108,6 +95,36 @@ export async function runStage8BcRunIdentityCli(options = {}) {
       resolvePath: options.resolvePath ?? fs.realpathSync.native,
     });
     if (!rootValidation.ok) return fused(rootValidation.reason);
+    const predecessorValidation = (options.verifyPredecessor ?? verifyStage8BcOperationalInterruptionQuarantine)({
+      artifactRoot,
+      evidence: predecessorEvidence,
+      expectedIdentity: options.expectedPredecessorIdentity,
+    });
+    if (!predecessorValidation.ok) return fused(predecessorValidation.reason);
+    const readSourceFile = options.readSourceFile ?? ((relativePath) => fs.readFileSync(path.join(root, ...relativePath.split('/'))));
+    const built = identityTools.createStage8BcRunIdentityMaterials({
+      authorization,
+      predecessorEvidence,
+      expectedPredecessorIdentity: options.expectedPredecessorIdentity,
+      readFile: readSourceFile,
+    });
+    if (!built.ok) return fused(built.reason);
+    const summary = {
+      protocolVersion: built.value.source.protocolVersion,
+      runId: built.value.corpusControl.identity.runId,
+      sourceCommit: built.value.source.sourceCommit,
+      sourceBundleSha256: built.value.source.sourceBundleSha256,
+      sourceFiles: built.value.source.files,
+      predecessorRunId: predecessorEvidence.predecessorRunId,
+      predecessorEvidenceSha256: predecessorEvidence.evidenceSha256,
+      runAuthorizationSha256: authorization.authorizationSha256,
+      bcControlManifestSha256: built.value.bcControl.manifestSha256,
+      artifactControlManifestSha256: built.value.artifactControl.manifestSha256,
+      corpusControlManifestSha256: built.value.corpusControl.manifestSha256,
+    };
+    if (mode === 'check') return { ok: true, status: 'checked', filesWritten: 0, summary };
+    if (environment.STAGE8_BC_RUN_IDENTITY_EMIT !== '1') return fused('bc-run-identity-emit-authorization-required');
+    const controlDirectory = requiredDirectory('STAGE8_BC_CONTROL_DIRECTORY', environment);
     const resolvedRoot = (options.resolvePath ?? fs.realpathSync.native)(artifactRoot);
     const resolvedControl = (options.resolvePath ?? fs.realpathSync.native)(controlDirectory);
     if (!isDirectChild(resolvedControl, resolvedRoot)
@@ -136,6 +153,9 @@ export async function runStage8BcRunIdentityCli(options = {}) {
       const verified = identityTools.validateStage8BcRunIdentityMaterials({
         sourceCommit: checkout.sourceCommit,
         readFile: readSourceFile,
+        authorization,
+        predecessorEvidence,
+        expectedPredecessorIdentity: options.expectedPredecessorIdentity,
         artifactControl: artifactRead,
         corpusControl: corpusRead,
       });
@@ -149,6 +169,9 @@ export async function runStage8BcRunIdentityCli(options = {}) {
       const finalVerified = identityTools.validateStage8BcRunIdentityMaterials({
         sourceCommit: checkout.sourceCommit,
         readFile: readSourceFile,
+        authorization,
+        predecessorEvidence,
+        expectedPredecessorIdentity: options.expectedPredecessorIdentity,
         artifactControl: parseJsonFile(artifactFinal),
         corpusControl: parseJsonFile(corpusFinal),
       });

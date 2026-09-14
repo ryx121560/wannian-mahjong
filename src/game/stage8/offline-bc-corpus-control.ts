@@ -1,6 +1,7 @@
 import { hashStage8OfflineIdentity } from './offline-action-identity';
 
 export const STAGE8_BC_CORPUS_CONTROL_VERSION = 'stage8-bc-corpus-control-v1';
+export const STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION = 'stage8-bc-corpus-control-v2';
 export const STAGE8_BC_CORPUS_SCOPE = 'bc-formal-corpus-pilot';
 export const STAGE8_BC_CORPUS_GAME_COUNT = 64;
 export const STAGE8_BC_CORPUS_BASE_SEED = 2026090800;
@@ -10,9 +11,13 @@ export const STAGE8_BC_CORPUS_MAX_RUN_BYTES = 5 * 1024 * 1024 * 1024;
 export const STAGE8_BC_CORPUS_SPLIT_COUNTS = Object.freeze({ train: 48, validation: 8, finalTest: 8 });
 
 export interface Stage8BcCorpusControlManifest {
-  protocolVersion: typeof STAGE8_BC_CORPUS_CONTROL_VERSION;
+  protocolVersion: typeof STAGE8_BC_CORPUS_CONTROL_VERSION
+    | typeof STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION;
   identity: {
     runId: string;
+    predecessorRunId?: string;
+    predecessorEvidenceSha256?: string;
+    runAuthorizationSha256?: string;
     sourceBundleSha256: string;
     artifactControlManifestSha256: string;
     bcControlManifestSha256: string;
@@ -129,12 +134,15 @@ export function validateStage8BcCorpusControlManifest(
     'allowCrossRun','allowTraining','allowValidationSamplingForTraining','allowFinalTestSamplingForTraining',
     'allowModelLoading','allowExploration','allowSmoke','allowSelfplay','allowOnnxExport','allowRuntime','manifestSha256',
   ])) return fail(runId, 'bc-corpus-control-schema-invalid');
-  if (!exactKeys(manifest.identity, [
+  const predecessorBound = manifest.protocolVersion === STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION;
+  const identityKeys = [
     'runId','sourceBundleSha256','artifactControlManifestSha256','bcControlManifestSha256','rulesSha256','browserRulesSha256','actionSpaceSha256','legalActionMaskSha256',
     'featureSha256','visibleInformationSha256','tensorContractSha256','teacherDefinitionSha256','sampleSchemaSha256',
     'writerDefinitionSha256','trajectoryDefinitionSha256','pythonDatasetDefinitionSha256',
     'corpusManifestDefinitionSha256','capacityPreflightSha256',
-  ]) || !exactKeys(manifest.authorization, ['approvalId','granted','scope'])
+  ];
+  if (predecessorBound) identityKeys.push('predecessorRunId','predecessorEvidenceSha256','runAuthorizationSha256');
+  if (!exactKeys(manifest.identity, identityKeys) || !exactKeys(manifest.authorization, ['approvalId','granted','scope'])
     || !exactKeys(manifest.plan, [
       'baseSeed','seedDerivation','gameCount','candidateSeatDerivation','candidateSeatGames','workers','curriculum',
       'exploration','modelLoading','recordAllSeats','maxSuccessfulTransitionsPerGame','splitUnit','splitCounts',
@@ -143,14 +151,18 @@ export function validateStage8BcCorpusControlManifest(
     || !exactKeys(manifest.capacity, [
       'maxRunBytes','rootHardLimitBytes','rootFusePercent','preflightBeforeRun','preflightBeforeEachBatchCommit',
     ])) return fail(runId, 'bc-corpus-control-nested-schema-invalid');
-  if (manifest.protocolVersion !== STAGE8_BC_CORPUS_CONTROL_VERSION || !validId(runId)) {
+  if (![STAGE8_BC_CORPUS_CONTROL_VERSION, STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION]
+    .includes(manifest.protocolVersion) || !validId(runId)) {
     return fail(runId, 'bc-corpus-control-identity-invalid');
+  }
+  if (predecessorBound && !validId(manifest.identity.predecessorRunId)) {
+    return fail(runId, 'bc-corpus-control-predecessor-identity-invalid');
   }
   if (!manifest.authorization.granted || !validId(manifest.authorization.approvalId)
     || manifest.authorization.scope !== STAGE8_BC_CORPUS_SCOPE) {
     return fail(runId, 'bc-corpus-control-authorization-required');
   }
-  if (Object.entries(manifest.identity).some(([key, value]) => key !== 'runId' && !isSha256(value))) {
+  if (Object.entries(manifest.identity).some(([key, value]) => !['runId','predecessorRunId'].includes(key) && !isSha256(value))) {
     return fail(runId, 'bc-corpus-control-hash-invalid');
   }
   if (manifest.identity.legalActionMaskSha256 !== manifest.identity.actionSpaceSha256
