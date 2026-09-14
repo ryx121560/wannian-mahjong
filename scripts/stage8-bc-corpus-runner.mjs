@@ -10,6 +10,25 @@ import { verifyStage8BcOperationalInterruptionQuarantine } from './stage8-bc-ope
 
 const root = process.cwd();
 const require = createRequire(import.meta.url);
+const localSha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+function supervisedWorkerCommandIdentity(environment) {
+  const allowedNames = [
+    'SystemRoot','WINDIR','ComSpec','TEMP','TMP','PATH','PATHEXT','NODE_PATH',
+    'STAGE8_BC_CORPUS_CONTROL_MANIFEST','STAGE8_BC_ARTIFACT_CONTROL_MANIFEST','STAGE8_BC_RUN_AUTHORIZATION',
+    'STAGE8_BC_PREDECESSOR_EVIDENCE','STAGE8_ARTIFACT_ROOT','STAGE8_PYTHON','STAGE8_BC_CORPUS_RUN_DIRECTORY',
+    'STAGE8_BC_SUPERVISION_CONTROL_MANIFEST','STAGE8_BC_SUPERVISION_DIRECTORY','STAGE8_BC_SUPERVISION_NONCE',
+    'STAGE8_BC_SUPERVISOR_PID',
+  ];
+  const allowed = Object.keys(environment).filter((key) => allowedNames.includes(key)).sort()
+    .map((key) => ({ key, valueSha256: localSha256(String(environment[key])) }));
+  return {
+    executableSha256: localSha256(fs.readFileSync(process.execPath)),
+    argvSha256: localSha256(JSON.stringify([fileURLToPath(import.meta.url), '--supervised-worker'])),
+    environmentAllowlistSha256: localSha256(JSON.stringify(allowed)),
+    cwdSha256: localSha256(path.win32.normalize(root).toLowerCase()),
+  };
+}
 
 function requiredFile(name, environment) {
   const value = environment[name];
@@ -153,6 +172,7 @@ export async function runStage8BcCorpusCli(options = {}) {
     const artifactControl = JSON.parse(fs.readFileSync(artifactControlPath, 'utf8'));
     const authorization = JSON.parse(fs.readFileSync(authorizationPath, 'utf8'));
     const predecessorEvidence = JSON.parse(fs.readFileSync(predecessorEvidencePath, 'utf8'));
+    let supervisionControl = null;
     runId = corpusControl?.identity?.runId ?? runId;
     const controlTools = loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/offline-bc-corpus-control.ts'));
     const artifactTools = loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/offline-bc-artifact-control.ts'));
@@ -161,6 +181,36 @@ export async function runStage8BcCorpusCli(options = {}) {
     if (!controlValidation.ok) return fused(controlValidation.decision.reason, runId, counters);
     const artifactValidation = artifactTools.validateStage8BcArtifactControlManifest(artifactControl);
     if (!artifactValidation.ok) return fused(artifactValidation.decision.reason, runId, counters);
+    if (corpusControl.protocolVersion === controlTools.STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION) {
+      const supervised = options.supervisionVerifier ? options.supervisionVerifier({ corpusControl, artifactControl }) : (() => {
+        const supervisionPath = requiredFile('STAGE8_BC_SUPERVISION_CONTROL_MANIFEST', environment);
+        const supervisionDirectory = requiredDirectory('STAGE8_BC_SUPERVISION_DIRECTORY', environment);
+        const nonce = environment.STAGE8_BC_SUPERVISION_NONCE;
+        const supervisorPid = Number(environment.STAGE8_BC_SUPERVISOR_PID);
+        if (!/^[a-f0-9]{64}$/i.test(nonce ?? '') || !Number.isInteger(supervisorPid) || supervisorPid <= 0
+          || process.ppid !== supervisorPid) return { ok: false, reason: 'bc-corpus-supervision-process-invalid' };
+        const supervisionTools = loadTypeScriptModuleReadOnly(path.join(root, 'src/game/stage8/offline-bc-supervision-control.ts'));
+        supervisionControl = JSON.parse(fs.readFileSync(supervisionPath, 'utf8'));
+        const controlResult = supervisionTools.validateStage8BcSupervisionControlManifest(supervisionControl);
+        if (!controlResult.ok) return controlResult;
+        const initial = JSON.parse(fs.readFileSync(path.join(supervisionDirectory, 'status-000000.json'), 'utf8'));
+        const statusResult = supervisionTools.validateStage8BcSupervisionStatus({
+          status: initial,
+          control: supervisionControl,
+          expectedCommandIdentity: supervisedWorkerCommandIdentity(environment),
+        });
+        if (!statusResult.ok) return statusResult;
+        if (initial.workerPid !== process.pid || initial.supervisorPid !== process.ppid || initial.launchNonce !== nonce
+          || supervisionControl.identity.corpusControlManifestSha256 !== corpusControl.manifestSha256
+          || supervisionControl.identity.artifactControlManifestSha256 !== artifactControl.manifestSha256
+          || supervisionControl.identity.predecessorEvidenceSha256 !== corpusControl.identity.predecessorEvidenceSha256
+          || supervisionControl.identity.sourceBundleSha256 !== corpusControl.identity.sourceBundleSha256) {
+          return { ok: false, reason: 'bc-corpus-supervision-identity-mismatch' };
+        }
+        return { ok: true };
+      })();
+      if (!supervised.ok) return fused(supervised.reason || 'bc-corpus-supervision-required', runId, counters);
+    }
     if (!finalRunDirectory || !path.win32.isAbsolute(finalRunDirectory) || !isStrictChild(finalRunDirectory, artifactRoot)
       || path.win32.dirname(path.win32.normalize(finalRunDirectory)) !== path.win32.normalize(artifactRoot)
       || path.win32.basename(finalRunDirectory) !== runId || /(probe|diagnostic|rerun)/i.test(finalRunDirectory)
@@ -198,6 +248,7 @@ export async function runStage8BcCorpusCli(options = {}) {
           predecessorEvidence,
           artifactControl,
           corpusControl,
+          supervisionControl,
         });
       })();
     if (!runIdentityValidation.ok) {
@@ -265,6 +316,7 @@ export async function runStage8BcCorpusCli(options = {}) {
           if (!committed.ok) return { ok: false, reason: committed.decision.reason };
           committedFiles.push(committed.value.artifactPath);
           counters.shardCommits += 1;
+          options.onProgress?.({ gameIndex, completedShards: counters.shardCommits });
           return { ok: true, shard: {
             relativePath: `${relativeDirectory}/${path.basename(committed.value.artifactPath)}`,
             fileSha256: committed.value.artifactFileSha256,
@@ -336,7 +388,25 @@ export async function runStage8BcCorpusCli(options = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = await runStage8BcCorpusCli();
-  console.log(JSON.stringify(result, null, 2));
-  if (!result.ok) process.exitCode = 1;
+  if (process.argv[2] !== '--supervised-worker' || typeof process.send !== 'function') {
+    const result = fused('bc-corpus-supervision-required', 'invalid-formal-bc-corpus-run', {
+      temporaryDirectories: 0, stagingDirectories: 0, shardCommits: 0, finalCommits: 0, pythonVerifications: 0,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = 1;
+  } else {
+    process.once('message', async (message) => {
+      if (message?.type !== 'stage8-bc-supervision-start'
+        || message.launchNonce !== process.env.STAGE8_BC_SUPERVISION_NONCE) {
+        process.exitCode = 1; return;
+      }
+      const result = await runStage8BcCorpusCli({
+        onProgress: (progress) => process.send?.({ type: 'stage8-bc-progress', ...progress }),
+      });
+      process.send?.({ type: 'stage8-bc-result', result });
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = result.ok ? 0 : 1;
+      process.disconnect?.();
+    });
+  }
 }

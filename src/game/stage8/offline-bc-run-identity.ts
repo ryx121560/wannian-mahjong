@@ -19,6 +19,7 @@ import {
 import {
   STAGE8_BC_CORPUS_BASE_SEED,
   STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION,
+  STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION,
   STAGE8_BC_CORPUS_CONTROL_VERSION,
   STAGE8_BC_CORPUS_GAME_COUNT,
   STAGE8_BC_CORPUS_MAX_RUN_BYTES,
@@ -49,9 +50,22 @@ import {
   type Stage8BcOperationalInterruptionExpectedIdentity,
   type Stage8BcOperationalInterruptionEvidence,
 } from './offline-bc-operational-interruption';
+import {
+  STAGE8_BC_HEARTBEAT_INTERVAL_MS,
+  STAGE8_BC_HEARTBEAT_STALE_MS,
+  STAGE8_BC_MAX_OPERATIONAL_INTERRUPTION_COUNT,
+  STAGE8_BC_PRIOR_OPERATIONAL_INTERRUPTION_COUNT,
+  STAGE8_BC_SUPERVISION_CONTROL_VERSION,
+  STAGE8_BC_SUPERVISION_SCOPE,
+  STAGE8_BC_SUPERVISION_WORKERS,
+  hashStage8BcSupervisionControlPayload,
+  hashStage8BcSupervisionDefinition,
+  validateStage8BcSupervisionControlManifest,
+  type Stage8BcSupervisionControlManifest,
+} from './offline-bc-supervision-control';
 
-export const STAGE8_BC_RUN_IDENTITY_VERSION = 'stage8-bc-run-identity-v2';
-export const STAGE8_BC_RUN_AUTHORIZATION_VERSION = 'stage8-bc-run-authorization-v2';
+export const STAGE8_BC_RUN_IDENTITY_VERSION = 'stage8-bc-run-identity-v3';
+export const STAGE8_BC_RUN_AUTHORIZATION_VERSION = 'stage8-bc-run-authorization-v3';
 export const STAGE8_BC_FORMAL_RUN_ID = 'formal-bc-corpus-pilot-20260913';
 export const STAGE8_BC_LEGACY_FORMAL_RUN_ID = STAGE8_BC_PREDECESSOR_RUN_ID;
 export const STAGE8_BC_RUN_IDENTITY_EMIT_SCOPE = 'bc-formal-run-identity-material-emit';
@@ -60,6 +74,8 @@ export const STAGE8_BC_RUN_SOURCE_FILES = Object.freeze([
   'docs/rules.md',
   'public/game/rule_engine.js',
   'scripts/stage8-bc-corpus-runner.mjs',
+  'scripts/stage8-bc-corpus-supervised-launch.mjs',
+  'scripts/stage8-bc-corpus-supervisor.mjs',
   'scripts/stage8-bc-corpus-verify.py',
   'scripts/stage8-bc-operational-interruption-evidence.mjs',
   'src/game/mcts/mcts-enhancement-engine.ts',
@@ -111,6 +127,7 @@ export const STAGE8_BC_RUN_SOURCE_FILES = Object.freeze([
   'src/game/stage8/offline-bc-sample-probe-runner.ts',
   'src/game/stage8/offline-bc-sample-protocol.ts',
   'src/game/stage8/offline-bc-sample-writer.ts',
+  'src/game/stage8/offline-bc-supervision-control.ts',
   'src/game/stage8/offline-bc-teacher.ts',
   'src/game/stage8/offline-behavior-distribution.ts',
   'src/game/stage8/offline-canonical-mcts-provider.ts',
@@ -152,6 +169,7 @@ export interface Stage8BcRunAuthorizationInput {
     artifact: Approval;
     corpus: Approval;
     emit: Approval;
+    supervision: Approval;
   };
   authorizationSha256: string;
 }
@@ -168,6 +186,7 @@ export interface Stage8BcRunSourceIdentity {
   trajectoryDefinitionSha256: string;
   pythonDatasetDefinitionSha256: string;
   capacityPreflightSha256: string;
+  supervisionDefinitionSha256: string;
 }
 
 export type Stage8BcRunIdentityResult<T> =
@@ -179,6 +198,7 @@ export interface Stage8BcRunIdentityMaterials {
   bcControl: Stage8BcControlManifest;
   artifactControl: Stage8BcArtifactControlManifest;
   corpusControl: Stage8BcCorpusControlManifest;
+  supervisionControl: Stage8BcSupervisionControlManifest;
 }
 
 function sha256(bytes: Uint8Array | string): string {
@@ -212,7 +232,7 @@ export function validateStage8BcRunAuthorizationInput(
 ): Stage8BcRunIdentityResult<{ sourceCommit: string; predecessorEvidenceSha256: string }> {
   if (!exactKeys(input, ['protocolVersion','runId','sourceCommit','predecessor','approvals','authorizationSha256'])
     || !exactKeys(input?.predecessor, ['runId','evidenceSha256'])
-    || !exactKeys(input?.approvals, ['bc','artifact','corpus','emit'])
+    || !exactKeys(input?.approvals, ['bc','artifact','corpus','emit','supervision'])
     || !Object.values(input?.approvals ?? {}).every((approval) => exactKeys(approval, ['approvalId','granted','scope']))) {
     return { ok: false, reason: 'bc-run-authorization-schema-invalid' };
   }
@@ -228,6 +248,7 @@ export function validateStage8BcRunAuthorizationInput(
     artifact: STAGE8_BC_ARTIFACT_SCOPE,
     corpus: STAGE8_BC_CORPUS_SCOPE,
     emit: STAGE8_BC_RUN_IDENTITY_EMIT_SCOPE,
+    supervision: STAGE8_BC_SUPERVISION_SCOPE,
   };
   for (const key of Object.keys(expectedScopes) as Array<keyof typeof expectedScopes>) {
     const approval = input.approvals[key];
@@ -285,6 +306,7 @@ export function collectStage8BcRunSourceIdentity(input: {
       trajectoryDefinitionSha256: bundle(select((value) => /offline-trajectory-executor|offline-round-adapter|round-transition/.test(value)), 'trajectory'),
       pythonDatasetDefinitionSha256: bundle(select((value) => /python\/stage8_bc\/(contracts|dataset)\.py$/.test(value)), 'python-dataset'),
       capacityPreflightSha256: bundle(select((value) => value === 'scripts/stage8-bc-corpus-runner.mjs'), 'capacity-preflight'),
+      supervisionDefinitionSha256: hashStage8BcSupervisionDefinition(),
     },
   };
 }
@@ -376,7 +398,7 @@ export function createStage8BcRunIdentityMaterials(input: {
     manifestSha256: hashStage8BcArtifactControlManifestPayload(artifactPayload),
   };
   const corpusPayload: Omit<Stage8BcCorpusControlManifest, 'manifestSha256'> = {
-    protocolVersion: STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION,
+    protocolVersion: STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION,
     identity: {
       runId: STAGE8_BC_FORMAL_RUN_ID,
       predecessorRunId: STAGE8_BC_PREDECESSOR_RUN_ID,
@@ -399,6 +421,7 @@ export function createStage8BcRunIdentityMaterials(input: {
       pythonDatasetDefinitionSha256: identity.pythonDatasetDefinitionSha256,
       corpusManifestDefinitionSha256: hashStage8BcCorpusManifestDefinition(),
       capacityPreflightSha256: identity.capacityPreflightSha256,
+      supervisionDefinitionSha256: identity.supervisionDefinitionSha256,
     },
     authorization: { ...input.authorization.approvals.corpus, scope: STAGE8_BC_CORPUS_SCOPE },
     plan: {
@@ -417,6 +440,11 @@ export function createStage8BcRunIdentityMaterials(input: {
       splitCounts: { train: 48, validation: 8, finalTest: 8 },
       splitAssignment: 'game-index-ranges-v1',
       crossRunPolicy: 'single-run-only',
+      supervisedExecutionRequired: true,
+      priorOperationalInterruptions: 1,
+      maxOperationalInterruptions: 1,
+      automaticRetries: 0,
+      seedOverrides: 0,
     },
     capacity: {
       maxRunBytes: STAGE8_BC_CORPUS_MAX_RUN_BYTES,
@@ -442,7 +470,46 @@ export function createStage8BcRunIdentityMaterials(input: {
     ...corpusPayload,
     manifestSha256: hashStage8BcCorpusControlPayload(corpusPayload),
   };
-  const materials = { source: identity, bcControl, artifactControl, corpusControl };
+  const sourceSha = (relativePath: string) => identity.files.find((entry) => entry.path === relativePath)!.sha256;
+  const supervisionPayload: Omit<Stage8BcSupervisionControlManifest, 'manifestSha256'> = {
+    protocolVersion: STAGE8_BC_SUPERVISION_CONTROL_VERSION,
+    identity: {
+      runId: STAGE8_BC_FORMAL_RUN_ID,
+      sourceCommit: identity.sourceCommit,
+      sourceBundleSha256: identity.sourceBundleSha256,
+      runAuthorizationSha256: input.authorization.authorizationSha256,
+      artifactControlManifestSha256: artifactControl.manifestSha256,
+      corpusControlManifestSha256: corpusControl.manifestSha256,
+      predecessorEvidenceSha256: predecessor.value.evidenceSha256,
+      supervisionDefinitionSha256: identity.supervisionDefinitionSha256,
+      launcherSourceSha256: sourceSha('scripts/stage8-bc-corpus-supervised-launch.mjs'),
+      supervisorSourceSha256: sourceSha('scripts/stage8-bc-corpus-supervisor.mjs'),
+      runnerSourceSha256: sourceSha('scripts/stage8-bc-corpus-runner.mjs'),
+    },
+    authorization: {
+      approvalId: input.authorization.approvals.supervision.approvalId,
+      granted: true,
+      scope: STAGE8_BC_SUPERVISION_SCOPE,
+    },
+    policy: {
+      workers: STAGE8_BC_SUPERVISION_WORKERS,
+      priorOperationalInterruptions: STAGE8_BC_PRIOR_OPERATIONAL_INTERRUPTION_COUNT,
+      maxOperationalInterruptions: STAGE8_BC_MAX_OPERATIONAL_INTERRUPTION_COUNT,
+      automaticRetries: 0,
+      seedOverrides: 0,
+      allowThirdAttempt: false,
+      windowsHide: true,
+      detachedSupervisor: true,
+      shell: false,
+      heartbeatIntervalMs: STAGE8_BC_HEARTBEAT_INTERVAL_MS,
+      heartbeatStaleMs: STAGE8_BC_HEARTBEAT_STALE_MS,
+    },
+  };
+  const supervisionControl: Stage8BcSupervisionControlManifest = {
+    ...supervisionPayload,
+    manifestSha256: hashStage8BcSupervisionControlPayload(supervisionPayload),
+  };
+  const materials = { source: identity, bcControl, artifactControl, corpusControl, supervisionControl };
   const verified = validateStage8BcRunIdentityMaterials({
     sourceCommit: identity.sourceCommit,
     readFile: input.readFile,
@@ -451,6 +518,7 @@ export function createStage8BcRunIdentityMaterials(input: {
     expectedPredecessorIdentity,
     artifactControl,
     corpusControl,
+    supervisionControl,
   });
   return verified.ok ? { ok: true, value: materials } : verified;
 }
@@ -463,6 +531,7 @@ export function validateStage8BcRunIdentityMaterials(input: {
   expectedPredecessorIdentity?: Stage8BcOperationalInterruptionExpectedIdentity;
   artifactControl: Stage8BcArtifactControlManifest;
   corpusControl: Stage8BcCorpusControlManifest;
+  supervisionControl: Stage8BcSupervisionControlManifest;
 }): Stage8BcRunIdentityResult<{ source: Stage8BcRunSourceIdentity }> {
   const authorization = validateStage8BcRunAuthorizationInput(input.authorization);
   if (!authorization.ok) return authorization;
@@ -481,6 +550,8 @@ export function validateStage8BcRunIdentityMaterials(input: {
   if (!artifact.ok) return { ok: false, reason: artifact.decision.reason };
   const corpus = validateStage8BcCorpusControlManifest(input.corpusControl);
   if (!corpus.ok) return { ok: false, reason: corpus.decision.reason };
+  const supervision = validateStage8BcSupervisionControlManifest(input.supervisionControl);
+  if (!supervision.ok) return supervision;
   const source = collectStage8BcRunSourceIdentity({ sourceCommit: input.sourceCommit, readFile: input.readFile });
   if (!source.ok) return source;
   const expected = source.value;
@@ -517,6 +588,7 @@ export function validateStage8BcRunIdentityMaterials(input: {
     corpusIdentity.trajectoryDefinitionSha256 === expected.trajectoryDefinitionSha256,
     corpusIdentity.corpusManifestDefinitionSha256 === hashStage8BcCorpusManifestDefinition(),
     corpusIdentity.capacityPreflightSha256 === expected.capacityPreflightSha256,
+    corpusIdentity.supervisionDefinitionSha256 === expected.supervisionDefinitionSha256,
     input.artifactControl.manifestSha256 === corpusIdentity.artifactControlManifestSha256,
     bcControl.manifestSha256 === corpusIdentity.bcControlManifestSha256,
     input.artifactControl.identity.predecessorRunId === STAGE8_BC_PREDECESSOR_RUN_ID,
@@ -525,6 +597,17 @@ export function validateStage8BcRunIdentityMaterials(input: {
     corpusIdentity.predecessorEvidenceSha256 === predecessor.value.evidenceSha256,
     input.artifactControl.identity.runAuthorizationSha256 === input.authorization.authorizationSha256,
     corpusIdentity.runAuthorizationSha256 === input.authorization.authorizationSha256,
+    input.supervisionControl.identity.runId === STAGE8_BC_FORMAL_RUN_ID,
+    input.supervisionControl.identity.sourceCommit === expected.sourceCommit,
+    input.supervisionControl.identity.sourceBundleSha256 === expected.sourceBundleSha256,
+    input.supervisionControl.identity.runAuthorizationSha256 === input.authorization.authorizationSha256,
+    input.supervisionControl.identity.artifactControlManifestSha256 === input.artifactControl.manifestSha256,
+    input.supervisionControl.identity.corpusControlManifestSha256 === input.corpusControl.manifestSha256,
+    input.supervisionControl.identity.predecessorEvidenceSha256 === predecessor.value.evidenceSha256,
+    input.supervisionControl.identity.supervisionDefinitionSha256 === expected.supervisionDefinitionSha256,
+    input.supervisionControl.identity.launcherSourceSha256 === expected.files.find((entry) => entry.path === 'scripts/stage8-bc-corpus-supervised-launch.mjs')?.sha256,
+    input.supervisionControl.identity.supervisorSourceSha256 === expected.files.find((entry) => entry.path === 'scripts/stage8-bc-corpus-supervisor.mjs')?.sha256,
+    input.supervisionControl.identity.runnerSourceSha256 === expected.files.find((entry) => entry.path === 'scripts/stage8-bc-corpus-runner.mjs')?.sha256,
   ];
   if (input.corpusControl.identity.runId !== STAGE8_BC_FORMAL_RUN_ID
     || input.artifactControl.identity.runId !== STAGE8_BC_FORMAL_RUN_ID

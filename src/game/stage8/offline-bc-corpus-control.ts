@@ -2,6 +2,7 @@ import { hashStage8OfflineIdentity } from './offline-action-identity';
 
 export const STAGE8_BC_CORPUS_CONTROL_VERSION = 'stage8-bc-corpus-control-v1';
 export const STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION = 'stage8-bc-corpus-control-v2';
+export const STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION = 'stage8-bc-corpus-control-v3';
 export const STAGE8_BC_CORPUS_SCOPE = 'bc-formal-corpus-pilot';
 export const STAGE8_BC_CORPUS_GAME_COUNT = 64;
 export const STAGE8_BC_CORPUS_BASE_SEED = 2026090800;
@@ -12,7 +13,8 @@ export const STAGE8_BC_CORPUS_SPLIT_COUNTS = Object.freeze({ train: 48, validati
 
 export interface Stage8BcCorpusControlManifest {
   protocolVersion: typeof STAGE8_BC_CORPUS_CONTROL_VERSION
-    | typeof STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION;
+    | typeof STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION
+    | typeof STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION;
   identity: {
     runId: string;
     predecessorRunId?: string;
@@ -35,6 +37,7 @@ export interface Stage8BcCorpusControlManifest {
     pythonDatasetDefinitionSha256: string;
     corpusManifestDefinitionSha256: string;
     capacityPreflightSha256: string;
+    supervisionDefinitionSha256?: string;
   };
   authorization: {
     approvalId: string;
@@ -57,6 +60,11 @@ export interface Stage8BcCorpusControlManifest {
     splitCounts: { train: 48; validation: 8; finalTest: 8 };
     splitAssignment: 'game-index-ranges-v1';
     crossRunPolicy: 'single-run-only';
+    supervisedExecutionRequired?: true;
+    priorOperationalInterruptions?: 1;
+    maxOperationalInterruptions?: 1;
+    automaticRetries?: 0;
+    seedOverrides?: 0;
   };
   capacity: {
     maxRunBytes: typeof STAGE8_BC_CORPUS_MAX_RUN_BYTES;
@@ -134,7 +142,9 @@ export function validateStage8BcCorpusControlManifest(
     'allowCrossRun','allowTraining','allowValidationSamplingForTraining','allowFinalTestSamplingForTraining',
     'allowModelLoading','allowExploration','allowSmoke','allowSelfplay','allowOnnxExport','allowRuntime','manifestSha256',
   ])) return fail(runId, 'bc-corpus-control-schema-invalid');
-  const predecessorBound = manifest.protocolVersion === STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION;
+  const predecessorBound = [STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION, STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION]
+    .includes(manifest.protocolVersion);
+  const supervised = manifest.protocolVersion === STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION;
   const identityKeys = [
     'runId','sourceBundleSha256','artifactControlManifestSha256','bcControlManifestSha256','rulesSha256','browserRulesSha256','actionSpaceSha256','legalActionMaskSha256',
     'featureSha256','visibleInformationSha256','tensorContractSha256','teacherDefinitionSha256','sampleSchemaSha256',
@@ -142,16 +152,21 @@ export function validateStage8BcCorpusControlManifest(
     'corpusManifestDefinitionSha256','capacityPreflightSha256',
   ];
   if (predecessorBound) identityKeys.push('predecessorRunId','predecessorEvidenceSha256','runAuthorizationSha256');
+  if (supervised) identityKeys.push('supervisionDefinitionSha256');
+  const planKeys = [
+    'baseSeed','seedDerivation','gameCount','candidateSeatDerivation','candidateSeatGames','workers','curriculum',
+    'exploration','modelLoading','recordAllSeats','maxSuccessfulTransitionsPerGame','splitUnit','splitCounts',
+    'splitAssignment','crossRunPolicy',
+  ];
+  if (supervised) planKeys.push('supervisedExecutionRequired','priorOperationalInterruptions',
+    'maxOperationalInterruptions','automaticRetries','seedOverrides');
   if (!exactKeys(manifest.identity, identityKeys) || !exactKeys(manifest.authorization, ['approvalId','granted','scope'])
-    || !exactKeys(manifest.plan, [
-      'baseSeed','seedDerivation','gameCount','candidateSeatDerivation','candidateSeatGames','workers','curriculum',
-      'exploration','modelLoading','recordAllSeats','maxSuccessfulTransitionsPerGame','splitUnit','splitCounts',
-      'splitAssignment','crossRunPolicy',
-    ]) || !exactKeys(manifest.plan.splitCounts, ['train','validation','finalTest'])
+    || !exactKeys(manifest.plan, planKeys) || !exactKeys(manifest.plan.splitCounts, ['train','validation','finalTest'])
     || !exactKeys(manifest.capacity, [
       'maxRunBytes','rootHardLimitBytes','rootFusePercent','preflightBeforeRun','preflightBeforeEachBatchCommit',
     ])) return fail(runId, 'bc-corpus-control-nested-schema-invalid');
-  if (![STAGE8_BC_CORPUS_CONTROL_VERSION, STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION]
+  if (![STAGE8_BC_CORPUS_CONTROL_VERSION, STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION,
+    STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION]
     .includes(manifest.protocolVersion) || !validId(runId)) {
     return fail(runId, 'bc-corpus-control-identity-invalid');
   }
@@ -179,6 +194,11 @@ export function validateStage8BcCorpusControlManifest(
     || plan.splitCounts.validation !== 8 || plan.splitCounts.finalTest !== 8
     || plan.splitAssignment !== 'game-index-ranges-v1' || plan.crossRunPolicy !== 'single-run-only') {
     return fail(runId, 'bc-corpus-control-plan-invalid');
+  }
+  if (supervised && (plan.supervisedExecutionRequired !== true || plan.priorOperationalInterruptions !== 1
+    || plan.maxOperationalInterruptions !== 1 || plan.automaticRetries !== 0 || plan.seedOverrides !== 0
+    || !isSha256(manifest.identity.supervisionDefinitionSha256))) {
+    return fail(runId, 'bc-corpus-control-supervision-invalid');
   }
   if (manifest.capacity.maxRunBytes !== STAGE8_BC_CORPUS_MAX_RUN_BYTES
     || manifest.capacity.rootHardLimitBytes !== 68719476736 || manifest.capacity.rootFusePercent !== 80

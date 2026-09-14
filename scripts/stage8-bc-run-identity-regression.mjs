@@ -213,6 +213,7 @@ try {
         artifact: { approvalId: 'product-bc-artifact-20260913', granted: true, scope: 'bc-sample-artifact-write' },
         corpus: { approvalId: 'product-bc-corpus-20260913', granted: true, scope: 'bc-formal-corpus-pilot' },
         emit: { approvalId: 'product-bc-material-emit-20260913', granted: true, scope: identity.STAGE8_BC_RUN_IDENTITY_EMIT_SCOPE },
+        supervision: { approvalId: 'product-bc-supervision-20260914', granted: true, scope: 'bc-formal-pilot-supervision' },
       },
     };
     const authorization = {
@@ -232,13 +233,14 @@ try {
     });
     assert.equal(built.ok, true, built.reason);
     assert.equal(built.value.artifactControl.protocolVersion, artifactTools.STAGE8_BC_ARTIFACT_CONTROL_PREDECESSOR_VERSION);
-    assert.equal(built.value.corpusControl.protocolVersion, corpusTools.STAGE8_BC_CORPUS_CONTROL_PREDECESSOR_VERSION);
+    assert.equal(built.value.corpusControl.protocolVersion, corpusTools.STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION);
     assert.equal(built.value.artifactControl.identity.predecessorEvidenceSha256, incident.evidence.evidenceSha256);
     assert.equal(built.value.corpusControl.identity.runAuthorizationSha256, authorization.authorizationSha256);
     assert.equal(identity.validateStage8BcRunIdentityMaterials({
       sourceCommit, readFile: reader, authorization, predecessorEvidence: incident.evidence,
       expectedPredecessorIdentity: incident.expectedIdentity,
       artifactControl: built.value.artifactControl, corpusControl: built.value.corpusControl,
+      supervisionControl: built.value.supervisionControl,
     }).ok, true);
 
     const legacyArtifactPayload = structuredClone(built.value.artifactControl);
@@ -258,6 +260,12 @@ try {
     delete legacyCorpusPayload.identity.predecessorRunId;
     delete legacyCorpusPayload.identity.predecessorEvidenceSha256;
     delete legacyCorpusPayload.identity.runAuthorizationSha256;
+    delete legacyCorpusPayload.identity.supervisionDefinitionSha256;
+    delete legacyCorpusPayload.plan.supervisedExecutionRequired;
+    delete legacyCorpusPayload.plan.priorOperationalInterruptions;
+    delete legacyCorpusPayload.plan.maxOperationalInterruptions;
+    delete legacyCorpusPayload.plan.automaticRetries;
+    delete legacyCorpusPayload.plan.seedOverrides;
     const legacyCorpus = {
       ...legacyCorpusPayload,
       manifestSha256: corpusTools.hashStage8BcCorpusControlPayload(legacyCorpusPayload),
@@ -268,6 +276,7 @@ try {
       sourceCommit, readFile: reader, authorization, predecessorEvidence: incident.evidence,
       expectedPredecessorIdentity: incident.expectedIdentity,
       artifactControl: legacyArtifact, corpusControl: legacyCorpus,
+      supervisionControl: built.value.supervisionControl,
     }).reason, 'bc-run-source-or-control-identity-mismatch', 'legacy controls remain verifiable but cannot authorize the new run');
 
     const oldAuthorization = structuredClone(authorization);
@@ -296,6 +305,7 @@ try {
         sourceCommit, readFile: tamperedReader, authorization, predecessorEvidence: incident.evidence,
         expectedPredecessorIdentity: incident.expectedIdentity,
         artifactControl: built.value.artifactControl, corpusControl: built.value.corpusControl,
+        supervisionControl: built.value.supervisionControl,
       }).reason, 'bc-run-source-or-control-identity-mismatch', `source byte drift must fail: ${tamperedPath}`);
     }
 
@@ -327,8 +337,8 @@ try {
       environment: { ...baseEnvironment, STAGE8_BC_RUN_IDENTITY_EMIT: '1' },
     });
     assert.equal(emitted.ok, true, emitted.reason);
-    assert.equal(emitted.filesWritten, 2);
-    assert.deepEqual(fs.readdirSync(controlDirectory).sort(), ['artifact-control.json','corpus-control.json']);
+    assert.equal(emitted.filesWritten, 3);
+    assert.deepEqual(fs.readdirSync(controlDirectory).sort(), ['artifact-control.json','corpus-control.json','supervision-control.json']);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }
@@ -344,7 +354,7 @@ try {
     temporaryFixturesOnly: true,
     controls: ['frozen-interruption-facts','full-shard-identity-binding','self-consistent-tamper-rejection',
       'cross-worktree-stability','independent-evidence-emit-authorization','new-run-predecessor-binding',
-      'readonly-check','atomic-evidence-and-control-emit'],
+      'readonly-check','atomic-evidence-and-control-emit','supervision-source-and-control-binding'],
   }));
 } finally {
   if (previous) require.extensions['.ts'] = previous;

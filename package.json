@@ -103,6 +103,7 @@
     "test:stage8-bc-corpus-cli": "node scripts/stage8-bc-corpus-cli-regression.mjs",
     "test:stage8-bc-run-identity": "node scripts/stage8-bc-run-identity-regression.mjs",
     "test:stage8-bc-corpus-preflight": "node scripts/stage8-bc-corpus-preflight-gate.mjs",
+    "test:stage8-bc-supervision": "node scripts/stage8-bc-supervision-regression.mjs",
     "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",

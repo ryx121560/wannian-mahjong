@@ -121,6 +121,7 @@ export async function runStage8BcRunIdentityCli(options = {}) {
       bcControlManifestSha256: built.value.bcControl.manifestSha256,
       artifactControlManifestSha256: built.value.artifactControl.manifestSha256,
       corpusControlManifestSha256: built.value.corpusControl.manifestSha256,
+      supervisionControlManifestSha256: built.value.supervisionControl.manifestSha256,
     };
     if (mode === 'check') return { ok: true, status: 'checked', filesWritten: 0, summary };
     if (environment.STAGE8_BC_RUN_IDENTITY_EMIT !== '1') return fused('bc-run-identity-emit-authorization-required');
@@ -136,10 +137,12 @@ export async function runStage8BcRunIdentityCli(options = {}) {
     }
     const artifactFinal = path.join(controlDirectory, 'artifact-control.json');
     const corpusFinal = path.join(controlDirectory, 'corpus-control.json');
+    const supervisionFinal = path.join(controlDirectory, 'supervision-control.json');
     const artifactPartial = `${artifactFinal}.partial`;
     const corpusPartial = `${corpusFinal}.partial`;
+    const supervisionPartial = `${supervisionFinal}.partial`;
     const cleanup = () => {
-      for (const candidate of [artifactPartial,corpusPartial,artifactFinal,corpusFinal]) {
+      for (const candidate of [artifactPartial,corpusPartial,supervisionPartial,artifactFinal,corpusFinal,supervisionFinal]) {
         if (fs.existsSync(candidate)) fs.unlinkSync(candidate);
       }
     };
@@ -148,8 +151,11 @@ export async function runStage8BcRunIdentityCli(options = {}) {
       created.push(artifactPartial);
       fs.writeFileSync(corpusPartial, `${JSON.stringify(built.value.corpusControl)}\n`, { encoding: 'utf8', flag: 'wx' });
       created.push(corpusPartial);
+      fs.writeFileSync(supervisionPartial, `${JSON.stringify(built.value.supervisionControl)}\n`, { encoding: 'utf8', flag: 'wx' });
+      created.push(supervisionPartial);
       const artifactRead = parseJsonFile(artifactPartial);
       const corpusRead = parseJsonFile(corpusPartial);
+      const supervisionRead = parseJsonFile(supervisionPartial);
       const verified = identityTools.validateStage8BcRunIdentityMaterials({
         sourceCommit: checkout.sourceCommit,
         readFile: readSourceFile,
@@ -158,14 +164,17 @@ export async function runStage8BcRunIdentityCli(options = {}) {
         expectedPredecessorIdentity: options.expectedPredecessorIdentity,
         artifactControl: artifactRead,
         corpusControl: corpusRead,
+        supervisionControl: supervisionRead,
       });
       if (!verified.ok
         || fs.readFileSync(artifactPartial, 'utf8') !== `${JSON.stringify(built.value.artifactControl)}\n`
-        || fs.readFileSync(corpusPartial, 'utf8') !== `${JSON.stringify(built.value.corpusControl)}\n`) {
+        || fs.readFileSync(corpusPartial, 'utf8') !== `${JSON.stringify(built.value.corpusControl)}\n`
+        || fs.readFileSync(supervisionPartial, 'utf8') !== `${JSON.stringify(built.value.supervisionControl)}\n`) {
         throw new Error(verified.ok ? 'bc-run-control-byte-roundtrip-invalid' : verified.reason);
       }
       fs.renameSync(artifactPartial, artifactFinal);
       fs.renameSync(corpusPartial, corpusFinal);
+      fs.renameSync(supervisionPartial, supervisionFinal);
       const finalVerified = identityTools.validateStage8BcRunIdentityMaterials({
         sourceCommit: checkout.sourceCommit,
         readFile: readSourceFile,
@@ -174,6 +183,7 @@ export async function runStage8BcRunIdentityCli(options = {}) {
         expectedPredecessorIdentity: options.expectedPredecessorIdentity,
         artifactControl: parseJsonFile(artifactFinal),
         corpusControl: parseJsonFile(corpusFinal),
+        supervisionControl: parseJsonFile(supervisionFinal),
       });
       if (!finalVerified.ok) throw new Error(finalVerified.reason);
     } catch (error) {
@@ -183,8 +193,8 @@ export async function runStage8BcRunIdentityCli(options = {}) {
     return {
       ok: true,
       status: 'emitted',
-      filesWritten: 2,
-      files: [artifactFinal, corpusFinal],
+      filesWritten: 3,
+      files: [artifactFinal, corpusFinal, supervisionFinal],
       summary,
     };
   } catch (error) {

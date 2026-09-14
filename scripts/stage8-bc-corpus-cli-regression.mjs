@@ -149,6 +149,12 @@ const verifiedRunIdentity = ({ authorization, predecessorEvidence, artifactContr
 };
 const verifiedPredecessor = () => ({ ok: true, value: { evidenceSha256: sha('fixture-evidence') } });
 
+const directCli = spawnSync(process.execPath, ['scripts/stage8-bc-corpus-runner.mjs'], {
+  cwd: root, encoding: 'utf8', windowsHide: true,
+});
+assert.notEqual(directCli.status, 0);
+assert.match(directCli.stdout, /bc-corpus-supervision-required/);
+
 const greenFixture = setup();
 try {
   const green = await runStage8BcCorpusCli({ environment: greenFixture.environment, capacityPreflight,
@@ -281,7 +287,7 @@ try {
 } finally { fs.rmSync(quarantineFixture.temporary, { recursive: true, force: true }); }
 
 console.log(JSON.stringify({ passed: true, formalPilotGamesExecuted: 0, temporaryFixturesOnly: true,
-  controls: ['v2-new-run-control-green','full-readonly-preflight-before-temp','run-identity-drift-zero-write',
+  controls: ['legacy-v2-unit-green','formal-direct-cli-supervision-required','full-readonly-preflight-before-temp','run-identity-drift-zero-write',
     'predecessor-drift-zero-write','old-authorization-zero-write','old-control-zero-write',
     'copied-old-shard-zero-write','atomic-final-rename','structured-quarantine','no-automatic-retry'] }));
 
