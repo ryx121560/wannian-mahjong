@@ -30,11 +30,24 @@ function loadTs(entry) {
 
 const protocol = loadTs(path.join(root, 'src/game/stage8/offline-bc-operational-interruption.ts'));
 const supervisionTools = loadTs(path.join(root, 'src/game/stage8/offline-bc-supervision-control.ts'));
+const corpusTools = loadTs(path.join(root, 'src/game/stage8/offline-bc-corpus-control.ts'));
 const h = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const absentProcess = (pid) => ({ state: 'absent', pid });
 
 function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value)}\n`, { encoding: 'utf8', flag: 'wx' });
+}
+
+function resignCorpus(file, control) {
+  const { manifestSha256: _manifestSha256, ...payload } = control;
+  control.manifestSha256 = corpusTools.hashStage8BcCorpusControlPayload(payload);
+  fs.writeFileSync(file, `${JSON.stringify(control)}\n`);
+}
+
+function resignSupervision(file, control) {
+  const { manifestSha256: _manifestSha256, ...payload } = control;
+  control.manifestSha256 = supervisionTools.hashStage8BcSupervisionControlPayload(payload);
+  fs.writeFileSync(file, `${JSON.stringify(control)}\n`);
 }
 
 function controlFor(runId, values) {
@@ -87,20 +100,42 @@ function fixture(parent, name) {
   fs.mkdirSync(controlsRoot);
   const runId = `formal-bc-corpus-${name}`;
   const values = { authorization: h(`${name}-authorization`), predecessor: h(`${name}-predecessor`),
-    artifact: h(`${name}-artifact`), corpus: h(`${name}-corpus`) };
+    artifact: h(`${name}-artifact`) };
   const authorization = { runId, sourceCommit: 'a'.repeat(40), authorizationSha256: values.authorization,
     predecessor: { runId: 'formal-bc-corpus-predecessor', evidenceSha256: values.predecessor } };
   const predecessor = { predecessorRunId: authorization.predecessor.runId, evidenceSha256: values.predecessor };
   const artifact = { protocolVersion: 'stage8-bc-artifact-control-v2', manifestSha256: values.artifact,
     identity: { runId, sourceBundleSha256: h('source'), runAuthorizationSha256: values.authorization,
       predecessorEvidenceSha256: values.predecessor } };
-  const corpus = { protocolVersion: 'stage8-bc-corpus-control-v3', manifestSha256: values.corpus,
+  const corpusPayload = { protocolVersion: corpusTools.STAGE8_BC_CORPUS_CONTROL_SUPERVISED_VERSION,
     identity: { runId, sourceBundleSha256: h('source'), runAuthorizationSha256: values.authorization,
-      predecessorEvidenceSha256: values.predecessor, artifactControlManifestSha256: values.artifact },
-    plan: { workers: 1, priorOperationalInterruptions: 1, maxOperationalInterruptions: 1,
-      automaticRetries: 0, seedOverrides: 0, allowThirdAttempt: false },
-    capacity: { maxRunBytes: 5 * 1024 ** 3, rootHardLimitBytes: 64 * 1024 ** 3, rootFusePercent: 80 },
+      predecessorRunId: authorization.predecessor.runId, predecessorEvidenceSha256: values.predecessor,
+      artifactControlManifestSha256: values.artifact, bcControlManifestSha256: h('bc-control'),
+      rulesSha256: h('rules'), browserRulesSha256: h('browser-rules'), actionSpaceSha256: h('actions'),
+      legalActionMaskSha256: h('actions'), featureSha256: h('features'), visibleInformationSha256: h('features'),
+      tensorContractSha256: h('tensor'), teacherDefinitionSha256: h('teacher'), sampleSchemaSha256: h('sample'),
+      writerDefinitionSha256: h('writer'), trajectoryDefinitionSha256: h('trajectory'),
+      pythonDatasetDefinitionSha256: h('python-dataset'), corpusManifestDefinitionSha256: h('corpus-manifest'),
+      capacityPreflightSha256: h('capacity'), supervisionDefinitionSha256: h('supervision-definition') },
+    authorization: { approvalId: 'product-corpus-approval', granted: true, scope: corpusTools.STAGE8_BC_CORPUS_SCOPE },
+    plan: {
+      baseSeed: corpusTools.STAGE8_BC_CORPUS_BASE_SEED, seedDerivation: 'base-plus-game-index-v1',
+      gameCount: 64, candidateSeatDerivation: 'game-index-modulo-four-v1', candidateSeatGames: [16,16,16,16],
+      workers: 1, curriculum: 'normal-full-rules', exploration: false, modelLoading: false, recordAllSeats: true,
+      maxSuccessfulTransitionsPerGame: 600, splitUnit: 'episode-seed-group',
+      splitCounts: { train: 48, validation: 8, finalTest: 8 }, splitAssignment: 'game-index-ranges-v1',
+      crossRunPolicy: 'single-run-only', supervisedExecutionRequired: true, priorOperationalInterruptions: 1,
+      maxOperationalInterruptions: 1, automaticRetries: 0, seedOverrides: 0,
+    },
+    capacity: { maxRunBytes: 5 * 1024 ** 3, rootHardLimitBytes: 64 * 1024 ** 3, rootFusePercent: 80,
+      preflightBeforeRun: true, preflightBeforeEachBatchCommit: true },
+    allowCorpusPilotExecution: true, allowArtifactWrite: true, allowCrossRun: false, allowTraining: false,
+    allowValidationSamplingForTraining: false, allowFinalTestSamplingForTraining: false,
+    allowModelLoading: false, allowExploration: false, allowSmoke: false, allowSelfplay: false,
+    allowOnnxExport: false, allowRuntime: false,
   };
+  const corpus = { ...corpusPayload, manifestSha256: corpusTools.hashStage8BcCorpusControlPayload(corpusPayload) };
+  values.corpus = corpus.manifestSha256;
   const supervision = controlFor(runId, values);
   const objects = { authorization, predecessor, artifact, corpus, supervision };
   const paths = Object.fromEntries(Object.entries(objects).map(([key, value]) => {
@@ -140,7 +175,7 @@ function fixture(parent, name) {
     protocol: { ...protocol, validateStage8BcOperationalInterruptionEvidence: () => ({ ok: true, value: {} }) },
     identity: { validateStage8BcRunAuthorizationInput: () => ({ ok: true, value: {} }) },
     artifact: { validateStage8BcArtifactControlManifest: () => ({ ok: true, value: {} }) },
-    corpus: { validateStage8BcCorpusControlManifest: () => ({ ok: true, value: {} }) },
+    corpus: corpusTools,
     supervision: supervisionTools,
   };
   return { directory, environment, validators, objects, paths, staging, quarantine: `${staging}.quarantine`, supervisionDirectory };
@@ -190,6 +225,8 @@ try {
   }
 
   const checked = fixture(temporary, 'check');
+  assert.equal(corpusTools.validateStage8BcCorpusControlManifest(checked.objects.corpus).ok, true);
+  assert.equal(Object.hasOwn(checked.objects.corpus.plan, 'allowThirdAttempt'), false);
   const checkResult = runStage8BcSecondInterruptionRecovery({ args: ['--check'], environment: checked.environment,
     validators: checked.validators, inspectProcess: absentProcess, nowMs: Date.parse('2026-09-15T00:00:00Z') });
   assert.equal(checkResult.ok, true);
@@ -231,17 +268,38 @@ try {
 
   const wrongBinding = fixture(temporary, 'wrong-binding');
   wrongBinding.objects.corpus.identity.runAuthorizationSha256 = h('wrong');
-  fs.writeFileSync(wrongBinding.paths.corpus, `${JSON.stringify(wrongBinding.objects.corpus)}\n`);
+  resignCorpus(wrongBinding.paths.corpus, wrongBinding.objects.corpus);
   assert.equal(inspectStage8BcSecondInterruption({ environment: wrongBinding.environment, validators: wrongBinding.validators,
     inspectProcess: absentProcess, nowMs: Date.parse('2026-09-15T00:00:00Z') }).reason,
   'bc-second-interruption-cross-binding-invalid');
 
   const wrongCapacity = fixture(temporary, 'wrong-capacity');
   wrongCapacity.objects.corpus.capacity.rootFusePercent = 81;
-  fs.writeFileSync(wrongCapacity.paths.corpus, `${JSON.stringify(wrongCapacity.objects.corpus)}\n`);
+  resignCorpus(wrongCapacity.paths.corpus, wrongCapacity.objects.corpus);
   assert.equal(inspectStage8BcSecondInterruption({ environment: wrongCapacity.environment,
     validators: wrongCapacity.validators, inspectProcess: absentProcess,
-    nowMs: Date.parse('2026-09-15T00:00:00Z') }).reason, 'bc-second-interruption-cross-binding-invalid');
+    nowMs: Date.parse('2026-09-15T00:00:00Z') }).reason, 'bc-corpus-control-capacity-invalid');
+
+  const extraCorpusField = fixture(temporary, 'extra-corpus-field');
+  extraCorpusField.objects.corpus.plan.allowThirdAttempt = false;
+  resignCorpus(extraCorpusField.paths.corpus, extraCorpusField.objects.corpus);
+  assert.equal(inspectStage8BcSecondInterruption({ environment: extraCorpusField.environment,
+    validators: extraCorpusField.validators, inspectProcess: absentProcess,
+    nowMs: Date.parse('2026-09-15T00:00:00Z') }).reason, 'bc-corpus-control-nested-schema-invalid');
+
+  for (const [name, value, expectedReason] of [
+    ['missing', undefined, 'bc-supervision-control-schema-invalid'],
+    ['null', null, 'bc-supervision-control-policy-invalid'],
+    ['true', true, 'bc-supervision-control-policy-invalid'],
+  ]) {
+    const invalidSupervision = fixture(temporary, `supervision-${name}`);
+    if (value === undefined) delete invalidSupervision.objects.supervision.policy.allowThirdAttempt;
+    else invalidSupervision.objects.supervision.policy.allowThirdAttempt = value;
+    resignSupervision(invalidSupervision.paths.supervision, invalidSupervision.objects.supervision);
+    assert.equal(inspectStage8BcSecondInterruption({ environment: invalidSupervision.environment,
+      validators: invalidSupervision.validators, inspectProcess: absentProcess,
+      nowMs: Date.parse('2026-09-15T00:00:00Z') }).reason, expectedReason);
+  }
 
   const wrongShard = fixture(temporary, 'wrong-shard');
   fs.appendFileSync(path.join(wrongShard.staging, 'batches', 'batch-000016', 'shard-000016.json.gz'), 'tamper');

@@ -137,7 +137,7 @@ function validateBoundInputs(files, tools) {
     || corpusControl.manifestSha256 !== supervisionControl.identity.corpusControlManifestSha256
     || corpusControl.plan.workers !== 1 || corpusControl.plan.priorOperationalInterruptions !== 1
     || corpusControl.plan.maxOperationalInterruptions !== 1 || corpusControl.plan.automaticRetries !== 0
-    || corpusControl.plan.seedOverrides !== 0 || corpusControl.plan.allowThirdAttempt !== false
+    || corpusControl.plan.seedOverrides !== 0
     || corpusControl.capacity.maxRunBytes !== 5 * 1024 ** 3
     || corpusControl.capacity.rootHardLimitBytes !== 64 * 1024 ** 3
     || corpusControl.capacity.rootFusePercent !== 80
