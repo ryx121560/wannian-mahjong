@@ -12,6 +12,10 @@ export const STAGE8_BC_PREDECESSOR_QUARANTINE_RELATIVE_PATH =
   `${STAGE8_BC_PREDECESSOR_RUN_ID}.partial.quarantine`;
 export const STAGE8_BC_OPERATIONAL_INTERRUPTION_REASON =
   'operational-interruption-codex-usage-limit';
+export const STAGE8_BC_SECOND_INTERRUPTION_EVIDENCE_VERSION =
+  'stage8-bc-operational-interruption-evidence-v2';
+export const STAGE8_BC_SECOND_INTERRUPTION_MARKER_VERSION =
+  'stage8-bc-operational-interruption-marker-v2';
 
 export interface Stage8BcOperationalInterruptionExpectedIdentity {
   predecessorRunId: string;
@@ -101,6 +105,91 @@ export interface Stage8BcOperationalInterruptionEmitAuthorization {
 export type Stage8BcOperationalInterruptionResult<T> =
   | { ok: true; value: T }
   | { ok: false; reason: string };
+
+export interface Stage8BcSecondInterruptionIdentity {
+  runId: string;
+  sourceCommit: string;
+  sourceBundleSha256: string;
+  runAuthorizationSha256: string;
+  runAuthorizationFileSha256: string;
+  predecessorRunId: string;
+  predecessorEvidenceSha256: string;
+  predecessorEvidenceFileSha256: string;
+  artifactControlManifestSha256: string;
+  artifactControlFileSha256: string;
+  corpusControlManifestSha256: string;
+  corpusControlFileSha256: string;
+  supervisionControlManifestSha256: string;
+  supervisionControlFileSha256: string;
+}
+
+export interface Stage8BcSecondInterruptionEvidence {
+  protocolVersion: typeof STAGE8_BC_SECOND_INTERRUPTION_EVIDENCE_VERSION;
+  identity: Stage8BcSecondInterruptionIdentity;
+  supervision: {
+    relativePath: string;
+    lockSha256: string;
+    statusCount: number;
+    statusHeadSha256: string;
+    launchNonce: string;
+    launcherPid: number;
+    supervisorPid: number;
+    workerPid: number;
+    lastSequence: number;
+    lastState: 'running';
+    heartbeatAt: string;
+    completedGames: number;
+    completedShards: number;
+    lastGameIndex: number;
+  };
+  quarantine: {
+    relativePath: string;
+    completedShardCount: number;
+    shards: Stage8BcOperationalInterruptionShardIdentity[];
+    shardAggregateSha256: string;
+    totalRecords: number;
+    totalBytes: number;
+    lastWriteTimeUtc: string;
+  };
+  interruption: {
+    classification: 'second-external-operational-interruption';
+    classificationBasis: 'stale-heartbeat-and-supervisor-worker-absent';
+    currentInterruptionOrdinal: 2;
+    priorOperationalInterruptions: 1;
+    maxOperationalInterruptions: 1;
+    benchmarkInvalidated: true;
+  };
+  policy: {
+    workers: 1;
+    automaticRetries: 0;
+    seedOverrides: 0;
+    allowThirdAttempt: false;
+    allowResume: false;
+    diagnosticOnly: true;
+  };
+  commitments: {
+    finalCommitted: false;
+    corpusManifestCommitted: false;
+    replayCommitted: false;
+    checkpointCommitted: false;
+    trainingCommitted: false;
+    formalPilotGamesCredited: 0;
+  };
+  evidenceSha256: string;
+}
+
+export interface Stage8BcSecondInterruptionMarker {
+  protocolVersion: typeof STAGE8_BC_SECOND_INTERRUPTION_MARKER_VERSION;
+  status: 'quarantined';
+  reason: 'operational-interruption-limit-reached';
+  runId: string;
+  evidenceSha256: string;
+  completedShardCount: number;
+  currentInterruptionOrdinal: 2;
+  automaticRetries: 0;
+  seedOverrides: 0;
+  allowThirdAttempt: false;
+}
 
 function isSha256(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
@@ -331,4 +420,140 @@ export function validateStage8BcOperationalInterruptionEmitAuthorization(
     return { ok: false, reason: 'bc-operational-interruption-emit-authorization-invalid' };
   }
   return { ok: true, value: { approvalId: input.approvalId } };
+}
+
+export function hashStage8BcSecondInterruptionEvidencePayload(
+  input: Omit<Stage8BcSecondInterruptionEvidence, 'evidenceSha256'>,
+): string {
+  return hashStage8OfflineIdentity(input);
+}
+
+export function createStage8BcSecondInterruptionEvidence(
+  input: Omit<Stage8BcSecondInterruptionEvidence, 'protocolVersion' | 'evidenceSha256'>,
+): Stage8BcOperationalInterruptionResult<Stage8BcSecondInterruptionEvidence> {
+  const identity = input.identity;
+  const identityHashes = Object.entries(identity)
+    .filter(([key]) => key.toLowerCase().includes('sha256'))
+    .map(([, value]) => value);
+  if (!validId(identity.runId) || !validId(identity.predecessorRunId)
+    || !/^[a-f0-9]{40}$/i.test(identity.sourceCommit)
+    || identityHashes.some((value) => !isSha256(value))) {
+    return { ok: false, reason: 'bc-second-interruption-identity-invalid' };
+  }
+  const supervision = input.supervision;
+  if (!validRelativePath(supervision.relativePath) || !isSha256(supervision.lockSha256)
+    || !isSha256(supervision.statusHeadSha256) || !isSha256(supervision.launchNonce)
+    || !Number.isInteger(supervision.statusCount) || supervision.statusCount <= 1
+    || supervision.lastSequence !== supervision.statusCount - 1
+    || supervision.lastState !== 'running' || !Number.isFinite(Date.parse(supervision.heartbeatAt))
+    || [supervision.launcherPid,supervision.supervisorPid,supervision.workerPid]
+      .some((value) => !Number.isInteger(value) || value <= 0)
+    || !Number.isInteger(supervision.completedGames) || supervision.completedGames <= 0
+    || supervision.completedGames !== supervision.completedShards
+    || supervision.completedShards !== input.quarantine.completedShardCount
+    || supervision.lastGameIndex !== supervision.completedGames - 1) {
+    return { ok: false, reason: 'bc-second-interruption-supervision-invalid' };
+  }
+  const quarantine = input.quarantine;
+  const shards = [...quarantine.shards].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+  if (!validRelativePath(quarantine.relativePath)
+    || quarantine.completedShardCount !== shards.length || shards.length <= 0
+    || shards.some((shard) => !exactKeys(shard, ['relativePath','bytes','records','sha256'])
+      || !validRelativePath(shard.relativePath) || !isSha256(shard.sha256)
+      || !Number.isInteger(shard.bytes) || shard.bytes <= 0
+      || !Number.isInteger(shard.records) || shard.records <= 0)
+    || shards.map((shard) => shardBatchNumber(shard.relativePath))
+      .some((value, index) => value !== index + 1)
+    || hashStage8BcOperationalInterruptionShardAggregate(shards) !== quarantine.shardAggregateSha256
+    || shards.reduce((sum, shard) => sum + shard.records, 0) !== quarantine.totalRecords
+    || shards.reduce((sum, shard) => sum + shard.bytes, 0) !== quarantine.totalBytes
+    || !Number.isFinite(Date.parse(quarantine.lastWriteTimeUtc))) {
+    return { ok: false, reason: 'bc-second-interruption-shards-invalid' };
+  }
+  if (input.interruption.classification !== 'second-external-operational-interruption'
+    || input.interruption.classificationBasis !== 'stale-heartbeat-and-supervisor-worker-absent'
+    || input.interruption.currentInterruptionOrdinal !== 2
+    || input.interruption.priorOperationalInterruptions !== 1
+    || input.interruption.maxOperationalInterruptions !== 1
+    || input.interruption.benchmarkInvalidated !== true
+    || input.policy.workers !== 1 || input.policy.automaticRetries !== 0 || input.policy.seedOverrides !== 0
+    || input.policy.allowThirdAttempt !== false || input.policy.allowResume !== false
+    || input.policy.diagnosticOnly !== true
+    || Object.values(input.commitments).some((value) => value !== false && value !== 0)) {
+    return { ok: false, reason: 'bc-second-interruption-boundary-invalid' };
+  }
+  const payload: Omit<Stage8BcSecondInterruptionEvidence, 'evidenceSha256'> = {
+    protocolVersion: STAGE8_BC_SECOND_INTERRUPTION_EVIDENCE_VERSION,
+    ...input,
+    identity: Object.fromEntries(Object.entries(identity).map(([key, value]) => [
+      key,
+      typeof value === 'string' && (key === 'sourceCommit' || key.toLowerCase().includes('sha256'))
+        ? value.toLowerCase() : value,
+    ])) as unknown as Stage8BcSecondInterruptionIdentity,
+    quarantine: { ...quarantine, shards: shards.map((shard) => ({ ...shard, sha256: shard.sha256.toLowerCase() })) },
+  };
+  return { ok: true, value: { ...payload, evidenceSha256: hashStage8BcSecondInterruptionEvidencePayload(payload) } };
+}
+
+export function validateStage8BcSecondInterruptionEvidence(
+  evidence: Stage8BcSecondInterruptionEvidence,
+  expectedIdentity?: Stage8BcSecondInterruptionIdentity,
+): Stage8BcOperationalInterruptionResult<{ evidenceSha256: string }> {
+  if (!exactKeys(evidence, ['protocolVersion','identity','supervision','quarantine','interruption','policy','commitments','evidenceSha256'])
+    || !exactKeys(evidence?.identity, [
+      'runId','sourceCommit','sourceBundleSha256','runAuthorizationSha256','runAuthorizationFileSha256',
+      'predecessorRunId','predecessorEvidenceSha256','predecessorEvidenceFileSha256',
+      'artifactControlManifestSha256','artifactControlFileSha256','corpusControlManifestSha256',
+      'corpusControlFileSha256','supervisionControlManifestSha256','supervisionControlFileSha256',
+    ]) || !exactKeys(evidence?.supervision, [
+      'relativePath','lockSha256','statusCount','statusHeadSha256','launchNonce','launcherPid','supervisorPid',
+      'workerPid','lastSequence','lastState','heartbeatAt','completedGames','completedShards','lastGameIndex',
+    ]) || !exactKeys(evidence?.quarantine, [
+      'relativePath','completedShardCount','shards','shardAggregateSha256','totalRecords','totalBytes','lastWriteTimeUtc',
+    ]) || !exactKeys(evidence?.interruption, [
+      'classification','classificationBasis','currentInterruptionOrdinal','priorOperationalInterruptions',
+      'maxOperationalInterruptions','benchmarkInvalidated',
+    ]) || !exactKeys(evidence?.policy, [
+      'workers','automaticRetries','seedOverrides','allowThirdAttempt','allowResume','diagnosticOnly',
+    ]) || !exactKeys(evidence?.commitments, [
+      'finalCommitted','corpusManifestCommitted','replayCommitted','checkpointCommitted','trainingCommitted',
+      'formalPilotGamesCredited',
+    ]) || !Array.isArray(evidence?.quarantine?.shards) || !isSha256(evidence?.evidenceSha256)) {
+    return { ok: false, reason: 'bc-second-interruption-evidence-schema-invalid' };
+  }
+  if (evidence.protocolVersion !== STAGE8_BC_SECOND_INTERRUPTION_EVIDENCE_VERSION) {
+    return { ok: false, reason: 'bc-second-interruption-evidence-version-invalid' };
+  }
+  const { protocolVersion: _protocolVersion, evidenceSha256: _evidenceSha256, ...input } = evidence;
+  const rebuilt = createStage8BcSecondInterruptionEvidence(input);
+  if (!rebuilt.ok) return rebuilt;
+  if (rebuilt.value.evidenceSha256 !== evidence.evidenceSha256
+    || JSON.stringify(rebuilt.value) !== JSON.stringify(evidence)) {
+    return { ok: false, reason: 'bc-second-interruption-evidence-hash-mismatch' };
+  }
+  if (expectedIdentity && Object.keys(expectedIdentity).some((key) =>
+    !sameExpectedValue(
+      evidence.identity[key as keyof Stage8BcSecondInterruptionIdentity],
+      expectedIdentity[key as keyof Stage8BcSecondInterruptionIdentity],
+    ))) return { ok: false, reason: 'bc-second-interruption-frozen-identity-mismatch' };
+  return { ok: true, value: { evidenceSha256: evidence.evidenceSha256 } };
+}
+
+export function createStage8BcSecondInterruptionMarker(
+  evidence: Stage8BcSecondInterruptionEvidence,
+): Stage8BcOperationalInterruptionResult<Stage8BcSecondInterruptionMarker> {
+  const validated = validateStage8BcSecondInterruptionEvidence(evidence);
+  if ('reason' in validated) return { ok: false, reason: validated.reason };
+  return { ok: true, value: {
+    protocolVersion: STAGE8_BC_SECOND_INTERRUPTION_MARKER_VERSION,
+    status: 'quarantined',
+    reason: 'operational-interruption-limit-reached',
+    runId: evidence.identity.runId,
+    evidenceSha256: evidence.evidenceSha256,
+    completedShardCount: evidence.quarantine.completedShardCount,
+    currentInterruptionOrdinal: 2,
+    automaticRetries: 0,
+    seedOverrides: 0,
+    allowThirdAttempt: false,
+  } };
 }
