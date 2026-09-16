@@ -106,6 +106,7 @@
     "test:stage8-bc-supervision": "node scripts/stage8-bc-supervision-regression.mjs",
     "test:stage8-bc-second-interruption": "node scripts/stage8-bc-second-interruption-regression.mjs",
     "test:stage8-windows-task-host": "node scripts/stage8-windows-task-host-regression.mjs",
+    "test:stage8-windows-task-diagnostic-identity": "node scripts/stage8-windows-task-diagnostic-identity-regression.mjs",
     "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",
