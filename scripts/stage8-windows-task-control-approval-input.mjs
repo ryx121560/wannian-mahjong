@@ -85,7 +85,7 @@ function serialize(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-export function runStage8WindowsTaskControlApprovalInputCheck(argv = process.argv.slice(2), dependencies = {}) {
+export function buildStage8WindowsTaskControlApprovalInputMaterials(argv = process.argv.slice(2), dependencies = {}) {
   if ((dependencies.environment ?? process.env).STAGE8_WINDOWS_TASK_CONTROL_APPROVAL_INPUT_AUTHORIZED !== '1') {
     throw new Error('windows-task-control-approval-input-product-gate-required');
   }
@@ -136,35 +136,51 @@ export function runStage8WindowsTaskControlApprovalInputCheck(argv = process.arg
   }));
   const decision = dependencies.productDecision ?? createProductDecision();
   const runIdentityCheck = dependencies.runIdentityCheck ?? runStage8WindowsTaskDiagnosticIdentityCheck;
-  const runApprovalCheck = dependencies.runApprovalCheck ?? runStage8WindowsTaskControlApproval;
+  const identityCheck = runIdentityCheck([
+    '--check', '--source-root', parsed.runtimeRoot, '--user-sid', parsed.userSid,
+  ], { nodeExecutablePath, osTempRoot, inspectCheckout: inspect, readFile });
+  if (identityCheck.identitySha256 !== approvalTools.STAGE8_WINDOWS_TASK_CONTROL_APPROVAL_IDENTITY_SHA256) {
+    throw new Error('windows-task-control-approval-input-identity-sha-mismatch');
+  }
+  const created = inputTools.createStage8WindowsTaskControlApprovalInput({
+    decision,
+    identityBundle: identityCheck.bundle,
+    signerProjectRoot: parsed.signerRoot,
+    expectedOsTempRoot: osTempRoot,
+    inspectSignerCheckout: inspect,
+    readSignerFile: readFile,
+    validateIdentityBundle,
+  });
+  if (!created.ok) throw new Error(created.reason);
+  return {
+    identityBundle: identityCheck.bundle,
+    authorization: created.value,
+    decision,
+    osTempRoot,
+    inspectCheckout: inspect,
+    readFile,
+    validateIdentityBundle,
+    effects: () => ({ targetRootReads, formalPathsRead }),
+  };
+}
 
+export function runStage8WindowsTaskControlApprovalInputCheck(argv = process.argv.slice(2), dependencies = {}) {
+  const runApprovalCheck = dependencies.runApprovalCheck ?? runStage8WindowsTaskControlApproval;
   const executeOnce = () => {
-    const identityCheck = runIdentityCheck([
-      '--check', '--source-root', parsed.runtimeRoot, '--user-sid', parsed.userSid,
-    ], { nodeExecutablePath, osTempRoot, inspectCheckout: inspect, readFile });
-    if (identityCheck.identitySha256 !== approvalTools.STAGE8_WINDOWS_TASK_CONTROL_APPROVAL_IDENTITY_SHA256) {
-      throw new Error('windows-task-control-approval-input-identity-sha-mismatch');
-    }
-    const created = inputTools.createStage8WindowsTaskControlApprovalInput({
-      decision,
-      identityBundle: identityCheck.bundle,
-      signerProjectRoot: parsed.signerRoot,
-      expectedOsTempRoot: osTempRoot,
-      inspectSignerCheckout: inspect,
-      readSignerFile: readFile,
-      validateIdentityBundle,
-    });
-    if (!created.ok) throw new Error(created.reason);
+    const materials = buildStage8WindowsTaskControlApprovalInputMaterials(argv, dependencies);
+    const created = { value: materials.authorization };
+    const decision = materials.decision;
     const checked = runApprovalCheck([
       '--check', 'C:\\in-memory-diagnostic-identity.json', 'C:\\in-memory-control-approval-input.json',
     ], {
-      identityBundle: identityCheck.bundle,
+      identityBundle: materials.identityBundle,
       authorization: created.value,
-      osTempRoot,
-      inspectCheckout: inspect,
-      readFile,
-      validateIdentityBundle,
+      osTempRoot: materials.osTempRoot,
+      inspectCheckout: materials.inspectCheckout,
+      readFile: materials.readFile,
+      validateIdentityBundle: materials.validateIdentityBundle,
     });
+    const effects = materials.effects();
     const checkIdentitySha256 = identityHashTools.hashStage8OfflineIdentity({
       decisionSha256: decision.decisionSha256,
       identitySha256: created.value.identitySha256,
@@ -196,8 +212,8 @@ export function runStage8WindowsTaskControlApprovalInputCheck(argv = process.arg
       scheduledTasksMutated: 0,
       servicesRead: 0,
       servicesMutated: 0,
-      targetRootReads,
-      formalPathsRead,
+      targetRootReads: effects.targetRootReads,
+      formalPathsRead: effects.formalPathsRead,
       formalPilotGamesCredited: 0,
     };
   };
