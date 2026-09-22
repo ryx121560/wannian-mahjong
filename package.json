@@ -114,6 +114,7 @@
     "test:stage8-windows-task-materials-emit-authorization-orchestrator": "node scripts/stage8-windows-task-materials-emit-authorization-orchestrator-regression.mjs",
     "test:stage8-windows-task-register-approval": "node scripts/stage8-windows-task-register-approval-regression.mjs",
     "test:stage8-windows-task-register-authorization-orchestrator": "node scripts/stage8-windows-task-register-authorization-orchestrator-regression.mjs",
+    "test:stage8-windows-task-register-execution": "node scripts/stage8-windows-task-register-execution-regression.mjs",
     "test:stage8-frozen-model-inference": "node scripts/stage8-frozen-model-inference-regression.mjs",
     "test:stage8-offline-smoke-runtime-preflight": "node scripts/stage8-offline-smoke-runtime-preflight-regression.mjs",
     "test:stage8-offline-smoke-runner": "node scripts/stage8-offline-smoke-runner-regression.mjs",
