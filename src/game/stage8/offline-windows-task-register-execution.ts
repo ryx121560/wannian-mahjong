@@ -225,6 +225,59 @@ export function normalizeStage8WindowsTaskRegisterExecutionXml(value: Uint8Array
     .trim();
 }
 
+const WINDOWS_TASK_EXPORTED_IDLE_SETTINGS = '<IdleSettings><StopOnIdleEnd>true</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>';
+const WINDOWS_TASK_EXPORTED_REMOTE_APP_DEFAULT = '<DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>';
+const WINDOWS_TASK_EXPORTED_UNIFIED_ENGINE_DEFAULT = '<UseUnifiedSchedulingEngine>false</UseUnifiedSchedulingEngine>';
+const WINDOWS_TASK_NETWORK_ANCHOR = '<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>';
+const WINDOWS_TASK_IDLE_ANCHOR = '<RunOnlyIfIdle>false</RunOnlyIfIdle>';
+
+function countExact(value: string, token: string): number {
+  return value.split(token).length - 1;
+}
+
+function removeOptionalWindowsDefault(
+  formalXml: string,
+  exportedXml: string,
+  token: string,
+  allowedPrefix: string,
+): string {
+  const formalCount = countExact(formalXml, token);
+  const exportedCount = countExact(exportedXml, token);
+  if (formalCount !== 0 || exportedCount === 0) return exportedXml;
+  if (exportedCount !== 1 || countExact(exportedXml, `${allowedPrefix}${token}`) !== 1) {
+    throw new Error('windows-task-register-execution-exported-task-policy-drift');
+  }
+  return exportedXml.replace(`${allowedPrefix}${token}`, allowedPrefix);
+}
+
+function reconcileStage8WindowsTaskRegisterExecutionXml(
+  formalXml: string,
+  exportedXml: string,
+): string {
+  let reconciled = removeOptionalWindowsDefault(
+    formalXml,
+    exportedXml,
+    WINDOWS_TASK_EXPORTED_IDLE_SETTINGS,
+    WINDOWS_TASK_NETWORK_ANCHOR,
+  );
+  reconciled = removeOptionalWindowsDefault(
+    formalXml,
+    reconciled,
+    WINDOWS_TASK_EXPORTED_REMOTE_APP_DEFAULT,
+    WINDOWS_TASK_IDLE_ANCHOR,
+  );
+  const unifiedEnginePrefix = countExact(reconciled, WINDOWS_TASK_EXPORTED_REMOTE_APP_DEFAULT) === 1
+    ? `${WINDOWS_TASK_IDLE_ANCHOR}${WINDOWS_TASK_EXPORTED_REMOTE_APP_DEFAULT}`
+    : WINDOWS_TASK_IDLE_ANCHOR;
+  reconciled = removeOptionalWindowsDefault(
+    formalXml,
+    reconciled,
+    WINDOWS_TASK_EXPORTED_UNIFIED_ENGINE_DEFAULT,
+    unifiedEnginePrefix,
+  );
+  return reconciled;
+}
+
 export function validateStage8WindowsTaskRegisterExecutionXmlIdentity(input: {
   taskXmlBytes: Uint8Array;
   exportedTaskXml: Uint8Array | string;
@@ -233,7 +286,8 @@ export function validateStage8WindowsTaskRegisterExecutionXmlIdentity(input: {
 }): { normalizedXmlSha256: string; taskXmlSha256: string } {
   const formalXml = normalizeStage8WindowsTaskRegisterExecutionXml(input.taskXmlBytes);
   const exportedXml = normalizeStage8WindowsTaskRegisterExecutionXml(input.exportedTaskXml);
-  if (formalXml !== exportedXml) throw new Error('windows-task-register-execution-exported-task-xml-drift');
+  const reconciledExportedXml = reconcileStage8WindowsTaskRegisterExecutionXml(formalXml, exportedXml);
+  if (formalXml !== reconciledExportedXml) throw new Error('windows-task-register-execution-exported-task-xml-drift');
   const required = [
     /<LogonType>S4U<\/LogonType>/,
     /<RunLevel>LeastPrivilege<\/RunLevel>/,

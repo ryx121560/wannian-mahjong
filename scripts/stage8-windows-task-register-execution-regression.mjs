@@ -40,8 +40,43 @@ const control = JSON.parse(formalBytes.get(key(formalPaths.controlPath)).toStrin
 const evidencePath = path.win32.join(control.paths.evidenceRoot, 'registration.json');
 const stagingPath = `${evidencePath}.partial`;
 const taskXmlText = formalBytes.get(key(formalPaths.taskDefinitionPath)).subarray(2).toString('utf16le');
+const material = JSON.parse(formalBytes.get(key(formalPaths.taskMaterialsPath)).toString('utf8'));
 const checkArgv = ['--check', '--product-approved-register-execution-only'];
 const mutateArgv = ['--register-and-verify', '--product-approved-register-execution-only'];
+const windowsIdleSettings = '<IdleSettings><StopOnIdleEnd>true</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>';
+const windowsRemoteAppDefault = '<DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>';
+const windowsUnifiedEngineDefault = '<UseUnifiedSchedulingEngine>false</UseUnifiedSchedulingEngine>';
+
+function withWindowsExportDefaults(source, options = {}) {
+  const selected = { idle: true, remoteApp: true, unifiedEngine: true, ...options };
+  let result = source;
+  if (selected.idle) {
+    result = result.replace(
+      '<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>',
+      `<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>${windowsIdleSettings}`,
+    );
+  }
+  const afterIdle = [
+    selected.remoteApp ? windowsRemoteAppDefault : '',
+    selected.unifiedEngine ? windowsUnifiedEngineDefault : '',
+  ].join('');
+  if (afterIdle) {
+    result = result.replace(
+      '<RunOnlyIfIdle>false</RunOnlyIfIdle>',
+      `<RunOnlyIfIdle>false</RunOnlyIfIdle>${afterIdle}`,
+    );
+  }
+  return result;
+}
+
+function validateExportedXml(exportedTaskXml) {
+  return executionTools.validateStage8WindowsTaskRegisterExecutionXmlIdentity({
+    taskXmlBytes: formalBytes.get(key(formalPaths.taskDefinitionPath)),
+    exportedTaskXml,
+    control,
+    material,
+  });
+}
 
 function clone(value) { return structuredClone(value); }
 function absentTask() {
@@ -242,6 +277,80 @@ function test(callback) { callback(); checks += 1; }
 function captureFailure(callback) {
   try { callback(); } catch (error) { return error; }
   assert.fail('expected failure');
+}
+
+test(() => {
+  const exact = validateExportedXml(taskXmlText);
+  assert.equal(exact.taskXmlSha256, material.taskXmlSha256);
+});
+
+for (const options of [
+  { idle: true, remoteApp: false, unifiedEngine: false },
+  { idle: false, remoteApp: true, unifiedEngine: false },
+  { idle: false, remoteApp: false, unifiedEngine: true },
+  { idle: true, remoteApp: true, unifiedEngine: false },
+  { idle: true, remoteApp: false, unifiedEngine: true },
+  { idle: false, remoteApp: true, unifiedEngine: true },
+  { idle: true, remoteApp: true, unifiedEngine: true },
+]) {
+  test(() => {
+    const validated = validateExportedXml(withWindowsExportDefaults(taskXmlText, options));
+    assert.equal(validated.taskXmlSha256, material.taskXmlSha256);
+  });
+}
+
+for (const mutate of [
+  (value) => value.replace('<StopOnIdleEnd>true</StopOnIdleEnd>', '<StopOnIdleEnd>false</StopOnIdleEnd>'),
+  (value) => value.replace('<RestartOnIdle>false</RestartOnIdle>', '<RestartOnIdle>true</RestartOnIdle>'),
+  (value) => value.replace(windowsIdleSettings, '<IdleSettings><RestartOnIdle>false</RestartOnIdle><StopOnIdleEnd>true</StopOnIdleEnd></IdleSettings>'),
+  (value) => value.replace('<StopOnIdleEnd>true</StopOnIdleEnd>', ''),
+  (value) => value.replace('<RestartOnIdle>false</RestartOnIdle>', ''),
+  (value) => value.replace(windowsIdleSettings, `${windowsIdleSettings}${windowsIdleSettings}`),
+  (value) => value.replace('<IdleSettings>', '<IdleSettings Duration="PT10M">'),
+  (value) => value.replace('<StopOnIdleEnd>', '<StopOnIdleEnd Test="1">'),
+  (value) => value.replace(windowsRemoteAppDefault, '<DisallowStartOnRemoteAppSession>true</DisallowStartOnRemoteAppSession>'),
+  (value) => value.replace(windowsRemoteAppDefault, `${windowsRemoteAppDefault}${windowsRemoteAppDefault}`),
+  (value) => value.replace('<DisallowStartOnRemoteAppSession>', '<DisallowStartOnRemoteAppSession Test="1">'),
+  (value) => value.replace(windowsUnifiedEngineDefault, '<UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>'),
+  (value) => value.replace(windowsUnifiedEngineDefault, `${windowsUnifiedEngineDefault}${windowsUnifiedEngineDefault}`),
+  (value) => value.replace('<UseUnifiedSchedulingEngine>', '<UseUnifiedSchedulingEngine Test="1">'),
+  (value) => value.replace(`${windowsRemoteAppDefault}${windowsUnifiedEngineDefault}`, `${windowsUnifiedEngineDefault}${windowsRemoteAppDefault}`),
+  (value) => value.replace(windowsIdleSettings, '').replace('</Settings>', `</Settings>${windowsIdleSettings}`),
+  (value) => value.replace(windowsRemoteAppDefault, '').replace('</Settings>', `</Settings>${windowsRemoteAppDefault}`),
+  (value) => value.replace(windowsUnifiedEngineDefault, '').replace('</Settings>', `</Settings>${windowsUnifiedEngineDefault}`),
+  (value) => value.replace(windowsIdleSettings, '').replace('<MultipleInstancesPolicy>', `${windowsIdleSettings}<MultipleInstancesPolicy>`),
+  (value) => value.replace(windowsRemoteAppDefault, '').replace('<AllowStartOnDemand>', `${windowsRemoteAppDefault}<AllowStartOnDemand>`),
+]) {
+  test(() => assert.throws(
+    () => validateExportedXml(mutate(withWindowsExportDefaults(taskXmlText))),
+    /exported-task-(?:xml|policy)-drift/,
+  ));
+}
+
+for (const mutate of [
+  (value) => value.replace('</Triggers>', '<TimeTrigger><StartBoundary>2026-09-17T02:00:00.000Z</StartBoundary></TimeTrigger></Triggers>'),
+  (value) => value.replace('</Actions>', '<Exec><Command>cmd.exe</Command></Exec></Actions>'),
+  (value) => value.replace('</Principals>', '<Principal id="Other"><UserId>S-1-0-0</UserId></Principal></Principals>'),
+  (value) => value.replace(/<Command>[^<]+<\/Command>/, '<Command>cmd.exe</Command>'),
+  (value) => value.replace(/<Arguments>[^<]+<\/Arguments>/, '<Arguments>--changed</Arguments>'),
+  (value) => value.replace(/<WorkingDirectory>[^<]+<\/WorkingDirectory>/, '<WorkingDirectory>C:\\changed</WorkingDirectory>'),
+  (value) => value.replace(/<UserId>[^<]+<\/UserId>/, '<UserId>S-1-0-0</UserId>'),
+  (value) => value.replace('<LogonType>S4U</LogonType>', '<LogonType>Password</LogonType>'),
+  (value) => value.replace('<RunLevel>LeastPrivilege</RunLevel>', '<RunLevel>HighestAvailable</RunLevel>'),
+  (value) => value.replace('<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>', '<MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>'),
+  (value) => value.replace('<StartWhenAvailable>false</StartWhenAvailable>', '<StartWhenAvailable>true</StartWhenAvailable>'),
+  (value) => value.replace('<ExecutionTimeLimit>PT15M</ExecutionTimeLimit>', '<ExecutionTimeLimit>PT30M</ExecutionTimeLimit>'),
+  (value) => value.replace('</TimeTrigger>', '<Repetition><Interval>PT1M</Interval></Repetition></TimeTrigger>'),
+  (value) => value.replace('</Settings>', '<RestartOnFailure><Interval>PT1M</Interval><Count>1</Count></RestartOnFailure></Settings>'),
+  (value) => value.replace('<StartBoundary>2026-09-17T02:00:00.000Z</StartBoundary>', '<StartBoundary>2026-09-17T02:01:00.000Z</StartBoundary>'),
+  (value) => value.replace('<EndBoundary>2026-09-17T02:30:00.000Z</EndBoundary>', '<EndBoundary>2026-09-17T02:31:00.000Z</EndBoundary>'),
+  (value) => value.replace('</Settings>', '<UnknownSetting>false</UnknownSetting></Settings>'),
+  (value) => value.replace('<WakeToRun>false</WakeToRun>', ''),
+]) {
+  test(() => assert.throws(
+    () => validateExportedXml(mutate(withWindowsExportDefaults(taskXmlText))),
+    /exported-task-xml-drift/,
+  ));
 }
 
 test(() => {
