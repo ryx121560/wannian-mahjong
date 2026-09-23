@@ -2,6 +2,7 @@ import path from 'node:path';
 import { hashStage8OfflineIdentity } from './offline-action-identity';
 
 export const STAGE8_WINDOWS_TASK_HOST_CONTROL_VERSION = 'stage8-windows-task-host-control-v1';
+export const STAGE8_WINDOWS_TASK_HOST_DEMAND_CONTROL_VERSION = 'stage8-windows-task-host-control-on-demand-v2';
 export const STAGE8_WINDOWS_TASK_HOST_AUTHORIZATION_VERSION = 'stage8-windows-task-host-phase-authorization-v1';
 export const STAGE8_WINDOWS_TASK_HOST_MATERIAL_VERSION = 'stage8-windows-task-host-material-v1';
 export const STAGE8_WINDOWS_TASK_HOST_STATUS_VERSION = 'stage8-windows-task-host-status-v1';
@@ -21,7 +22,7 @@ const PHASE_SCOPES: Record<Stage8WindowsTaskHostPhase, string> = {
 };
 
 export interface Stage8WindowsTaskHostControl {
-  protocolVersion: typeof STAGE8_WINDOWS_TASK_HOST_CONTROL_VERSION;
+  protocolVersion: typeof STAGE8_WINDOWS_TASK_HOST_CONTROL_VERSION | typeof STAGE8_WINDOWS_TASK_HOST_DEMAND_CONTROL_VERSION;
   hostRunId: string;
   targetRunId: string;
   identity: {
@@ -51,6 +52,9 @@ export interface Stage8WindowsTaskHostControl {
       startBoundaryUtc: string;
       endBoundaryUtc: string;
       repetition: false;
+    } | {
+      type: 'on-demand-only';
+      automatic: false;
     };
     principal: {
       userSid: string;
@@ -62,7 +66,7 @@ export interface Stage8WindowsTaskHostControl {
     settings: {
       multipleInstances: 'IgnoreNew';
       restartCount: 0;
-      allowDemandStart: false;
+      allowDemandStart: boolean;
       startWhenAvailable: false;
       runOnlyIfNetworkAvailable: false;
       runOnlyIfIdle: false;
@@ -343,7 +347,9 @@ export function validateStage8WindowsTaskHostPhaseAuthorization(
 export function validateStage8WindowsTaskHostControl(value: unknown, options: { osTempRoot?: string } = {}): Stage8WindowsTaskHostControl {
   assertExactKeys(value, ['protocolVersion', 'hostRunId', 'targetRunId', 'identity', 'authorization', 'task', 'command', 'paths', 'workload', 'capacity', 'cleanup', 'manifestSha256'], 'stage8-windows-task-host-control');
   const control = value as unknown as Stage8WindowsTaskHostControl;
-  if (control.protocolVersion !== STAGE8_WINDOWS_TASK_HOST_CONTROL_VERSION) throw new Error('stage8-windows-task-host-control-version');
+  const onDemand = control.protocolVersion === STAGE8_WINDOWS_TASK_HOST_DEMAND_CONTROL_VERSION;
+  if (!onDemand && control.protocolVersion !== STAGE8_WINDOWS_TASK_HOST_CONTROL_VERSION) throw new Error('stage8-windows-task-host-control-version');
+  if (onDemand && !control.hostRunId.includes('-demand-')) throw new Error('stage8-windows-task-host-demand-run-id');
   if (!/^[a-z0-9][a-z0-9-]{7,95}$/.test(control.hostRunId) || control.targetRunId !== `${control.hostRunId}-diagnostic`) throw new Error('stage8-windows-task-host-run-id');
 
   assertExactKeys(control.identity, ['releaseCommit', 'sourceBundleSha256', 'nodeExecutableSha256', 'hostRunnerSourceSha256', 'targetSourceSha256', 'controlProtocolSourceSha256', 'identitySourceSha256', 'argumentsSha256', 'workingDirectorySha256', 'environmentSha256'], 'stage8-windows-task-host-identity');
@@ -363,14 +369,20 @@ export function validateStage8WindowsTaskHostControl(value: unknown, options: { 
 
   assertExactKeys(control.task, ['provider', 'taskPath', 'taskName', 'trigger', 'principal', 'settings'], 'stage8-windows-task-host-task');
   if (control.task.provider !== 'windows-task-scheduler' || control.task.taskPath !== '\\WannianMahjong\\Stage8\\' || control.task.taskName !== `Stage8-Host-${control.hostRunId}`) throw new Error('stage8-windows-task-host-task-identity');
-  assertExactKeys(control.task.trigger, ['type', 'startBoundaryUtc', 'endBoundaryUtc', 'repetition'], 'stage8-windows-task-host-trigger');
-  assertIsoUtc(control.task.trigger.startBoundaryUtc, 'stage8-windows-task-host-trigger-start');
-  assertIsoUtc(control.task.trigger.endBoundaryUtc, 'stage8-windows-task-host-trigger-end');
-  if (control.task.trigger.type !== 'time-once' || control.task.trigger.repetition !== false || Date.parse(control.task.trigger.endBoundaryUtc) <= Date.parse(control.task.trigger.startBoundaryUtc)) throw new Error('stage8-windows-task-host-trigger-policy');
+  if (onDemand) {
+    assertExactKeys(control.task.trigger, ['type', 'automatic'], 'stage8-windows-task-host-trigger');
+    if (control.task.trigger.type !== 'on-demand-only' || control.task.trigger.automatic !== false) throw new Error('stage8-windows-task-host-trigger-policy');
+  } else {
+    assertExactKeys(control.task.trigger, ['type', 'startBoundaryUtc', 'endBoundaryUtc', 'repetition'], 'stage8-windows-task-host-trigger');
+    if (control.task.trigger.type !== 'time-once') throw new Error('stage8-windows-task-host-trigger-policy');
+    assertIsoUtc(control.task.trigger.startBoundaryUtc, 'stage8-windows-task-host-trigger-start');
+    assertIsoUtc(control.task.trigger.endBoundaryUtc, 'stage8-windows-task-host-trigger-end');
+    if (control.task.trigger.repetition !== false || Date.parse(control.task.trigger.endBoundaryUtc) <= Date.parse(control.task.trigger.startBoundaryUtc)) throw new Error('stage8-windows-task-host-trigger-policy');
+  }
   assertExactKeys(control.task.principal, ['userSid', 'logonType', 'runLevel', 'storePassword', 'interactive'], 'stage8-windows-task-host-principal');
   if (!/^S-\d-\d+(?:-\d+)+$/.test(control.task.principal.userSid) || control.task.principal.logonType !== 'S4U' || control.task.principal.runLevel !== 'Limited' || control.task.principal.storePassword !== false || control.task.principal.interactive !== false) throw new Error('stage8-windows-task-host-principal-policy');
   assertExactKeys(control.task.settings, ['multipleInstances', 'restartCount', 'allowDemandStart', 'startWhenAvailable', 'runOnlyIfNetworkAvailable', 'runOnlyIfIdle', 'wakeToRun', 'executionTimeLimitMs', 'deleteExpiredTaskAfterMs'], 'stage8-windows-task-host-settings');
-  if (control.task.settings.multipleInstances !== 'IgnoreNew' || control.task.settings.restartCount !== 0 || control.task.settings.allowDemandStart !== false || control.task.settings.startWhenAvailable !== false || control.task.settings.runOnlyIfNetworkAvailable !== false || control.task.settings.runOnlyIfIdle !== false || control.task.settings.wakeToRun !== false || control.task.settings.executionTimeLimitMs !== STAGE8_WINDOWS_TASK_HOST_EXECUTION_LIMIT_MS || control.task.settings.deleteExpiredTaskAfterMs !== null) throw new Error('stage8-windows-task-host-settings-policy');
+  if (control.task.settings.multipleInstances !== 'IgnoreNew' || control.task.settings.restartCount !== 0 || control.task.settings.allowDemandStart !== onDemand || control.task.settings.startWhenAvailable !== false || control.task.settings.runOnlyIfNetworkAvailable !== false || control.task.settings.runOnlyIfIdle !== false || control.task.settings.wakeToRun !== false || control.task.settings.executionTimeLimitMs !== STAGE8_WINDOWS_TASK_HOST_EXECUTION_LIMIT_MS || control.task.settings.deleteExpiredTaskAfterMs !== null) throw new Error('stage8-windows-task-host-settings-policy');
 
   assertExactKeys(control.command, ['executablePath', 'hostRunnerPath', 'targetScriptPath', 'controlProtocolPath', 'identitySourcePath', 'arguments', 'workingDirectory', 'environment', 'shell', 'detached', 'windowsHide'], 'stage8-windows-task-host-command');
   for (const [label, candidate] of [['executable', control.command.executablePath], ['host-runner', control.command.hostRunnerPath], ['target-script', control.command.targetScriptPath], ['control-protocol', control.command.controlProtocolPath], ['identity-source', control.command.identitySourcePath], ['working-directory', control.command.workingDirectory]] as const) assertAbsoluteWindowsPath(candidate, `stage8-windows-task-host-${label}`);

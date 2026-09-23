@@ -6,10 +6,100 @@ import {
 } from './offline-action-identity';
 import {
   STAGE8_WINDOWS_TASK_HOST_CONTROL_VERSION,
+  STAGE8_WINDOWS_TASK_HOST_DEMAND_CONTROL_VERSION,
   STAGE8_WINDOWS_TASK_HOST_DIAGNOSTIC_DURATION_MS,
   STAGE8_WINDOWS_TASK_HOST_EXECUTION_LIMIT_MS,
   hashStage8WindowsTaskHostSourceBundle,
 } from './offline-windows-task-host-control';
+
+export const STAGE8_WINDOWS_TASK_DEMAND_IDENTITY_VERSION = 'stage8-windows-task-demand-identity-v2';
+
+export function buildStage8WindowsTaskDemandIdentityTemplate(options: {
+  releaseCommit: string;
+  hostRunId: string;
+  projectRoot: string;
+  nodeExecutablePath: string;
+  osTempRoot: string;
+  userSid: string;
+  readFile(absolutePath: string): Uint8Array;
+}): { protocolVersion: typeof STAGE8_WINDOWS_TASK_DEMAND_IDENTITY_VERSION; controlTemplate: Record<string, unknown>; controlTemplateSha256: string } {
+  if (!/^[a-f0-9]{40}$/.test(options.releaseCommit)
+    || !/^[a-z0-9][a-z0-9-]{7,95}$/.test(options.hostRunId)
+    || !options.hostRunId.includes('-demand-')
+    || !/^S-\d-\d+(?:-\d+)+$/.test(options.userSid)) {
+    throw new Error('windows-task-demand-identity-input-invalid');
+  }
+  for (const value of [options.projectRoot, options.nodeExecutablePath, options.osTempRoot]) {
+    if (!path.win32.isAbsolute(value)) throw new Error('windows-task-demand-identity-path-invalid');
+  }
+  const projectRoot = path.win32.resolve(options.projectRoot);
+  const runRoot = path.win32.join(options.osTempRoot, 'WannianMahjong', 'Stage8', options.hostRunId);
+  const sourcePaths = {
+    hostRunner: path.win32.join(projectRoot, STAGE8_WINDOWS_TASK_DIAGNOSTIC_SOURCE_PATHS.hostRunner),
+    diagnostic: path.win32.join(projectRoot, STAGE8_WINDOWS_TASK_DIAGNOSTIC_SOURCE_PATHS.diagnostic),
+    controlProtocol: path.win32.join(projectRoot, STAGE8_WINDOWS_TASK_DIAGNOSTIC_SOURCE_PATHS.controlProtocol),
+    identity: path.win32.join(projectRoot, STAGE8_WINDOWS_TASK_DIAGNOSTIC_SOURCE_PATHS.identity),
+  };
+  const commandArguments = [sourcePaths.diagnostic, '--duration-ms', String(STAGE8_WINDOWS_TASK_HOST_DIAGNOSTIC_DURATION_MS)] as const;
+  const sourceIdentity = {
+    releaseCommit: options.releaseCommit,
+    nodeExecutableSha256: sha256(options.readFile(options.nodeExecutablePath)),
+    hostRunnerSourceSha256: sha256(options.readFile(sourcePaths.hostRunner)),
+    targetSourceSha256: sha256(options.readFile(sourcePaths.diagnostic)),
+    controlProtocolSourceSha256: sha256(options.readFile(sourcePaths.controlProtocol)),
+    identitySourceSha256: sha256(options.readFile(sourcePaths.identity)),
+    argumentsSha256: hashStage8OfflineIdentity(commandArguments),
+    workingDirectorySha256: hashStage8OfflineIdentity(projectRoot),
+    environmentSha256: hashStage8OfflineIdentity([]),
+  };
+  const controlTemplate = {
+    protocolVersion: STAGE8_WINDOWS_TASK_HOST_DEMAND_CONTROL_VERSION,
+    hostRunId: options.hostRunId,
+    targetRunId: `${options.hostRunId}-diagnostic`,
+    identity: { ...sourceIdentity, sourceBundleSha256: hashStage8WindowsTaskHostSourceBundle(sourceIdentity) },
+    authorization: { scope: 'stage8-windows-task-host-control', approvalId: null, granted: false, authorizationSha256: null },
+    task: {
+      provider: 'windows-task-scheduler', taskPath: '\\WannianMahjong\\Stage8\\', taskName: `Stage8-Host-${options.hostRunId}`,
+      trigger: { type: 'on-demand-only', automatic: false },
+      principal: { userSid: options.userSid, logonType: 'S4U', runLevel: 'Limited', storePassword: false, interactive: false },
+      settings: {
+        multipleInstances: 'IgnoreNew', restartCount: 0, allowDemandStart: true, startWhenAvailable: false,
+        runOnlyIfNetworkAvailable: false, runOnlyIfIdle: false, wakeToRun: false,
+        executionTimeLimitMs: STAGE8_WINDOWS_TASK_HOST_EXECUTION_LIMIT_MS, deleteExpiredTaskAfterMs: null,
+      },
+    },
+    command: {
+      executablePath: path.win32.resolve(options.nodeExecutablePath),
+      hostRunnerPath: sourcePaths.hostRunner,
+      targetScriptPath: sourcePaths.diagnostic,
+      controlProtocolPath: sourcePaths.controlProtocol,
+      identitySourcePath: sourcePaths.identity,
+      arguments: commandArguments,
+      workingDirectory: projectRoot,
+      environment: [],
+      shell: false, detached: false, windowsHide: true,
+    },
+    paths: {
+      controlPath: path.win32.join(runRoot, 'control', 'host-control.json'),
+      runAuthorizationPath: path.win32.join(runRoot, 'authorizations', 'run.json'),
+      evidenceRoot: path.win32.join(runRoot, 'evidence'),
+      stdoutPath: path.win32.join(runRoot, 'evidence', 'stdout.log'),
+      stderrPath: path.win32.join(runRoot, 'evidence', 'stderr.log'),
+    },
+    workload: {
+      kind: 'disposable-diagnostic', durationMs: STAGE8_WINDOWS_TASK_HOST_DIAGNOSTIC_DURATION_MS, selfTerminate: true,
+      allowFormalPilot: false, allowTraining: false, allowSmoke: false, allowSelfPlay: false, allowReplay: false, allowModelRead: false,
+    },
+    capacity: { maxRunBytes: 5 * 1024 ** 3, rootHardLimitBytes: 64 * 1024 ** 3, rootFusePercent: 80, maxStdoutBytes: 4 * 1024 ** 2, maxStderrBytes: 4 * 1024 ** 2, maxEvidenceBytes: 16 * 1024 ** 2 },
+    cleanup: { mode: 'disable-then-delete', automatic: false, requiresAuthorization: true, preserveEvidence: true },
+    manifestSha256: null,
+  };
+  return {
+    protocolVersion: STAGE8_WINDOWS_TASK_DEMAND_IDENTITY_VERSION,
+    controlTemplate,
+    controlTemplateSha256: hashStage8OfflineIdentity(controlTemplate),
+  };
+}
 
 export const STAGE8_WINDOWS_TASK_DIAGNOSTIC_IDENTITY_VERSION = 'stage8-windows-task-diagnostic-identity-v1';
 export const STAGE8_WINDOWS_TASK_DIAGNOSTIC_REQUEST_VERSION = 'stage8-windows-task-diagnostic-request-v1';
