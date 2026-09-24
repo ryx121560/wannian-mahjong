@@ -81,8 +81,13 @@ const visibleScores = scoreContext.document.bar.textContent;
 assert.doesNotMatch(visibleScores, /\n/, 'a game without a settlement must only show current scores');
 for (const status of ['选择要打出的牌', '等待响应', '自弈进行中', '本局结算完成']) {
   scoreContext.setMsg(status);
-  assert.equal(scoreContext.document.bar.textContent, visibleScores, `${status} must not overwrite visible scores`);
+  assert.equal(scoreContext.document.bar.textContent, `${status}\n${visibleScores}`, `${status} must appear with the visible scores`);
 }
+scoreContext.setMsg('可以杠，请仔细阅读推荐后选择');
+assert.match(scoreContext.document.bar.textContent, /^可以杠，请仔细阅读推荐后选择\n/, 'kong response must be visible in the DOM');
+assert.doesNotMatch(scoreContext.document.bar.textContent, /本局结算完成/, 'new status must replace the old status');
+scoreContext.setMsg('');
+assert.equal(scoreContext.document.bar.textContent, visibleScores, 'clearing status must keep visible scores');
 scoreContext.GS.players=[];
 scoreContext.updateTopScoreBar();
 assert.match(scoreContext.document.bar.textContent, /你:-.*AI下家:-.*AI对家:-.*AI上家:-/, 'missing players must use the stable 你/AI fallback labels');
@@ -99,9 +104,10 @@ scoreContext.GS = {
   ],
 };
 scoreContext.topSettlement = { type: 'discardWin', huType: 'allTriplets', winner: 0, scoreDeltas: [6, -6, 0, 0] };
-scoreContext.updateTopScoreBar();
+scoreContext.setMsg('可以杠，请仔细阅读推荐后选择');
+assert.match(scoreContext.document.bar.textContent, /^可以杠，请仔细阅读推荐后选择\n/, 'status must remain visible with a settlement');
 assert.match(scoreContext.document.bar.textContent, /\n.*P0.*allTriplets.*discardWin.*\+6.*-6.*\+0.*\+0/, 'a structured win result must append the winner, type, and four seat deltas');
-assert.doesNotMatch(scoreContext.document.bar.textContent, /turn|response|select/i, 'the visible top bar must never include turn or response text');
+assert.match(scoreContext.document.bar.textContent, /P0:107.*P1:93.*P2:100.*P3:100/, 'settlement display must keep all current scores');
 
 scoreContext.topSettlement = { type: 'draw', scoreDeltas: [0, 0, 0, 0] };
 scoreContext.updateTopScoreBar();
@@ -137,7 +143,7 @@ for (const fixture of [
 
 scoreContext.topSettlement = null;
 scoreContext.updateTopScoreBar();
-assert.doesNotMatch(scoreContext.document.bar.textContent, /\n/, 'an older snapshot without explicit settlement deltas must safely keep the totals-only view');
+assert.equal(scoreContext.document.bar.textContent.split('\n').length, 2, 'an older snapshot without explicit settlement deltas must keep status and totals without a settlement line');
 
 const bankruptcySettlementDeltas = Array.from(scoreContext.captureSettlementScoreDeltas(
   [100, 6, 100, 100],

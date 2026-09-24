@@ -2120,6 +2120,7 @@ function newGame(options){
   GS.newDrawnTile=null;GS.newDrawnIdx=-1;
   GS.dealer=dealer;GS.cur=dealer;
   GS.playerDiscards=[[],[],[],[]];GS.passRecords=[];GS.turn=0;GS._gameSequence=gameSequence;GS._lastResult=null;
+  GS._statusMessage='';
   GS._recommendation={current:null,currentContext:null,selectedTileKey:null,lastAiInterpretation:null,lastRoundReview:null,summary:null,cacheKey:null};
 
   for(let i=0;i<4;i++){
@@ -5026,7 +5027,8 @@ function updateTopScoreBar(){
   });
   const text=[formatCurrentGameLabel()].concat(scoreLabels).join(' | ');
   const summary=formatTopSettlementSummary(currentTopSettlementSummary(),players);
-  document.getElementById('bar').textContent=summary?text+'\n'+summary:text;
+  const status=typeof GS!=='undefined'&&typeof GS._statusMessage==='string'?GS._statusMessage:'';
+  document.getElementById('bar').textContent=[status,text,summary].filter(Boolean).join('\n');
 }
 
 function setMsg(m){GS._statusMessage=typeof m==='string'?m.trim():'';updateTopScoreBar();}
