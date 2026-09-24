@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "stage8-c4-v2-actor-runtime-audit-index-v1",
+  "status": "audit-passed-no-safe-existing-actor",
+  "sourceCommit": "64def8ccfd8596c4542cda35a0a271bb1c169215",
+  "artifacts": {
+    "sourceAudit": {
+      "path": "docs/stage8/candidate-4-v2-actor-runtime-source-audit-2026-08-09.md",
+      "sha256": "1F0D732926E9860C895AE9504699C806F8F0D0B26431BDB0E6C0F0CEACFBD975"
+    },
+    "runtimeProposal": {
+      "path": "docs/stage8/candidate-4-v2-actor-runtime-proposal-v1.json",
+      "sha256": "5F6D147C28803741A2F6BAB35A92478B520792701D6BE80BF338E7168B5BD1D1"
+    },
+    "implementationPlan": {
+      "path": "docs/superpowers/plans/2026-08-09-c4-v2-diagnostic-actor-runtime.md",
+      "sha256": "C5C81E609E19E9DA6BD28A17ABBEFFB344B77735EFEB3FBE99C1FEEB2E57BB75"
+    }
+  },
+  "sourceIdentity": {
+    "actionSpaceVersion": "stage8-action-space-v2",
+    "registryGitBlobSha256": "7B742C3AB12DFAA0CF005070AFBFBC7AFCB3992CFC5C79AFFEE5B01B2AF4E9E7",
+    "auditedDependencyFingerprint": "79EECCE2DA981B38AC2154777A54ED8B90F3B1CD66C8F506DC2F7848E6B7F028",
+    "plannedActorConfigFingerprint": "008CF41F524E1336E47308CAF957625240F5F191A3CA7A9CD63F6F7C39C33C68",
+    "seedFingerprint": "2B96C862E701479246B432F7F1941AC14AC96B6DFBDD4F5A1A7A5D7188FA3A91"
+  },
+  "verification": {
+    "stage8V2ActionSpace": "passed",
+    "stage8V2KongExecution": "passed",
+    "rules": "472/472",
+    "recommendation": "100/100",
+    "proposalJsonParsed": true,
+    "placeholderScanPassed": true,
+    "gitDiffCheckPassed": true
+  },
+  "verdict": {
+    "existingSafeReusableActorFound": false,
+    "minimumProposalReadyForProductReview": true,
+    "runtimeImplementationAuthorized": false,
+    "runtimeCreated": false,
+    "diagnosticRootCreated": false,
+    "corpusCollected": false,
+    "replayWritten": false,
+    "scaleFitted": false,
+    "finalTestOpened": false,
+    "candidate4Created": false,
+    "trainingStarted": false
+  },
+  "nextAuthorizationRequired": "implement-diagnostic-v2-canonical-sampler-and-observer-equivalence-dry-run"
+}

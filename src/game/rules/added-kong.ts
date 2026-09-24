@@ -1,8 +1,17 @@
 import { canWin, classifyHand } from './hand-evaluator';
+import { resolveRobKongWinner, transitionKongResource } from './kong-resource';
 import { scoreSettlement } from './score-calculator';
-import type { GameState, Meld, SettlementResult, Tile } from './types';
+import { prepareAddedKongChainWindow } from './special-kong';
+import { sortTiles } from './tile-utils';
+import { resolveWildcard } from './wildcard-resolver';
+import type { GameState, HandClassification, KongResource, Meld, SettlementResult, Tile } from './types';
 
-export type AddedKongDrawOutcome = 'addedKongRobbed' | 'addedKongImmediateWin' | 'addedKongContinueDiscard';
+export type AddedKongDrawOutcome =
+  | 'addedKongRobbed'
+  | 'addedKongChainWindow'
+  | 'addedKongImmediateWin'
+  | 'addedKongFakeWin'
+  | 'addedKongContinueDiscard';
 
 export interface AddedKongDrawInput {
   owner: number;
@@ -12,79 +21,226 @@ export interface AddedKongDrawInput {
   drawTile: Tile;
   scores: number[];
   robKongState: GameState;
+  resource?: KongResource;
+}
+
+export interface AddedKongChainWindow {
+  owner: number;
+  initialResource: KongResource;
+  chainPongMeld: Meld;
+  preKongHand: Tile[];
+  initialHandAfterKong: Tile[];
+  initialMelds: Meld[];
+  firstDrawTile: Tile;
 }
 
 export interface AddedKongDrawResolution {
   outcome: AddedKongDrawOutcome;
   mustDiscard: boolean;
+  robKongWindow: boolean;
   handAfterDraw: Tile[];
   melds: Meld[];
   robKongWinner?: number;
+  resourceAfterKong?: KongResource;
+  chainWindow?: AddedKongChainWindow;
+  classification?: HandClassification;
   settlement?: SettlementResult;
-  handTypes?: string[];
   publicLog: {
     action: 'addedKong';
     outcome: AddedKongDrawOutcome;
     owner: number;
     kongTile: Tile;
     drawTile?: Tile;
+    decompositionSignature?: string;
     handTypes?: string[];
   };
 }
 
-function isPeng(meld: Meld, tile: Tile): boolean {
-  return meld.type === 'peng' && meld.tiles.length === 3 && meld.tiles.every((item) => item === tile);
+function sameTiles(left: Tile[], right: Tile[]): boolean {
+  const sortedLeft = sortTiles(left);
+  const sortedRight = sortTiles(right);
+  return sortedLeft.length === sortedRight.length && sortedLeft.every((tile, index) => tile === sortedRight[index]);
 }
 
-function removeOne(hand: Tile[], tile: Tile): Tile[] | null {
-  const next = hand.slice();
-  const index = next.indexOf(tile);
+function removeOneTile(hand: Tile[], tile: Tile): Tile[] | null {
+  const remaining = hand.slice();
+  const index = remaining.indexOf(tile);
   if (index < 0) return null;
-  next.splice(index, 1);
-  return next;
+  remaining.splice(index, 1);
+  return remaining;
 }
 
-function robKongWinner(state: GameState, owner: number, tile: Tile): number | undefined {
-  const players = state.players || [];
-  for (let offset = 1; offset < players.length; offset += 1) {
-    const playerId = (owner + offset) % players.length;
-    const player = players[playerId];
-    if (player && canWin(player.hand.concat(tile), { melds: player.melds || state.melds[playerId] || [], winTile: tile, winType: '抢杠' }).canWin) return playerId;
+function isExactPeng(meld: Meld, tile: Tile): boolean {
+  return meld.type === 'peng'
+    && meld.tiles.length === 3
+    && meld.tiles.every((meldTile) => meldTile === tile);
+}
+
+function sameMeld(left: Meld, right: Meld): boolean {
+  return left.type === right.type
+    && left.fromPlayer === right.fromPlayer
+    && left.tiles.length === right.tiles.length
+    && left.tiles.every((tile, index) => tile === right.tiles[index]);
+}
+
+function upgradePeng(melds: Meld[], tile: Tile): Meld[] {
+  let upgraded = false;
+  return melds.map((meld) => {
+    if (!upgraded && isExactPeng(meld, tile)) {
+      upgraded = true;
+      return { type: 'mingGang', tiles: [tile, tile, tile, tile], fromPlayer: meld.fromPlayer };
+    }
+    return meld;
+  });
+}
+
+function effectivePageHand(hand: Tile[], melds: Meld[]): Tile[] {
+  return hand.concat(melds.flatMap((meld) => meld.tiles.slice(0, 3).filter((tile): tile is Tile => tile != null)));
+}
+
+function replaceWildcardForClassification(
+  hand: Tile[],
+  replacement: { originalTile: Tile; replacedBy: Tile },
+): Tile[] | null {
+  const replaced = hand.slice();
+  const index = replaced.indexOf(replacement.originalTile);
+  if (index < 0) return null;
+  replaced[index] = replacement.replacedBy;
+  return replaced;
+}
+
+function validateInput(input: AddedKongDrawInput): { handAfterKong: Tile[]; meldsAfterKong: Meld[]; upgradedPeng: Meld } {
+  if (!Number.isInteger(input.owner) || input.owner < 0 || input.owner >= input.scores.length) {
+    throw new Error('added-kong-owner-invalid');
   }
-  return undefined;
+  const upgradedPeng = input.melds.find((meld) => isExactPeng(meld, input.kongTile));
+  if (!upgradedPeng) throw new Error('added-kong-peng-required');
+  const handAfterKong = removeOneTile(input.preKongHand, input.kongTile);
+  if (!handAfterKong) throw new Error('added-kong-fourth-tile-required');
+  const meldsAfterKong = upgradePeng(input.melds, input.kongTile);
+  if (!meldsAfterKong.some((meld) => meld.type === 'mingGang' && meld.tiles.every((tile) => tile === input.kongTile))) {
+    throw new Error('added-kong-upgrade-failed');
+  }
+  if (input.resource) {
+    const resourceMatches = input.resource.owner === input.owner
+      && input.resource.status === 'active'
+      && input.resource.tile === input.kongTile
+      && sameMeld(input.resource.pongMeld, upgradedPeng);
+    if (!resourceMatches) throw new Error('added-kong-resource-invalid');
+  }
+  return { handAfterKong, meldsAfterKong, upgradedPeng };
+}
+
+function publicLog(input: AddedKongDrawInput, outcome: AddedKongDrawOutcome, classification?: HandClassification): AddedKongDrawResolution['publicLog'] {
+  return {
+    action: 'addedKong',
+    outcome,
+    owner: input.owner,
+    kongTile: input.kongTile,
+    drawTile: outcome === 'addedKongRobbed' ? undefined : input.drawTile,
+    decompositionSignature: classification?.decompositionSignature,
+    handTypes: classification?.handTypes,
+  };
 }
 
 export function resolveAddedKongDraw(input: AddedKongDrawInput): AddedKongDrawResolution {
-  if (!Number.isInteger(input.owner) || input.owner < 0 || input.owner >= input.scores.length) throw new Error('added-kong-owner-invalid');
-  const handAfterKong = removeOne(input.preKongHand, input.kongTile);
-  if (!handAfterKong) throw new Error('added-kong-fourth-tile-required');
-  const pengIndex = input.melds.findIndex((meld) => isPeng(meld, input.kongTile));
-  if (pengIndex < 0) throw new Error('added-kong-peng-required');
-
-  const robbed = robKongWinner(input.robKongState, input.owner, input.kongTile);
-  if (robbed != null) {
+  const { handAfterKong, meldsAfterKong } = validateInput(input);
+  const robKongWinner = resolveRobKongWinner(input.robKongState, input.owner, input.kongTile);
+  if (robKongWinner != null) {
     return {
-      outcome: 'addedKongRobbed', mustDiscard: false, handAfterDraw: input.preKongHand.slice(), melds: input.melds.slice(), robKongWinner: robbed,
-      publicLog: { action: 'addedKong', outcome: 'addedKongRobbed', owner: input.owner, kongTile: input.kongTile },
+      outcome: 'addedKongRobbed',
+      mustDiscard: false,
+      robKongWindow: true,
+      handAfterDraw: input.preKongHand.slice(),
+      melds: input.melds.slice(),
+      robKongWinner,
+      publicLog: publicLog(input, 'addedKongRobbed'),
     };
   }
 
-  const melds = input.melds.map((meld, index) => index === pengIndex
-    ? { type: 'mingGang' as const, tiles: [input.kongTile, input.kongTile, input.kongTile, input.kongTile] as [Tile, Tile, Tile, Tile], fromPlayer: meld.fromPlayer }
-    : meld);
   const handAfterDraw = handAfterKong.concat(input.drawTile);
-  const win = canWin(handAfterDraw, { melds, winTile: input.drawTile, winType: '杠开' });
-  if (!win.canWin) {
+  if (input.resource) {
+    const chainPongMeld = meldsAfterKong.find((meld) => (
+      isExactPeng(meld, input.drawTile) && meld.tiles[0] !== input.kongTile
+    ));
+    if (chainPongMeld) {
+      const chainWindow: AddedKongChainWindow = {
+        owner: input.owner,
+        initialResource: input.resource,
+        chainPongMeld,
+        preKongHand: input.preKongHand.slice(),
+        initialHandAfterKong: handAfterKong.slice(),
+        initialMelds: meldsAfterKong,
+        firstDrawTile: input.drawTile,
+      };
+      const declaration = prepareAddedKongChainWindow(chainWindow);
+      if (declaration.canDeclare) {
+        const resourceAfterKong = transitionKongResource(input.resource, { type: 'declareKong', player: input.owner });
+        return {
+          outcome: 'addedKongChainWindow',
+          mustDiscard: false,
+          robKongWindow: false,
+          handAfterDraw,
+          melds: meldsAfterKong,
+          resourceAfterKong,
+          chainWindow,
+          publicLog: publicLog(input, 'addedKongChainWindow'),
+        };
+      }
+    }
+  }
+
+  const win = canWin(handAfterDraw, { melds: meldsAfterKong, winTile: input.drawTile, winType: '杠开' });
+  if (win.canWin) {
+    const classification = classifyHand(handAfterDraw, meldsAfterKong, input.drawTile, '杠开');
+    const settlement = scoreSettlement({
+      winner: input.owner,
+      winType: '杠开',
+      hand: effectivePageHand(handAfterDraw, meldsAfterKong),
+      scores: input.scores,
+    });
     return {
-      outcome: 'addedKongContinueDiscard', mustDiscard: true, handAfterDraw, melds,
-      publicLog: { action: 'addedKong', outcome: 'addedKongContinueDiscard', owner: input.owner, kongTile: input.kongTile, drawTile: input.drawTile },
+      outcome: 'addedKongImmediateWin',
+      mustDiscard: false,
+      robKongWindow: false,
+      handAfterDraw,
+      melds: meldsAfterKong,
+      classification,
+      settlement,
+      publicLog: publicLog(input, 'addedKongImmediateWin', classification),
     };
   }
-  const classification = classifyHand(handAfterDraw, melds, input.drawTile, '杠开');
-  const settlementHand = handAfterDraw.concat(melds.flatMap((meld) => meld.tiles.slice(0, 3).filter((tile): tile is Tile => tile != null)));
-  const settlement = scoreSettlement({ winner: input.owner, winType: '杠开', hand: settlementHand, scores: input.scores });
+
+  const wildcard = resolveWildcard(handAfterDraw, meldsAfterKong, input.drawTile);
+  if (wildcard.isFakeWin && wildcard.fakeWinReplacement) {
+    const classifiedHand = replaceWildcardForClassification(handAfterDraw, wildcard.fakeWinReplacement);
+    if (!classifiedHand) throw new Error('added-kong-fake-win-replacement-invalid');
+    const classification = classifyHand(classifiedHand, meldsAfterKong, input.drawTile, '杠开');
+    const settlement = scoreSettlement({
+      winner: input.owner,
+      winType: '杠开',
+      hand: effectivePageHand(classifiedHand, meldsAfterKong),
+      scores: input.scores,
+    });
+    return {
+      outcome: 'addedKongFakeWin',
+      mustDiscard: false,
+      robKongWindow: false,
+      handAfterDraw,
+      melds: meldsAfterKong,
+      classification,
+      settlement,
+      publicLog: publicLog(input, 'addedKongFakeWin', classification),
+    };
+  }
+
+  if (!sameTiles(handAfterDraw, handAfterKong.concat(input.drawTile))) throw new Error('added-kong-hand-after-draw-invalid');
   return {
-    outcome: 'addedKongImmediateWin', mustDiscard: false, handAfterDraw, melds, settlement, handTypes: classification.handTypes,
-    publicLog: { action: 'addedKong', outcome: 'addedKongImmediateWin', owner: input.owner, kongTile: input.kongTile, drawTile: input.drawTile, handTypes: classification.handTypes },
+    outcome: 'addedKongContinueDiscard',
+    mustDiscard: true,
+    robKongWindow: false,
+    handAfterDraw,
+    melds: meldsAfterKong,
+    publicLog: publicLog(input, 'addedKongContinueDiscard'),
   };
 }

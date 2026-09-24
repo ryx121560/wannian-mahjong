@@ -1,0 +1,72 @@
+{
+    "schemaVersion":  "stage8-c4-diagnostic-v2-actor-implementation-acceptance-index-v1",
+    "status":  "implementation-candidate-passed-product-acceptance-pending",
+    "sourceCommit":  "64def8ccfd8596c4542cda35a0a271bb1c169215",
+    "actor":  {
+                  "actorId":  "c4-diagnostic-v2-canonical-sampler",
+                  "actorVersion":  "stage8-c4-diagnostic-v2-actor-v1",
+                  "actionSpaceVersion":  "stage8-action-space-v2",
+                  "implementationFingerprint":  "29B6C4E12901A88B73272DF307DA281EE81E90993F175ED6C6A566460E73C3AF",
+                  "actorSourceSha256":  "ECAE188F99F8089AA6084B927789AA64515897E5CA552C9179C743FEA5F2E037",
+                  "regressionSourceSha256":  "84BC1E6E3A52D6A92C4C9E8D099D6F04DCBD56D4EDDDEF07970850FCE3587472",
+                  "registrySourceSha256":  "DE8F2B28F785F8E26A621F27B4403A5DE1B91788DC757423E28D9221C0790753",
+                  "rootSeed":  2026080901,
+                  "seedDomain":  "stage8-c4-diagnostic-v2-actor-v1",
+                  "seedDerivation":  "sha256(domain\\0rootSeed\\0gameId\\0decisionIndex\\0actorSeat)",
+                  "actionOrdering":  "canonical-action-id-ascending",
+                  "seedFingerprint":  "2B96C862E701479246B432F7F1941AC14AC96B6DFBDD4F5A1A7A5D7188FA3A91"
+              },
+    "preregistration":  {
+                            "sourceAudit":  {
+                                                "path":  "docs/stage8/candidate-4-v2-actor-runtime-source-audit-2026-08-09.md",
+                                                "sha256":  "1F0D732926E9860C895AE9504699C806F8F0D0B26431BDB0E6C0F0CEACFBD975"
+                                            },
+                            "proposal":  {
+                                             "path":  "docs/stage8/candidate-4-v2-actor-runtime-proposal-v1.json",
+                                             "sha256":  "5F6D147C28803741A2F6BAB35A92478B520792701D6BE80BF338E7168B5BD1D1"
+                                         },
+                            "implementationPlan":  {
+                                                       "path":  "docs/superpowers/plans/2026-08-09-c4-v2-diagnostic-actor-runtime.md",
+                                                       "sha256":  "C5C81E609E19E9DA6BD28A17ABBEFFB344B77735EFEB3FBE99C1FEEB2E57BB75"
+                                                   },
+                            "auditIndex":  {
+                                               "path":  "docs/stage8/candidate-4-v2-actor-runtime-audit-index-2026-08-09.json",
+                                               "sha256":  "C322B962647D9D20B63B595EB4037A78D9837E9D35F64C2FCD0AAB4CC862D729"
+                                           }
+                        },
+    "report":  {
+                   "path":  "docs/stage8/candidate-4-v2-diagnostic-actor-implementation-candidate-report-2026-08-13.md",
+                   "sha256":  "3CEDF064649E6FB1EA8ADD6606677E8903C2F6728820872066F195290E02B5C9"
+               },
+    "verification":  {
+                         "diagnosticActor":  "passed-14-action-types-selected-and-non-selected",
+                         "observerRandomCalls":  0,
+                         "stage8V2ActionSpace":  "passed",
+                         "stage8V2KongExecution":  "passed",
+                         "normalConcealedKong":  "passed",
+                         "addedKongResolution":  "passed",
+                         "addedKongPage":  "passed",
+                         "addedKongRound":  "passed",
+                         "rules":  "472/472",
+                         "recommendation":  "100/100",
+                         "typescript":  "passed",
+                         "diffCheck":  "passed",
+                         "recursiveHiddenFieldBoundary":  "passed-non-enumerable-symbol-prototype-accessor-rejected",
+                         "arrayPrototypeBoundary":  "passed-only-standard-Array.prototype-accepted"
+                     },
+    "downstream":  {
+                       "diagnosticRootCreated":  false,
+                       "corpusCreated":  false,
+                       "c3OnnxLoaded":  false,
+                       "observerDryRunExecuted":  false,
+                       "selfplayCreated":  false,
+                       "replayWritten":  false,
+                       "modelOrOnnxCreated":  false,
+                       "candidate4Created":  false,
+                       "trainingAuthorized":  false,
+                       "arenaAuthorized":  false,
+                       "runtimeAuthorized":  false,
+                       "serviceTouched":  false,
+                       "userStorageTouched":  false
+                   }
+}

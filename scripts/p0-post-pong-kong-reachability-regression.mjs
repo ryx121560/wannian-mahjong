@@ -1,0 +1,289 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import vm from 'node:vm';
+import ts from 'typescript';
+import { createRequire } from 'node:module';
+
+const root = process.cwd();
+const html = fs.readFileSync(path.join(root, 'public/game/wannian-mahjong.html'), 'utf8');
+const compiledDir = path.join(os.tmpdir(), `wannian-post-pong-kong-${process.pid}`);
+const require = createRequire(import.meta.url);
+
+function extractFunction(name) {
+  const start = html.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `missing production function ${name}`);
+  let depth = 0;
+  for (let index = html.indexOf('{', start); index < html.length; index += 1) {
+    if (html[index] === '{') depth += 1;
+    if (html[index] === '}' && --depth === 0) return html.slice(start, index + 1);
+  }
+  throw new Error(`unterminated production function ${name}`);
+}
+
+function compileTree(sourceDir, destinationDir) {
+  fs.mkdirSync(destinationDir, { recursive: true });
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const destinationPath = path.join(destinationDir, entry.name);
+    if (entry.isDirectory()) compileTree(sourcePath, destinationPath);
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+    const output = ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2019, strict: true },
+      fileName: sourcePath,
+    }).outputText;
+    fs.writeFileSync(destinationPath.replace(/\.ts$/, '.js'), output);
+  }
+}
+
+function tile(k) { return { k }; }
+function key(value) { return typeof value === 'string' ? value : value.k; }
+function same(left, right) { return key(left) === key(right); }
+function meld(tileKey, fromPlayer) { return { tile: tile(tileKey), count: 3, fromPlayer }; }
+function ruleMeld(value) { return { type: 'peng', tiles: [key(value.tile), key(value.tile), key(value.tile)], fromPlayer: value.fromPlayer }; }
+
+const pong7 = { type: 'peng', tiles: ['tiao7', 'tiao7', 'tiao7'], fromPlayer: 3 };
+const pong4 = { type: 'peng', tiles: ['tiao4', 'tiao4', 'tiao4'], fromPlayer: 2 };
+const resource7 = { owner: 0, tile: 'tiao7', pongMeld: pong7, source: 'pong', status: 'active' };
+const postPongHand = ['tiao7', 'wan6', 'wan2', 'wan2', 'wan2', 'tong4', 'tong4', 'tiao8', 'tiao8'];
+
+function pageState(wallTop = 'wan6') {
+  return {
+    phase: 'discarding', cur: 0, newDrawnTile: tile('wan6'), newDrawnIdx: 1,
+    wall: [tile(wallTop)], canK: false, canP: false, canW: false, canWS: false,
+    _kongResources: [resource7], _candidateKongResources: [], _kongActionWindow: null, _specialKongChoiceWindow: null,
+    _deferredAllowed: true,
+    players: [
+      { human: true, hand: postPongHand.map(tile), melds: [meld('tiao7', 3), meld('tiao4', 2)], score: 50 },
+      { hand: [], melds: [], score: 50 }, { hand: [], melds: [], score: 50 }, { hand: [], melds: [], score: 50 },
+    ],
+  };
+}
+
+function declarationSummary(declarations) {
+  return declarations.map((item) => ({ kind: item.kind, tile: key(item.tile) }));
+}
+function plain(value) { return JSON.parse(JSON.stringify(value)); }
+
+function makePageContext() {
+  const calls = { deferred: 0, addedResolve: 0, addedApply: 0, rob: 0, win: 0, snapshots: 0, timers: 0 };
+  const context = {
+    GS: pageState(), calls,
+    tkey: key, kt: tile, teq: same,
+    ruleTiles: (hand) => hand.map(key),
+    ruleMeldsForPlayer: (owner) => context.GS.players[owner].melds.map(ruleMeld),
+    pageKongResources: () => context.GS._kongResources,
+    pageCandidateKongResources: () => context.GS._candidateKongResources,
+    hasPageRuleMeld: (owner, expected) => context.GS.players[owner].melds.some((value) => {
+      const actual = ruleMeld(value);
+      return actual.type === expected.type && actual.tiles[0] === expected.tiles[0] && actual.fromPlayer === expected.fromPlayer;
+    }),
+    collectPageSpecialKongChoices: () => [],
+    preparePageAddedKongChainAction: () => null,
+    preparePageChainKongAction: () => null,
+    preparePageDeferredKongAction: (owner) => {
+      const resource = context.GS._kongResources.find((item) => item.owner === owner && item.status === 'active'
+        && context.GS.players[owner].hand.some((value) => key(value) === item.tile));
+      return resource && context.GS._deferredAllowed ? { kind: 'forcedRunDeferred', owner, resource } : null;
+    },
+    pageRuleState: () => ({}),
+    RULE_ENGINE: {
+      canMingGang: (hand, melds, tileKey) => hand.includes(tileKey) && melds.some((value) => value.type === 'peng' && value.tiles[0] === tileKey) ? tileKey : null,
+      canAnGang: () => [],
+      resolveRobKongWinner() { calls.rob += 1; return null; },
+    },
+    clearSelectedTile() {}, openPageSpecialKongChoiceWindow: () => false, renderPageSpecialKongChoiceMenu() {}, render() {}, saveGameSnapshot() { calls.snapshots += 1; },
+    executePageSpecialKongAction() { throw new Error('unexpected special execution'); },
+    resolvePageRobKongWinner() { calls.rob += 1; return null; },
+    applyWin() { calls.win += 1; },
+    applyPageAddedKongChainAction() { throw new Error('unexpected added-chain execution'); },
+    applyPageChainKongAction() { throw new Error('unexpected chain execution'); },
+    applyPageDeferredKongAction() { calls.deferred += 1; return true; },
+    resolvePageAddedKongDraw() { calls.addedResolve += 1; return { outcome: 'addedKongFakeWin' }; },
+    applyPageAddedKongDraw() { calls.addedApply += 1; return true; },
+    applyPageNormalConcealedKongAction() { throw new Error('unexpected concealed execution'); },
+    recordRecommendationChoice() {},
+    doKong() { throw new Error('unexpected response kong execution'); },
+    document: {
+      getElementById(id) {
+        if (!this.nodes) this.nodes = {};
+        if (!this.nodes[id]) this.nodes[id] = { disabled: false };
+        return this.nodes[id];
+      },
+    },
+  };
+  vm.createContext(context);
+  for (const name of ['collectPageKongDeclarations', 'canSelfKong', 'doSelfKong', 'updateBtns', 'handleKongButton']) {
+    vm.runInContext(extractFunction(name), context, { filename: `${name}.js` });
+  }
+  return context;
+}
+
+try {
+  compileTree(path.join(root, 'src/game/rules'), path.join(compiledDir, 'rules'));
+  compileTree(path.join(root, 'src/game/stage8'), path.join(compiledDir, 'stage8'));
+  const rules = require(path.join(compiledDir, 'rules/index.js'));
+  const v2 = require(path.join(compiledDir, 'stage8/action-space-v2.js'));
+
+  const ruleState = {
+    phase: 'discarding', currentPlayer: 0, newDrawnTile: 'wan6',
+    players: [{ hand: postPongHand, melds: [pong7, pong4] }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }],
+    melds: [[pong7, pong4], [], [], []], discards: [[], [], [], []], turn: 95, dealer: 0,
+    scores: [50, 50, 50, 50], wallTiles: ['wan6'], passRecords: [], kongResources: [resource7],
+  };
+  assert.deepEqual(rules.canAnGang(postPongHand), [], 'the hand has no concealed four-of-a-kind');
+  assert.equal(rules.canMingGang(postPongHand, [pong7], 'tiao7'), 'tiao7', 'the retained 7-tiao physically upgrades the real pong');
+  assert.equal(rules.canMingGang(postPongHand, [pong4], 'tiao4'), null, 'the newly ponged 4-tiao has no retained fourth tile');
+  assert.equal(rules.canUseDeferredForcedRun(ruleState, 0), true, 'a retained fourth tile remains a deferred forced run when using it as a resource still cannot complete the current structure');
+  assert.deepEqual(rules.getLegalActions(ruleState, 0), ['discard', 'addedKong', 'deferredForcedRunKong']);
+
+  const page = makePageContext();
+  const beforeQuery = JSON.stringify(page.GS);
+  const declarations = page.collectPageKongDeclarations(0);
+  assert.deepEqual(plain(declarationSummary(declarations)), [
+    { kind: 'forcedRunDeferred', tile: 'tiao7' },
+    { kind: 'addedKong', tile: 'tiao7' },
+  ], 'the common page collector must retain deferred forced run when the resource structure is incomplete');
+  assert.equal(JSON.stringify(page.GS), beforeQuery, 'querying declarations must not mutate game state');
+  assert.equal(page.calls.rob + page.calls.deferred + page.calls.addedResolve + page.calls.addedApply + page.calls.win + page.calls.snapshots + page.calls.timers, 0, 'querying declarations must have no execution side effects');
+
+  const wallIndependent = [];
+  for (const wallTop of ['wan6', 'wan8']) {
+    page.GS = pageState(wallTop);
+    wallIndependent.push(declarationSummary(page.collectPageKongDeclarations(0)));
+  }
+  assert.deepEqual(wallIndependent[0], wallIndependent[1], 'the declaration set must not depend on the hidden wall top');
+  const protectedState = pageState();
+  Object.defineProperty(protectedState, 'wall', { get() { throw new Error('declaration collector read hidden wall'); } });
+  page.GS = protectedState;
+  assert.doesNotThrow(() => page.collectPageKongDeclarations(0), 'declaration collection must not read the wall');
+
+  page.GS = pageState();
+  page.GS.canK = false;
+  page.updateBtns();
+  assert.equal(page.document.getElementById('bt-kong').disabled, false, 'button refresh must use the common declaration collector instead of stale canK');
+  assert.equal(page.canSelfKong(0).type, 'deferred', 'an incomplete resource structure must keep the deferred forced-run category');
+  assert.equal(page.handleKongButton(), true, 'the enabled kong button must execute a restored declaration even when the persisted canK flag is stale');
+  assert.equal(page.calls.rob, 1, 'deferred forced run must check rob-kong exactly once');
+  assert.equal(page.calls.deferred, 1, 'the incomplete resource path must enter the delayed forced-run executor once');
+  assert.equal(page.calls.addedResolve, 0, 'the same upgrade must not also execute ordinary added-kong');
+  assert.equal(page.calls.addedApply, 0, 'the same upgrade must not commit ordinary added-kong');
+
+  page.GS = pageState();
+  page.GS._deferredAllowed = false;
+  assert.deepEqual(plain(declarationSummary(page.collectPageKongDeclarations(0))), [
+    { kind: 'addedKong', tile: 'tiao7' },
+  ], 'a resource-complete structure must retain only the ordinary added-kong declaration');
+  assert.equal(page.canSelfKong(0).type, 'add');
+  assert.equal(page.handleKongButton(), true);
+  assert.equal(page.calls.addedResolve, 1, 'the resource-complete structure must resolve once as ordinary added kong');
+  assert.equal(page.calls.addedApply, 1, 'the resource-complete structure must commit once as ordinary added kong');
+
+  const snapshotContext = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/game/session_snapshot.js'), 'utf8'), snapshotContext);
+  const snapshotState = pageState();
+  snapshotState.players.forEach((player, index) => {
+    player.name = index === 0 ? 'you' : 'ai-' + index;
+    player.human = index === 0;
+  });
+  Object.assign(snapshotState, {
+    discards: [], playerDiscards: [[], [], [], []], lastDiscard: null, lastDiscardP: -1,
+    dealer: 0, turn: 95, _resp: null, _respP: -1, _responseKind: null, _kc: {}, _hasWild: {},
+    _gameLog: null, _lastResult: null,
+  });
+  const snapshot = snapshotContext.window.GameSessionSnapshot.create(snapshotState, {
+    selfPlayRunning: false, totalGames: 0, gameSequence: 16, topSettlement: null,
+  }, key);
+  const restored = snapshotContext.window.GameSessionSnapshot.restore(JSON.parse(JSON.stringify(snapshot)), tile);
+  assert.equal(restored.ok, true, 'the stale action flag fixture must complete a real snapshot round trip');
+  assert.equal(restored.state.canK, false, 'the round trip intentionally preserves the stale false action flag');
+  assert.equal(restored.state._kongResources[0].tile, 'tiao7', 'the active older resource must survive the round trip');
+  const restoredPage = makePageContext();
+  restoredPage.GS = restored.state;
+  restoredPage.GS._deferredAllowed = true;
+  restoredPage.updateBtns();
+  assert.equal(restoredPage.document.getElementById('bt-kong').disabled, false, 'restored declarations must enable the kong button');
+  assert.equal(restoredPage.handleKongButton(), true, 'the restored enabled button must reach the self-kong dispatcher');
+  assert.equal(restoredPage.calls.rob, 1);
+  assert.equal(restoredPage.calls.deferred, 1);
+  assert.equal(restoredPage.calls.addedResolve, 0);
+  assert.equal(restoredPage.calls.addedApply, 0);
+
+  page.GS = pageState();
+  page.GS._kongResources = [];
+  page.GS.players[0].hand = page.GS.players[0].hand.filter((value) => key(value) !== 'tiao7');
+  page.GS.canK = true;
+  assert.deepEqual(plain(page.collectPageKongDeclarations(0)), [], 'without an active retained resource or any other kong, the button must remain disabled');
+  page.updateBtns();
+  assert.equal(page.document.getElementById('bt-kong').disabled, true);
+  assert.equal(page.handleKongButton(), false, 'a stale true canK flag must not execute without a current declaration');
+
+  const protocol = { actionSpaceVersion: v2.STAGE8_ACTION_SPACE_V2_VERSION };
+  const browserContext = { globalThis: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/game/rule_engine.js'), 'utf8'), browserContext);
+  const browserRuleEngine = browserContext.globalThis.WannianRuleEngine;
+  const ruleActions = v2.deriveStage8V2RuleActions({ ...protocol, state: ruleState, playerId: 0 });
+  const roundActions = v2.deriveStage8V2RoundEngineActions({ ...protocol, state: ruleState, playerId: 0 });
+  const actionTypes = new Set(['forcedRunDeferred', 'addedKong']);
+  const expectedCanonical = ruleActions.filter((action) => actionTypes.has(action.actionType));
+  assert.deepEqual(plain(v2.compareStage8V2CanonicalActions(expectedCanonical, roundActions.filter((action) => actionTypes.has(action.actionType)))), { equal: true, leftOnly: [], rightOnly: [] });
+  page.GS = pageState();
+  const pageCanonical = page.collectPageKongDeclarations(0).map((item) => v2.canonicalizeStage8V2Action({
+    actionType: item.kind, actor: 0, declarationWindow: 'self-draw-discard', tile: key(item.tile), ownTileCount: 1,
+    robKongWindow: true, ...(item.kind === 'forcedRunDeferred' ? { resourceSignature: '0:tiao7' } : {}),
+  }));
+  assert.deepEqual(plain(v2.compareStage8V2CanonicalActions(expectedCanonical, pageCanonical)), { equal: true, leftOnly: [], rightOnly: [] }, 'real HTML declarations must match the rule and round-engine canonical actions');
+
+  assert.match(extractFunction('collectPageKongDeclarations'), /collectPageSpecialKongChoices/);
+  assert.doesNotMatch(extractFunction('collectPageKongDeclarations'), /\bwall\b/, 'declaration collector must not reference the hidden wall');
+  assert.doesNotMatch(extractFunction('preparePageDeferredKongAction'), /pageRuleState|\bwall\b/, 'deferred declaration preparation must use visible state only');
+  assert.match(extractFunction('doPong'), /collectPageKongDeclarations/);
+  assert.match(extractFunction('canSelfKong'), /collectPageKongDeclarations/);
+  assert.match(extractFunction('doSelfKong'), /collectPageKongDeclarations/);
+  assert.match(extractFunction('updateBtns'), /collectPageKongDeclarations/);
+  assert.match(extractFunction('handleKongButton'), /collectPageKongDeclarations/);
+  assert.doesNotMatch(extractFunction('handleKongButton'), /phase==='discarding'&&GS\.canK/, 'discarding click must not trust a persisted action flag');
+
+  const game61PreKongHand = ['tong3', 'tiao2', 'tiao3', 'tiao4', 'tiao6', 'tiao7', 'tiao8', 'wan5', 'wan6', 'wan7', 'wan4'];
+  const game61Peng = { type: 'peng', tiles: ['wan4', 'wan4', 'wan4'], fromPlayer: 2 };
+  const game61Resource = { owner: 0, tile: 'wan4', pongMeld: game61Peng, source: 'pong', status: 'active' };
+  const game61State = {
+    phase: 'discarding', currentPlayer: 0, newDrawnTile: 'wan6',
+    players: [{ hand: game61PreKongHand, melds: [game61Peng] }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }],
+    melds: [[game61Peng], [], [], []], discards: [[], [], [], []], turn: 61, dealer: 0,
+    scores: [100, 100, 100, 100], wallTiles: ['tong8'], passRecords: [], kongResources: [game61Resource],
+  };
+  assert.equal(rules.canUseDeferredForcedRun(game61State, 0), false, 'game-61-equivalent unrelated 6-wan draw must not retain a delayed forced-run declaration');
+  assert.deepEqual(rules.getLegalActions(game61State, 0), ['discard', 'addedKong']);
+  const game61DongState = {
+    ...game61State,
+    newDrawnTile: 'dong',
+    players: [{ ...game61State.players[0], hand: game61PreKongHand.map((tileKey) => tileKey === 'wan6' ? 'dong' : tileKey) }, { hand: [], melds: [] }, { hand: [], melds: [] }, { hand: [], melds: [] }],
+  };
+  assert.equal(rules.canUseDeferredForcedRun(game61DongState, 0), true, 'the same retained resource must become deferred forced run when the current structure remains incomplete');
+  assert.deepEqual(rules.getLegalActions(game61DongState, 0), ['discard', 'addedKong', 'deferredForcedRunKong']);
+  const currentResourceButComplete = { ...game61State, newDrawnTile: 'wan4' };
+  assert.equal(rules.canUseDeferredForcedRun(currentResourceButComplete, 0), false, 'matching the resource tile key alone must not force deferred routing when the resource structure is already complete');
+  const game61Resolution = rules.resolveAddedKongDraw({
+    owner: 0, kongTile: 'wan4', preKongHand: game61PreKongHand, melds: [game61Peng], drawTile: 'tong8',
+    scores: [100, 100, 100, 100], robKongState: game61State, resource: game61Resource,
+  });
+  assert.equal(game61Resolution.outcome, 'addedKongFakeWin');
+  assert.equal(game61Resolution.mustDiscard, false);
+  assert.deepEqual(game61Resolution.settlement.delta, [6, -2, -2, -2]);
+  assert.ok(game61Resolution.handAfterDraw.includes('tong8'), 'the physical supplement remains tong8 after fake-win classification');
+  assert.equal(game61Resolution.handAfterDraw.includes('tong3') && game61Resolution.handAfterDraw.filter((tile) => tile === 'tong3').length, 1, 'the substituted pair tile must not be written into the physical hand');
+  const browserGame61 = browserRuleEngine.resolveAddedKongDraw({
+    owner: 0, kongTile: 'wan4', preKongHand: game61PreKongHand, melds: [game61Peng], drawTile: 'tong8',
+    scores: [100, 100, 100, 100], robKongState: game61State, resource: game61Resource,
+  });
+  assert.equal(browserGame61.outcome, 'addedKongFakeWin', 'browser rule bundle must keep the game-61-equivalent added-kong fake-win outcome');
+  assert.deepEqual(plain(browserGame61.settlement.delta), [6, -2, -2, -2]);
+  assert.equal(browserRuleEngine.canUseDeferredForcedRun(game61State, 0), false, 'browser bundle must classify the resource-complete game-61 state as ordinary added kong');
+  assert.equal(browserRuleEngine.canUseDeferredForcedRun(game61DongState, 0), true, 'browser bundle must classify the incomplete alternate draw as deferred forced run');
+  assert.equal(browserRuleEngine.canUseDeferredForcedRun(currentResourceButComplete, 0), false, 'browser bundle must not route solely on resource tile equality');
+  console.log('P0 post-pong kong reachability regression: passed');
+} finally {
+  fs.rmSync(compiledDir, { recursive: true, force: true });
+}

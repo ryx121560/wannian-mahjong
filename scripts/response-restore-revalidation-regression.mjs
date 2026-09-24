@@ -40,6 +40,7 @@ function createRuntime(state) {
     'ruleTiles',
     'normalizedRuleMelds',
     'ruleMeldsFromPlayer',
+    'pageRuleState',
     'canHuNormal',
     'canWinAfterPassForState',
     'canPongChk',
@@ -60,8 +61,8 @@ function runPageRestore(restoredState) {
     _selfPlay: { running: false, count: 0 },
     _sessionResumeScheduled: true,
     GAME_SESSION: { restore: () => ({ ok: true, state: restoredState, totalGames: 1, selfPlayRunning: false, savedAt: '2026-07-30T00:00:00.000Z' }) },
-    kt: (tile) => tile,
-    tkey: (tile) => tile,
+    kt: (tile) => ({ k: tile }),
+    tkey: (tile) => typeof tile === 'string' ? tile : tile.k,
     meetsThresh: () => true,
     clearGameTimers: () => events.push('clear-timers'),
     configureAiLearning: () => events.push('configure-ai'),
@@ -71,21 +72,25 @@ function runPageRestore(restoredState) {
     updateBtns: () => events.push('buttons'),
     _spUpdateScore: () => events.push('score'),
     updateSuggestion: () => events.push('suggestion'),
+    revealAiHandsForNormalEnd: () => false,
     resumeRestoredGame: () => events.push('resume'),
     document: { getElementById: () => ({ textContent: '', style: {} }) },
     console: { info: (...args) => events.push(['info', ...args]), warn: () => {} }
   };
   vm.createContext(context);
   for (const name of [
+    'teq',
     'ruleTiles',
     'normalizedRuleMelds',
     'ruleMeldsFromPlayer',
+    'pageRuleState',
     'canHuNormal',
     'canWinAfterPassForState',
     'canPongChk',
     'canKongChk',
     'resolveDiscardResponses',
     'revalidateRestoredResponseState',
+    'revalidateRestoredKongState',
     'restoreGameSession'
   ]) vm.runInContext(extractFunction(name), context, { filename: `page-${name}.js` });
   assert.equal(context.restoreGameSession({}), true, 'page restore must complete');
@@ -170,7 +175,44 @@ assert.notEqual(pageRestore.state._responseKind, 'win', 'page restore must not p
 assert.equal(pageRestore.events.includes('resume'), true, 'page restore must continue through the normal resume path');
 assert.equal(pageRestore.events.some((event) => Array.isArray(event) && event[0] === 'info' && event[1].includes('response-revalidated reason=stale-win-cleared')), true, 'page restore must emit a stable stale-win reason code');
 
+const activeResource = {
+  owner: 1,
+  tile: 'tong6',
+  pongMeld: { type: 'peng', tiles: ['tong6', 'tong6', 'tong6'], fromPlayer: 0 },
+  source: 'pong',
+  status: 'active',
+};
+const consumedResource = { ...activeResource, status: 'consumed' };
+const resourceRestoreState = {
+  phase: 'discarding', cur: 1, turn: 12, lastDiscard: null, lastDiscardP: -1, passRecords: [],
+  canP: false, canK: true, canW: false, canWS: false,
+  _resp: null, _respP: -1, _responseKind: null,
+  _kongResources: [activeResource],
+  _kongActionWindow: null,
+  players: [
+    { human: true, hand: [], melds: [] },
+    { human: false, hand: [{ k: 'tong6' }], melds: [{ tile: { k: 'tong6' }, count: 3, fromPlayer: 0 }] },
+    { human: false, hand: [], melds: [] },
+    { human: false, hand: [], melds: [] },
+  ],
+};
+const resourceRestore = runPageRestore(resourceRestoreState);
+assert.equal(resourceRestore.state._kongResources[0].status, 'active', 'a restored active resource must remain active only when its owner retains the real pong and tile');
+
+const chainWindowRestoreState = JSON.parse(JSON.stringify(resourceRestoreState));
+chainWindowRestoreState._kongResources = [consumedResource];
+chainWindowRestoreState._kongActionWindow = { kind: 'directChisel', owner: 1, resource: consumedResource };
+const chainWindowRestore = runPageRestore(chainWindowRestoreState);
+assert.equal(chainWindowRestore.state._kongActionWindow.kind, 'directChisel', 'a restored direct-chisel chain window must remain available when its consumed resource still matches');
+
+const invalidResourceRestoreState = JSON.parse(JSON.stringify(resourceRestoreState));
+invalidResourceRestoreState._kongActionWindow = null;
+invalidResourceRestoreState._kongResources = [activeResource];
+invalidResourceRestoreState.players[1].hand = [];
+const invalidResourceRestore = runPageRestore(invalidResourceRestoreState);
+assert.equal(invalidResourceRestore.state._kongResources[0].status, 'invalidated', 'a stale resource without its retained owner tile must be invalidated after restore');
+
 assert.match(html, /function restoreGameSession\(snapshot\)[\s\S]*Object\.assign\(GS,restored\.state\);[\s\S]*revalidateRestoredResponseState\(GS\)/, 'restore path must revalidate responding snapshots after deserialization');
-assert.match(html, /function checkResponses\(\)[\s\S]*resolveDiscardResponses\(GS\)/, 'new discard response path must use the shared resolver');
+assert.match(html, /function checkResponses\(\)[\s\S]*resolveDiscardResponses\(responseResolutionState\(GS\)\)/, 'new discard response path must derive a side-effect-free responding state for the shared resolver');
 
 console.log('response restore revalidation regression: passed');

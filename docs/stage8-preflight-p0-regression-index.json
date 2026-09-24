@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "purpose": "脱敏的已发现P0自动回归索引；不引用用户导出、截图或浏览器存档。",
+  "entries": [
+    { "id": "ai-concealed-kong-atomicity", "scope": "暗杠声明牌绑定、四张精确移除与失败零副作用", "scripts": ["test:p0-ai-self-kong-atomicity"] },
+    { "id": "direct-chisel-classification-settlement", "scope": "直铲分类、付款责任与结算", "scripts": ["test:p0-kong-resource", "test:p0-direct-chisel-settlement"] },
+    { "id": "deferred-forced-run-true-fake", "scope": "延迟强行跑杠的真胡、假胡与失败弃牌", "scripts": ["test:p0-final-winning-hand-settlement", "test:p0-post-pong-kong-reachability"] },
+    { "id": "ai-concealed-kong-resource-fake", "scope": "AI普通暗杠补牌的资源假胡与非资源继续", "scripts": ["test:p0-ai-self-kong-atomicity", "test:normal-concealed-kong"] },
+    { "id": "added-kong-resource-fake", "scope": "普通加杠补牌资源假胡及浏览器规则包一致性", "scripts": ["test:p0-added-kong-wildcard-browser-parity"] },
+    { "id": "forced-run-structural-routing", "scope": "碰后资源按完成结构分流，非同牌捷径", "scripts": ["test:p0-post-pong-kong-reachability"] },
+    { "id": "ended-kong-supplement-owner", "scope": "终局补牌仅在真实owner座位显示一次", "scripts": ["test:p1-kong-settlement-draw"] },
+    { "id": "ai-ended-reveal-self-draw", "scope": "终局亮AI手牌与自摸独立牌/补牌显示边界", "scripts": ["test:p0-live-drawn-tile-face", "test:p1-kong-settlement-draw"] }
+  ]
+}

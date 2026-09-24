@@ -1,5 +1,5 @@
 import { ALL_TILE_KEYS, ARROW_TILES, HONOR_TILES, NUMBER_SUITS, WIND_TILES, countTileRecord, countTiles, isHonor, isNumberTile, sortTiles, tileMod3Group, tileSuit, tileValue, uniqueTiles } from './tile-utils';
-import type { CanWinResult, HandClassification, HandRoute, HandType, Meld, ShantenResult, TenpaiResult, Tile, WinContext } from './types';
+import type { CanWinResult, HandClassification, HandDecomposition, HandRoute, HandType, Meld, ShantenResult, TenpaiResult, Tile, WinContext } from './types';
 
 const SHANTEN_CACHE_LIMIT = 5000;
 const shantenResultCache = new Map<string, ShantenResult>();
@@ -89,17 +89,87 @@ function groupsOk(counts: Record<string, number>): boolean {
   return false;
 }
 
-export function checkStandardWin(hand: Tile[], melds: Meld[] = []): { canWin: boolean; handType: HandType } {
+export function canFormMeldGroups(tiles: Tile[]): boolean {
+  return groupsOk(countTileRecord(tiles));
+}
+
+function groupCandidatesFor(tile: Tile): Tile[][] {
+  const candidates: Tile[][] = [[tile, tile, tile]];
+  if (isNumberTile(tile) && tileValue(tile) <= 7) {
+    const suit = tileSuit(tile);
+    const value = tileValue(tile);
+    candidates.push([tile, `${suit}${value + 1}` as Tile, `${suit}${value + 2}` as Tile]);
+  }
+  if (WIND_TILES.includes(tile)) {
+    candidates.push(...[
+      ['dong', 'nan', 'xi'],
+      ['dong', 'nan', 'bei'],
+      ['dong', 'xi', 'bei'],
+      ['nan', 'xi', 'bei'],
+    ].filter((group) => group.includes(tile)) as Tile[][]);
+  }
+  if (ARROW_TILES.includes(tile)) candidates.push(['zhong', 'fa', 'bai']);
+  return candidates;
+}
+
+function enumerateGroups(counts: Record<string, number>): Tile[][][] {
+  const active = sortTiles(Object.keys(counts).filter((tile) => counts[tile] > 0) as Tile[]);
+  if (!active.length) return [[]];
+  const first = active[0];
+  const decompositions: Tile[][][] = [];
+  for (const group of groupCandidatesFor(first)) {
+    const next = removeSet(counts, group);
+    if (!next) continue;
+    for (const remainder of enumerateGroups(next)) decompositions.push([sortTiles(group), ...remainder]);
+  }
+  return decompositions;
+}
+
+function normalizeMelds(melds: Meld[]): string[] {
+  return melds
+    .map((meld) => `${meld.type}:${sortTiles(meld.tiles.filter((tile): tile is Tile => !!tile)).join(',')}`)
+    .sort();
+}
+
+export function decompositionSignature(
+  pair: [Tile, Tile],
+  groups: Tile[][],
+  melds: Meld[] = [],
+  resourceUse?: HandDecomposition['resourceUse'],
+  fakeWinRemainder?: Tile,
+): string {
+  const normalizedGroups = groups.map((group) => sortTiles(group).join(',')).sort().join(';');
+  const resource = resourceUse ? `${resourceUse.sourceTile}:${resourceUse.role}:${resourceUse.asTile}` : 'none';
+  return `pair=${sortTiles(pair).join(',')}|groups=${normalizedGroups}|melds=${normalizeMelds(melds).join(';')}|resource=${resource}|remainder=${fakeWinRemainder || 'none'}`;
+}
+
+export function enumerateStandardDecompositions(hand: Tile[], melds: Meld[] = []): HandDecomposition[] {
   const totalLength = hand.length + melds.length * 3;
-  if (totalLength % 3 !== 2) return { canWin: false, handType: '平胡' };
+  if (totalLength % 3 !== 2) return [];
   const counts = countTileRecord(hand);
-  for (const tile of Object.keys(counts) as Tile[]) {
-    if (counts[tile] >= 2) {
-      const rest = removeSet(counts, [tile, tile]);
-      if (rest && groupsOk(rest)) return { canWin: true, handType: '平胡' };
+  const decompositions: HandDecomposition[] = [];
+  for (const tile of sortTiles(Object.keys(counts) as Tile[])) {
+    if (counts[tile] < 2) continue;
+    const rest = removeSet(counts, [tile, tile]);
+    if (!rest) continue;
+    for (const groups of enumerateGroups(rest)) {
+      const pair: [Tile, Tile] = [tile, tile];
+      const signature = decompositionSignature(pair, groups, melds);
+      decompositions.push({ pair, groups, signature });
     }
   }
-  return { canWin: false, handType: '平胡' };
+  return decompositions.sort((left, right) => left.signature.localeCompare(right.signature));
+}
+
+function hasTripletOnlyDecomposition(hand: Tile[], melds: Meld[]): boolean {
+  if (melds.some((meld) => !['peng', 'mingGang', 'anGang', 'zhiChan'].includes(meld.type))) return false;
+  return enumerateStandardDecompositions(hand, melds).some((decomposition) => (
+    decomposition.groups.every((group) => group[0] === group[1] && group[1] === group[2])
+  ));
+}
+
+export function checkStandardWin(hand: Tile[], melds: Meld[] = []): { canWin: boolean; handType: HandType } {
+  return { canWin: enumerateStandardDecompositions(hand, melds).length > 0, handType: '平胡' };
 }
 
 export function checkSevenPairs(hand: Tile[], melds: Meld[] = []): boolean {
@@ -133,22 +203,90 @@ function routeFor(hand: Tile[], melds: Meld[] = []): HandRoute | null {
   return null;
 }
 
+function colorHandTypes(hand: Tile[], melds: Meld[], dalan: { isDalan: boolean }): HandType[] {
+  if (dalan.isDalan) return [];
+  const allTiles = hand.concat(melds.flatMap((meld) => meld.tiles.filter((tile): tile is Tile => !!tile)));
+  const suits = new Set(allTiles.filter(isNumberTile).map(tileSuit));
+  const hasHonor = allTiles.some(isHonor);
+  if (suits.size === 1 && !hasHonor) return ['清一色'];
+  if (suits.size === 1 && hasHonor) return ['混一色'];
+  return [];
+}
+
+export function classifyHandDecomposition(hand: Tile[], melds: Meld[], decomposition: HandDecomposition): HandClassification {
+  const dalan = checkDalan(hand, melds);
+  const handTypes = colorHandTypes(hand, melds, dalan);
+  const tripletsOnly = melds.every((meld) => ['peng', 'mingGang', 'anGang', 'zhiChan'].includes(meld.type))
+    && decomposition.groups.every((group) => group[0] === group[1] && group[1] === group[2]);
+  if (tripletsOnly) handTypes.push('碰碰胡');
+  if (!handTypes.length) handTypes.push('平胡');
+  const primaryType = handTypes.reduce((best, item) => (
+    baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best
+  ), handTypes[0]);
+  return {
+    handTypes,
+    primaryType,
+    baseScore: handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1),
+    route: 'normal',
+    isDalan: false,
+    decompositionSignature: decomposition.signature,
+    selectedDecomposition: decomposition,
+  };
+}
+
+function classifyNormalHand(hand: Tile[], melds: Meld[], route: HandRoute | null, dalan: { isDalan: boolean }): HandClassification | null {
+  if (route !== 'normal' || dalan.isDalan) return null;
+  const candidates = enumerateStandardDecompositions(hand, melds).map((decomposition) => {
+    const handTypes = colorHandTypes(hand, melds, dalan);
+    const tripletsOnly = melds.every((meld) => ['peng', 'mingGang', 'anGang', 'zhiChan'].includes(meld.type))
+      && decomposition.groups.every((group) => group[0] === group[1] && group[1] === group[2]);
+    if (tripletsOnly) handTypes.push('碰碰胡');
+    if (!handTypes.length) handTypes.push('平胡');
+    return {
+      handTypes,
+      baseScore: handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1),
+      decomposition,
+    };
+  }).sort((left, right) => (
+    right.baseScore - left.baseScore || left.decomposition.signature.localeCompare(right.decomposition.signature)
+  ));
+  const selected = candidates[0];
+  if (!selected) return null;
+  const primaryType = selected.handTypes.reduce((best, item) => (
+    baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best
+  ), selected.handTypes[0]);
+  return {
+    handTypes: selected.handTypes,
+    primaryType,
+    baseScore: selected.baseScore,
+    route,
+    isDalan: false,
+    decompositionSignature: selected.decomposition.signature,
+    selectedDecomposition: selected.decomposition,
+  };
+}
+
 export function classifyHand(hand: Tile[], melds: Meld[] = [], _winTile?: Tile, _winMethod?: string): HandClassification {
   const route = routeFor(hand, melds);
-  const handTypes: HandType[] = [];
   const dalan = checkDalan(hand, melds);
+  const normalClassification = classifyNormalHand(hand, melds, route, dalan);
+  if (normalClassification) return normalClassification;
+  const handTypes: HandType[] = [];
   if (checkAllWinds(hand, melds)) handTypes.push('全风向');
   if (dalan.isDalan) handTypes.push(dalan.handType);
   if (!dalan.isDalan && checkSevenPairs(hand, melds)) handTypes.push('七对');
-  const suits = new Set(hand.filter(isNumberTile).map(tileSuit));
-  const hasHonor = hand.some(isHonor);
+  const allTiles = hand.concat(melds.flatMap((meld) => meld.tiles.filter((tile): tile is Tile => !!tile)));
+  const suits = new Set(allTiles.filter(isNumberTile).map(tileSuit));
+  const hasHonor = allTiles.some(isHonor);
   if (!dalan.isDalan && suits.size === 1 && !hasHonor) handTypes.push('清一色');
   if (!dalan.isDalan && suits.size === 1 && hasHonor) handTypes.push('混一色');
-  if (!dalan.isDalan && Array.from(countTiles(hand).values()).filter((count) => count >= 3).length === 4) handTypes.push('碰碰胡');
+  if (!dalan.isDalan && hasTripletOnlyDecomposition(hand, melds)) handTypes.push('碰碰胡');
   if (!handTypes.length) handTypes.push('平胡');
   const primaryType = handTypes.reduce((best, item) => (baseScoreForHandType(item) > baseScoreForHandType(best) ? item : best), handTypes[0]);
   const baseScore = handTypes.reduce((product, item) => product * baseScoreForHandType(item), 1);
-  return { handTypes, primaryType, baseScore, route, isDalan: dalan.isDalan };
+  const normalizedMelds = melds.map((meld) => `${meld.type}:${sortTiles(meld.tiles.filter((tile): tile is Tile => !!tile)).join(',')}`).sort();
+  const decompositionSignature = `${handTypes.slice().sort().join('+')}|${sortTiles(hand).join(',')}|${normalizedMelds.join(';')}`;
+  return { handTypes, primaryType, baseScore, route, isDalan: dalan.isDalan, decompositionSignature };
 }
 
 export function getPrimaryHandType(hand: Tile[], melds: Meld[] = [], winTile?: Tile, winMethod?: string): HandType {

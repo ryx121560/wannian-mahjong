@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "stage8-c4-value-calibration-readiness-config-v1",
+  "design": {
+    "path": "docs/stage8/candidate-4-value-calibration-readiness-design-2026-07-30.md",
+    "sha256": "19F175F06DACE16C3D5B27D7BEAA423DAA2F589A94BC7FC07D32DDDA7A930FD3"
+  },
+  "lineage": {
+    "actionSpaceVersion": "stage8-action-space-v2",
+    "experienceProtocolVersion": "stage8-c4-visible-value-readiness-v1",
+    "actionRegistrySourcePath": "src/game/stage8/action-registry-v2.ts",
+    "actionRegistrySourceSha256": "DE8F2B28F785F8E26A621F27B4403A5DE1B91788DC757423E28D9221C0790753",
+    "actionSpaceGateCommit": "a3ba905b52c80aa61bbdf04a09f1655b3faa6d67",
+    "actionSpaceGateReportPath": "docs/stage8-v2-action-space-gate-candidate-report-2026-08-09.md",
+    "actionSpaceGateReportSha256": "212A10CBFB7A1E3562930B2B37D3B5AD98F1517F341E458B9B5912C7DE47428C",
+    "releaseCorrectionCommit": "e60dee4994e783eb49430085f4503b7d3d8448eb"
+  },
+  "protocol": {
+    "splitVersion": "stage8-c4-value-calibration-split-v1",
+    "splitPrefix": "stage8-c4-value-calibration-v1:",
+    "trainingBuckets": [0, 799],
+    "calibrationBuckets": [800, 899],
+    "finalTestBuckets": [900, 999],
+    "sampleSchemaVersion": "stage8-experience-v1",
+    "learningVersion": "stage8-terminal-actor-critic-v1",
+    "labelField": "terminalScoreDeltas",
+    "valueTargetTransformVersion": "stage8-terminal-score-delta-over-value-scale-v1",
+    "valueScale": 8,
+    "zeroSumTolerance": 0.000001,
+    "minimumScale": 0.125,
+    "signEpsilon": 0.000001,
+    "effectiveValueThreshold": 0.05,
+    "minimumEffectiveStateFraction": 0.95,
+    "bootstrapSeed": 2026073004,
+    "bootstrapReplicates": 10000,
+    "bootstrapVersion": "stage8-c4-sha256-counter-bootstrap-v1",
+    "percentileVersion": "stage8-c4-nearest-rank-percentile-v1",
+    "sameSignGate": "aggregate-and-each-seat-no-degradation"
+  },
+  "prerequisites": {
+    "p0RuleCoreAccepted": true,
+    "p0PageAccepted": true,
+    "stage8V2ThreeLayerGateAccepted": true,
+    "v2ValueModelAvailable": false,
+    "v2CalibrationCorpusAvailable": false
+  },
+  "authorizations": {
+    "candidateCreated": false,
+    "corpusGenerated": false,
+    "finalTestOpened": false,
+    "trainingAuthorized": false,
+    "arenaAuthorized": false,
+    "runtimeAuthorized": false
+  }
+}
